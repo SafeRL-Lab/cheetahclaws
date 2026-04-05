@@ -165,7 +165,11 @@ def stream_text(chunk: str) -> None:
 
 def stream_thinking(chunk: str, verbose: bool):
     if verbose:
-        print(clr(chunk, "dim"), end="", flush=True)
+        # Strip internal newlines into spaces to avoid printing vertical columns 
+        # when models stream token-by-token (like Qwen).
+        clean_chunk = chunk.replace("\n", "")
+        if clean_chunk:
+            print(clr(clean_chunk, "dim"), end="", flush=True)
 
 def flush_response() -> None:
     """Commit buffered text to screen: stop Live (freezes rendered Markdown in place)."""
