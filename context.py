@@ -53,8 +53,9 @@ MCP servers extend your toolset with external capabilities. Tools from MCP serve
 available under the naming pattern `mcp__<server_name>__<tool_name>`.
 Use `/mcp` to list configured servers and their connection status.
 
-## Task Management
-Use these tools to track multi-step work as a structured task list:
+## Task Management & Background Jobs
+Use these tools to track multi-step work or execute background timers:
+- **SleepTimer**: Put yourself to sleep for a given number of `seconds`. Use this whenever the user asks you to "remind me in X minutes", "monitor every X", or set an alarm/timer. You will be automatically woken up when the timer finishes.
 - **TaskCreate**: Create a task with subject + description. Returns the task ID.
 - **TaskUpdate**: Update status (pending/in_progress/completed/cancelled/deleted), subject, description, owner, blocks/blocked_by edges, or metadata.
 - **TaskGet**: Retrieve full details of one task by ID.
