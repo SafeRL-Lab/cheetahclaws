@@ -30,6 +30,7 @@ English | [中文](https://github.com/SafeRL-Lab/nano-claude-code/blob/main/docs
 
 ## 🔥🔥🔥 News (Pacific Time)
 
+- Apr 05, 2026: **Enhanced Memory System** — added `confidence` / `source` / `last_used_at` / `conflict_group` metadata to every memory entry; conflict detection on `MemorySave` warns before overwriting; `MemorySearch` re-ranks results by `confidence × recency` (30-day decay) and updates `last_used_at` on hits; new `/memory consolidate` command runs a lightweight AI analysis of the current session and auto-saves up to 3 long-term insights (user preferences, feedback corrections, project decisions) at 0.8 confidence — never overwrites higher-confidence user memories.
 
 - 02:16 PM, Apr 05, 2026: **Reasoning, Rendering, and Packaging Improvements**
   - **Post-merge fixes** — removed a debug `debug_payload.json` file write that was firing on every OpenAI-compatible API call (left over from PR #11 development). Also fixed ANSI dim color not being reset after the thinking block ends, which caused subsequent text to appear dim in non-Rich terminals. Bumped `pyproject.toml` version to `3.05.4`, and moved `sounddevice` to the optional `voice` extra (`pip install nano-claude-code[voice]`).
@@ -158,7 +159,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Layer 2 | AI summarization | AI summarization of older turns |
 | Control | System-managed | `preserve_last_n_turns` parameter |
 
-**Memory** — Claude Code's `extractMemories` service has the model proactively surface facts. Nano's `memory/` package is tool-driven: the model calls `MemorySave` explicitly, which is more predictable and auditable.
+**Memory** — Claude Code's `extractMemories` service has the model proactively surface facts. Nano's `memory/` package is tool-driven: the model calls `MemorySave` explicitly, which is more predictable and auditable. Each memory now carries `confidence`, `source`, `last_used_at`, and `conflict_group` metadata; search re-ranks by confidence × recency; and `/memory consolidate` offers a manual consolidation pass without silently modifying memories in the background.
 
 ### Who should use Nano Claude Code
 
@@ -183,7 +184,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Task management | TaskCreate/Update/Get/List tools; sequential IDs; dependency edges; metadata; persisted to `.nano_claude/tasks.json`; `/tasks` REPL command |
 | Diff view | Git-style red/green diff display for Edit and Write |
 | Context compression | Auto-compact long conversations to stay within model limits |
-| Persistent memory | Dual-scope memory (user + project) with 4 types, AI search, staleness warnings |
+| Persistent memory | Dual-scope memory (user + project) with 4 types, confidence/source metadata, conflict detection, recency-weighted search, `last_used_at` tracking, and `/memory consolidate` for auto-extraction |
 | Multi-agent | Spawn typed sub-agents (coder/reviewer/researcher/…), git worktree isolation, background mode |
 | Skills | Built-in `/commit` · `/review` + custom markdown skills with argument substitution and fork/inline execution |
 | Plugin tools | Register custom tools via `tool_registry.py` |
@@ -643,7 +644,8 @@ Type `/` and press **Tab** to autocomplete.
 | `/cwd` | Show current working directory |
 | `/cwd <path>` | Change working directory |
 | `/memory` | List all persistent memories |
-| `/memory <query>` | Search memories by keyword |
+| `/memory <query>` | Search memories by keyword (ranked by confidence × recency) |
+| `/memory consolidate` | AI-extract up to 3 long-term insights from the current session |
 | `/skills` | List available skills |
 | `/agents` | Show sub-agent task status |
 | `/mcp` | List configured MCP servers and their tools |
@@ -828,50 +830,116 @@ MCP tools are discovered automatically from configured servers and registered un
 
 The model can remember things across conversations using the built-in memory system.
 
-**How it works:** Memories are stored as markdown files. There are two scopes:
-- **User scope** (`~/.nano_claude/memory/`) — follows you across all projects
-- **Project scope** (`.nano_claude/memory/` in cwd) — specific to the current repo
+### Storage
 
-A `MEMORY.md` index (≤ 200 lines / 25 KB) is auto-rebuilt on every save or delete and injected into the system prompt so Claude always has an overview.
+Memories are stored as individual markdown files in two scopes:
 
-**Memory types:**
+| Scope | Path | Visibility |
+|---|---|---|
+| **User** (default) | `~/.nano_claude/memory/` | Shared across all projects |
+| **Project** | `.nano_claude/memory/` in cwd | Local to the current repo |
+
+A `MEMORY.md` index (≤ 200 lines / 25 KB) is auto-rebuilt on every save or delete and injected into the system prompt so the model always has an overview of what's been remembered.
+
+### Memory types
 
 | Type | Use for |
 |---|---|
 | `user` | Your role, preferences, background |
-| `feedback` | How you want the model to behave |
-| `project` | Ongoing work, deadlines, decisions |
-| `reference` | Links to external resources |
+| `feedback` | How you want the model to behave (corrections AND confirmations) |
+| `project` | Ongoing work, deadlines, decisions not in git history |
+| `reference` | Links to external systems (Linear, Grafana, Slack, etc.) |
 
-**Memory file format** (`~/.nano_claude/memory/coding_style.md`):
+### Memory file format
+
+Each memory is a markdown file with YAML frontmatter:
+
 ```markdown
 ---
-name: coding style
+name: coding_style
 description: Python formatting preferences
 type: feedback
 created: 2026-04-02
+confidence: 0.95
+source: user
+last_used_at: 2026-04-05
+conflict_group: coding_style
 ---
 Prefer 4-space indentation and full type hints in all Python code.
 **Why:** user explicitly stated this preference.
 **How to apply:** apply to every Python file written or edited.
 ```
 
-**Example interaction:**
+**Metadata fields** (new — auto-managed):
+
+| Field | Default | Description |
+|---|---|---|
+| `confidence` | `1.0` | Reliability score 0–1. Explicit user statements = 1.0; inferred preferences ≈ 0.8; auto-consolidated ≈ 0.8 |
+| `source` | `user` | Origin: `user` / `model` / `tool` / `consolidator` |
+| `last_used_at` | — | Updated automatically each time this memory is returned by MemorySearch |
+| `conflict_group` | — | Groups related memories (e.g. `writing_style`) for conflict tracking |
+
+### Conflict detection
+
+When `MemorySave` is called with a name that already exists but different content, the system reports the conflict before overwriting:
 
 ```
-You: Remember that I prefer 4-space indentation and type hints in all Python code.
-AI: [calls MemorySave] Memory saved: coding_style [feedback/user]
+Memory saved: 'writing_style' [feedback/user]
+⚠ Replaced conflicting memory (was user-sourced, 100% confidence, written 2026-04-01).
+  Old content: Prefer formal, academic style...
+```
+
+### Ranked retrieval
+
+`MemorySearch` ranks results by **confidence × recency** (30-day exponential decay) rather than plain keyword order. Memories that haven't been used recently fade in priority. Each search hit also updates `last_used_at` so frequently-accessed memories stay prominent.
+
+```
+You: /memory python
+  [feedback/user] coding_style [conf:95% src:user]
+    Python formatting preferences
+    Prefer 4-space indentation and full type hints...
+```
+
+### `/memory consolidate` — auto-extract long-term insights
+
+After a meaningful session, run:
+
+```
+[myproject] ❯ /memory consolidate
+  Analyzing session for long-term memories…
+  ✓ Consolidated 2 memory/memories: user_prefers_direct_answers, avoid_trailing_summaries
+```
+
+The command sends a condensed session transcript to the model and asks it to identify up to **3** insights worth keeping long-term (user preferences, feedback corrections, project decisions). Extracted memories are saved with `confidence: 0.80` and `source: consolidator` — they **never overwrite** an existing memory that already has higher confidence.
+
+Good times to run `/memory consolidate`:
+- After correcting the model's behavior several times in a row
+- After a session where you shared project background or decisions
+- After completing a task with clear planning choices
+
+### Example interaction
+
+```
+You: Remember that I prefer 4-space indentation and type hints.
+AI: [calls MemorySave] Memory saved: 'coding_style' [feedback/user]
 
 You: /memory
-  [feedback/user] coding_style (today): Python formatting preferences
+  1 memory/memories:
+  [feedback  |user   ] coding_style.md
+    Python formatting preferences
 
 You: /memory python
-  [feedback/user] coding_style: Prefers 4-space indent and type hints in Python
+  Found 1 relevant memory for 'python':
+  [feedback/user] coding_style
+    Prefer 4-space indentation and full type hints in all Python code.
+
+You: /memory consolidate
+  ✓ Consolidated 1 memory: user_prefers_verbose_commit_messages
 ```
 
-**Staleness warnings:** Memories older than 1 day get a freshness note in `/memory` output so you know when to review or update them.
+**Staleness warnings:** Memories older than 1 day show a `⚠ stale` caveat — claims about file:line citations or code state may be outdated; verify before acting.
 
-**AI-ranked search:** `MemorySearch(query="...", use_ai=true)` uses the model to rank results by relevance rather than simple keyword matching.
+**AI-ranked search:** `MemorySearch(query="...", use_ai=true)` uses the model to rank candidates by relevance before applying the confidence × recency re-ranking.
 
 ---
 

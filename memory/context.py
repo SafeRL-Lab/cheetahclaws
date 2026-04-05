@@ -132,7 +132,7 @@ def find_relevant_memories(
         path_to_mtime = {h.file_path: h.mtime_s for h in headers}
 
         results = []
-        for entry in keyword_results[:max_results]:
+        for entry in keyword_results[:max_results * 3]:
             mtime_s = path_to_mtime.get(entry.file_path, 0)
             results.append({
                 "name": entry.name,
@@ -143,6 +143,8 @@ def find_relevant_memories(
                 "file_path": entry.file_path,
                 "mtime_s": mtime_s,
                 "freshness_text": memory_freshness_text(mtime_s),
+                "confidence": entry.confidence,
+                "source": entry.source,
             })
         results.sort(key=lambda r: r["mtime_s"], reverse=True)
         return results[:max_results]
@@ -217,5 +219,7 @@ def _ai_select_memories(
             "file_path": entry.file_path,
             "mtime_s": mtime_s,
             "freshness_text": memory_freshness_text(mtime_s),
+            "confidence": entry.confidence,
+            "source": entry.source,
         })
     return results

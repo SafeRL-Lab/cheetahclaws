@@ -26,7 +26,8 @@ Slash commands in REPL:
   /thinking   Toggle extended thinking
   /permissions [mode]  Set permission mode
   /cwd [path] Show or change working directory
-  /memory [query]   Show/search persistent memories
+  /memory [query]         Show/search persistent memories
+  /memory consolidate     Extract long-term insights from current session via AI
   /skills           List available skills
   /agents           Show sub-agent tasks
   /mcp              List MCP servers and their tools
@@ -835,14 +836,30 @@ def cmd_memory(args: str, _state, _config) -> bool:
     from memory import search_memory, load_index
     from memory.scan import scan_all_memories, format_memory_manifest, memory_freshness_text
 
-    if args.strip():
-        results = search_memory(args.strip())
+    stripped = args.strip()
+
+    # /memory consolidate  — extract long-term memories from current session
+    if stripped == "consolidate":
+        from memory import consolidate_session
+        msgs = _state.get("messages", [])
+        info("  Analyzing session for long-term memories…")
+        saved = consolidate_session(msgs, _config)
+        if saved:
+            info(f"  ✓ Consolidated {len(saved)} memory/memories: {', '.join(saved)}")
+        else:
+            info("  Nothing new worth saving (session too short, or nothing extractable).")
+        return True
+
+    if stripped:
+        results = search_memory(stripped)
         if not results:
-            info(f"No memories matching '{args.strip()}'")
+            info(f"No memories matching '{stripped}'")
             return True
-        info(f"  {len(results)} result(s) for '{args.strip()}':")
+        info(f"  {len(results)} result(s) for '{stripped}':")
         for m in results:
-            info(f"  [{m.type:9s}|{m.scope:7s}] {m.name}: {m.description}")
+            conf_tag = f" conf:{m.confidence:.0%}" if m.confidence < 1.0 else ""
+            src_tag = f" src:{m.source}" if m.source and m.source != "user" else ""
+            info(f"  [{m.type:9s}|{m.scope:7s}] {m.name}{conf_tag}{src_tag}: {m.description}")
             info(f"    {m.content[:120]}{'...' if len(m.content) > 120 else ''}")
         return True
 

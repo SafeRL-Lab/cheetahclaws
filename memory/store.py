@@ -49,13 +49,17 @@ class MemoryEntry:
     """A single memory entry loaded from a .md file.
 
     Attributes:
-        name:        human-readable name (also the display title in the index)
-        description: short one-line description (used for relevance decisions)
-        type:        "user" | "feedback" | "project" | "reference"
-        content:     body text of the memory
-        file_path:   absolute path to the .md file on disk
-        created:     date string, e.g. "2026-04-02"
-        scope:       "user" | "project" — which directory this was loaded from
+        name:           human-readable name (also the display title in the index)
+        description:    short one-line description (used for relevance decisions)
+        type:           "user" | "feedback" | "project" | "reference"
+        content:        body text of the memory
+        file_path:      absolute path to the .md file on disk
+        created:        date string, e.g. "2026-04-02"
+        scope:          "user" | "project" — which directory this was loaded from
+        confidence:     0.0–1.0 reliability score (default 1.0 = explicit user statement)
+        source:         origin: "user" | "model" | "tool" | "consolidator"
+        last_used_at:   ISO date of last retrieval (updated on MemorySearch hits)
+        conflict_group: tag linking related/conflicting memories (e.g. "writing_style")
     """
     name: str
     description: str
@@ -64,6 +68,10 @@ class MemoryEntry:
     file_path: str = ""
     created: str = ""
     scope: str = "user"
+    confidence: float = 1.0
+    source: str = "user"
+    last_used_at: str = ""
+    conflict_group: str = ""
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -96,15 +104,24 @@ def parse_frontmatter(text: str) -> tuple[dict, str]:
 
 def _format_entry_md(entry: MemoryEntry) -> str:
     """Render a MemoryEntry as a markdown file with YAML frontmatter."""
-    return (
-        f"---\n"
-        f"name: {entry.name}\n"
-        f"description: {entry.description}\n"
-        f"type: {entry.type}\n"
-        f"created: {entry.created}\n"
-        f"---\n"
-        f"{entry.content}\n"
-    )
+    lines = [
+        "---",
+        f"name: {entry.name}",
+        f"description: {entry.description}",
+        f"type: {entry.type}",
+        f"created: {entry.created}",
+    ]
+    if entry.confidence != 1.0:
+        lines.append(f"confidence: {entry.confidence:.2f}")
+    if entry.source and entry.source != "user":
+        lines.append(f"source: {entry.source}")
+    if entry.last_used_at:
+        lines.append(f"last_used_at: {entry.last_used_at}")
+    if entry.conflict_group:
+        lines.append(f"conflict_group: {entry.conflict_group}")
+    lines.append("---")
+    lines.append(entry.content)
+    return "\n".join(lines) + "\n"
 
 
 # ── Core storage operations ────────────────────────────────────────────────
@@ -167,6 +184,10 @@ def load_entries(scope: str = "user") -> list[MemoryEntry]:
             file_path=str(fp),
             created=meta.get("created", ""),
             scope=scope,
+            confidence=float(meta.get("confidence", 1.0)),
+            source=meta.get("source", "user"),
+            last_used_at=meta.get("last_used_at", ""),
+            conflict_group=meta.get("conflict_group", ""),
         ))
     return entries
 
@@ -221,3 +242,59 @@ def get_index_content(scope: str = "user") -> str:
     if not index_path.exists():
         return ""
     return index_path.read_text().strip()
+
+
+def check_conflict(entry: "MemoryEntry", scope: str = "user") -> dict | None:
+    """Check whether a same-named memory already exists with different content.
+
+    Returns a dict with the existing memory's key fields if a conflict is found,
+    or None if no existing file or if the content is identical.
+    """
+    mem_dir = get_memory_dir(scope)
+    slug = _slugify(entry.name)
+    fp = mem_dir / f"{slug}.md"
+    if not fp.exists():
+        return None
+    try:
+        meta, existing_content = parse_frontmatter(fp.read_text())
+    except Exception:
+        return None
+    if existing_content.strip() == entry.content.strip():
+        return None
+    return {
+        "existing_content": existing_content.strip(),
+        "existing_confidence": float(meta.get("confidence", 1.0)),
+        "existing_created": meta.get("created", ""),
+        "existing_source": meta.get("source", "user"),
+    }
+
+
+def touch_last_used(file_path: str) -> None:
+    """Update the last_used_at frontmatter field of a memory file to today.
+
+    Called by MemorySearch when a memory is returned so staleness/utility
+    tracking stays current. Silent on any error.
+    """
+    from datetime import date
+    fp = Path(file_path)
+    if not fp.exists():
+        return
+    try:
+        text = fp.read_text()
+        meta, body = parse_frontmatter(text)
+        today = date.today().isoformat()
+        if meta.get("last_used_at") == today:
+            return  # already up to date, skip the write
+        meta["last_used_at"] = today
+        # Rebuild frontmatter
+        fm_lines = ["---"]
+        for k in ("name", "description", "type", "created", "confidence",
+                   "source", "last_used_at", "conflict_group"):
+            v = meta.get(k)
+            if v is not None and str(v):
+                fm_lines.append(f"{k}: {v}")
+        fm_lines.append("---")
+        new_text = "\n".join(fm_lines) + "\n" + body + "\n"
+        fp.write_text(new_text)
+    except Exception:
+        pass

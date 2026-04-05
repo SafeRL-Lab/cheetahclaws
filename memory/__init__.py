@@ -51,6 +51,7 @@ from .types import (  # noqa: F401
     MEMORY_SYSTEM_PROMPT,
     WHAT_NOT_TO_SAVE,
 )
+from .consolidator import consolidate_session  # noqa: F401
 
 __all__ = [
     # store
@@ -83,4 +84,6 @@ __all__ = [
     "MEMORY_TYPE_DESCRIPTIONS",
     "MEMORY_SYSTEM_PROMPT",
     "WHAT_NOT_TO_SAVE",
+    # consolidator
+    "consolidate_session",
 ]
