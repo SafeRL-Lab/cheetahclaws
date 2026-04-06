@@ -191,21 +191,21 @@ def flush_response() -> None:
         print()  # ensure newline after plain-text stream
 
 _TOOL_SPINNER_PHRASES = [
-    "☕ Brewing some coffee...",
-    "🚰 Drinking some water...",
-    "🧠 Thinking really hard...",
-    "🔧 Tightening some bolts...",
-    "🎯 Locking on target...",
-    "🔍 Investigating...",
-    "🧩 Connecting the dots...",
-    "⚡ Charging up...",
-    "🎨 Painting the bits...",
-    "🏗️ Building something cool...",
-    "🌀 Spinning the wheels...",
-    "🧪 Running experiments...",
-    "📡 Scanning frequencies...",
-    "🛠️ Tuning the engine...",
-    "🐛 Chasing a bug...",
+    "⚡ Rewriting light speed...",
+    "🏁 Winning a race against light...",
+    "🤔 Who is Barry Allen?...",
+    "🐆 Outrunning the compiler...",
+    "💨 Leaving electrons behind...",
+    "🌍 Orbiting the codebase...",
+    "⏱️ Breaking the sound barrier...",
+    "🔥 Faster than a hot reload...",
+    "🚀 Terminal velocity reached...",
+    "🐾 Claw marks on the stack...",
+    "🏎️ Shifting to 6th gear...",
+    "⚡ Speed force activated...",
+    "🌪️ Blitzing through the AST...",
+    "💫 Bending spacetime...",
+    "🐆 Cheetah mode engaged...",
 ]
 
 _DEBATE_SPINNER_PHRASES = [
@@ -3248,26 +3248,71 @@ def repl(config: dict, initial_prompt: str = None):
     # Banner
     if not initial_prompt:
         from providers import detect_provider
+        
+        # ── Cheetah startup animation ──
+        _CHEETAH_FRAMES = [
+            "     ✦",
+            "    ✦ ·",
+            "   ✦ · ·",
+            "  ✦ · · ·",
+            " ✦ · · · ·",
+            "✦ · · · · ·",
+        ]
+        _CHEETAH_LOGO = [
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⣠⣤⣤⣤⡴⣶⣶⠆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣤⣴⣶⣿⣿⣿⣿⣿⣿⣷⣿⣶⣿⣧⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣄⣀⣀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⣴⣾⣿⣿⣿⠿⠿⠛⠛⠛⠋⠉⠉⠉⠛⠛⠛⠛⠿⠟⠛⠛⠛⠛⠛⠛⠛⠛⠛⣻⣿⣿⠋⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⣠⣴⣿⣿⣿⠟⠋⠉⠀⠀⠀⠀⣀⣤⣄⢴⣖⣒⣂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣿⣟⡁⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⣠⣾⣿⣿⠟⠋⠀⠀⠀⣀⣤⣦⣿⣿⣿⣿⣿⣯⠋⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠴⠿⠿⠿⣿⣿⣷⣦⡀⠀⠀⠀⠀",
+            "⠀⠀⠀⢰⣿⣿⡿⠁⠀⠀⠀⣀⣶⣿⣿⡟⠯⠍⠋⢁⣀⣠⣄⣀⣀⣀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠿⣶⣄⠀⠀",
+            "⠀⠀⠀⢸⣿⣿⣿⣦⣤⣴⣿⣿⣟⣋⣡⣤⠴⠖⠋⢉⣽⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⠧⡀",
+            "⠀⠀⢠⣿⠟⠉⠁⠈⠉⠉⠙⠛⠛⠿⠿⣿⣿⣿⣿⣿⣿⠿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈",
+            "⠀ ⣿⡁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠽⠟⠛⠉⠀⢀⣀⣥⣴⣶⣶⣶⣶⣶⣶⣤⣤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⣿⣿⣿⣷⣶⣦⣤⣤⣤⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠁⠀⠀⠀⠀⠁⠂⠈⢉⠛⠿⣿⣿⣿⣶⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⢸⣿⠘⢿⣿⣿⠿⠛⠉⠀⠀⠀⠀⠀⠀⠀⢀⣀⣤⣤⣤⣤⣀⡀⠀⠀⠀⠀⠀⠀⠁⠀⠂⠽⣿⣿⣿⣿⣦⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠈⣿⣴⣿⣿⣄⠀⠀⠀⠀⠀⣀⣠⣴⠶⣿⣿⠋⠉⠉⠉⠙⢻⣿⡆⠀⠀⠀⠀⠀⠀⣀⣴⣶⣿⣿⣿⣿⣿⣷⡄⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⢹⣿⡍⠛⠻⢷⣶⣶⣶⠟⢿⣿⠗⠀⠹⠃⡀⠀⠀⠀⠀⠀⣿⡇⠀⠀⠀⢀⣴⣿⣿⣿⣿⠿⠿⠛⠛⠛⠛⠛⠂⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⢻⡇⠀⠀⠀⢻⣽⣿⠀⠈⠛⠀⠀⠀⢹⠇⠀⠀⠀⠀⢶⣿⠇⠀⢀⣴⣿⣿⠿⠛⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠁⠀⠀⠀⠀⠹⡇⠀⠀⠀⠀⠀⣀⡾⠀⠀⠀⠀⠀⢸⡿⠀⣠⣿⣿⡟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠁⠀⣦⠀⠀⢠⣿⢳⠀⠀⠀⠙⣿⣿⠁⢰⣿⡿⣻⡿⣦⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠰⣿⣷⡾⠿⠃⢸⣷⣀⠀⢀⣾⠃⢀⣿⣿⣻⣿⡿⡯⣻⣣⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿⠻⠷⢾⣿⣿⣷⡿⠁⠀⢸⣿⣟⡿⣏⣿⣿⣿⣯⣿⣗⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹⢿⣷⣄⠀⠀⠉⠛⠀⠀⠀⢸⣿⡇⠈⠉⠛⢧⣝⣟⣯⣿⣿⣿⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠿⣿⣦⣄⡀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠉⠙⠯⣯⣿⣿⣷⣆⡀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠿⣿⣶⣶⣾⣿⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠑⠻⠯⣿⣇⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠛⠛⠿⠧⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠃⠀⠀⠀⠀⠀",
+        ]
+
+        # Spinning galaxy animation
+        _GALAXY_FRAMES = ["◜", "◝", "◞", "◟"]
+        try:
+            for i in range(8):
+                frame = _GALAXY_FRAMES[i % 4]
+                sys.stdout.write(f"\r  {clr(frame, 'cyan', 'bold')} Initializing Cheetah...")
+                sys.stdout.flush()
+                time.sleep(0.12)
+            sys.stdout.write(f"\r{' ' * 40}\r")
+            sys.stdout.flush()
+        except Exception:
+            pass
+
+        # Print logo
+        for line in _CHEETAH_LOGO:
+            print(clr(line, "cyan", "bold"))
+        print()
+
         model    = config["model"]
         pname    = detect_provider(model)
         model_clr = clr(model, "cyan", "bold")
         prov_clr  = clr(f"({pname})", "dim")
         pmode     = clr(config.get("permission_mode", "auto"), "yellow")
         ver_clr   = clr(f"v{VERSION}", "green")
-        _top_left  = "╭─ CheetahClaws "
-        _top_right = " ─────────────────────────╮"
-        _box_w     = len(_top_left) + len(f"v{VERSION}") + len(_top_right)
 
-        def _box_row(content: str) -> str:
-            vis_len = len(re.sub(r'\x1b\[[0-9;]*m', '', content))
-            pad     = _box_w - vis_len - 1
-            return content + " " * max(0, pad) + clr("│", "dim")
-
-        print(clr(_top_left, "dim") + ver_clr + clr(_top_right, "dim"))
-        print(_box_row(clr("│  Model: ", "dim") + model_clr + " " + prov_clr))
-        print(_box_row(clr("│  Permissions: ", "dim") + pmode))
-        print(_box_row(clr("│  /model to switch provider · /help for commands", "dim")))
-        print(clr("╰" + "─" * (_box_w - 2) + "╯", "dim"))
+        print(clr("  ╭─ ", "dim") + clr("CheetahClaws ", "cyan", "bold") + ver_clr + clr(" ─────────────────────────────────╮", "dim"))
+        print(clr("  │", "dim") + clr("  Model: ", "dim") + model_clr + " " + prov_clr)
+        print(clr("  │", "dim") + clr("  Permissions: ", "dim") + pmode)
+        print(clr("  │", "dim") + clr("  /model to switch · /help for commands", "dim"))
+        print(clr("  ╰──────────────────────────────────────────────────────╯", "dim"))
 
         # Show active non-default settings
         active_flags = []
