@@ -64,6 +64,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import uuid
 if sys.platform == "win32":
     os.system("")  # Enable ANSI escape codes on Windows CMD
 import json
@@ -1811,6 +1812,123 @@ def cmd_image(args: str, state, config) -> Union[bool, tuple]:
     return ("__image__", prompt)
 
 
+def cmd_checkpoint(args: str, state, config) -> bool:
+    """List or restore checkpoints.
+
+    /checkpoint          — list all checkpoints
+    /checkpoint <id>     — restore to checkpoint #id
+    /checkpoint clear    — delete all checkpoints for this session
+    """
+    import checkpoint as ckpt
+
+    session_id = config.get("_session_id")
+    if not session_id:
+        err("No active session.")
+        return True
+
+    arg = args.strip()
+
+    # /checkpoint clear
+    if arg == "clear":
+        ckpt.delete_session_checkpoints(session_id)
+        info("All checkpoints cleared.")
+        return True
+
+    # /checkpoint (no args) — list
+    if not arg:
+        snaps = ckpt.list_snapshots(session_id)
+        if not snaps:
+            info("No checkpoints yet.")
+            return True
+        info(f"Checkpoints ({len(snaps)} total):")
+        for s in snaps:
+            ts = s["created_at"]
+            try:
+                t = datetime.fromisoformat(ts).strftime("%H:%M")
+            except Exception:
+                t = ts[:16]
+            preview = s["user_prompt_preview"]
+            if preview:
+                preview = f'  "{preview[:40]}{"..." if len(preview) > 40 else ""}"'
+            else:
+                preview = "  (initial state)"
+            print(f"  #{s['id']:<3} [turn {s['turn_count']}]  {t}{preview}")
+        return True
+
+    # /checkpoint <id> — restore
+    try:
+        snap_id = int(arg)
+    except ValueError:
+        err(f"Unknown subcommand: {arg}")
+        return True
+
+    snap = ckpt.get_snapshot(session_id, snap_id)
+    if snap is None:
+        err(f"Checkpoint #{snap_id} not found.")
+        return True
+
+    changed = ckpt.files_changed_since(session_id, snap_id)
+    ts = snap.created_at
+    try:
+        t = datetime.fromisoformat(ts).strftime("%H:%M")
+    except Exception:
+        t = ts[:16]
+
+    info(f"Checkpoint #{snap_id} (turn {snap.turn_count}, {t})")
+    if changed:
+        shown = changed[:4]
+        extra = f" (+{len(changed) - 4} files)" if len(changed) > 4 else ""
+        info(f"Files changed since: {', '.join(Path(f).name for f in shown)}{extra}")
+    print()
+    print("  1. Restore conversation + files")
+    print("  2. Restore conversation only")
+    print("  3. Restore files only")
+    print("  4. Cancel")
+    print()
+
+    try:
+        choice = input("Choice [1-4]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return True
+
+    restore_conversation = choice in ("1", "2")
+    restore_files = choice in ("1", "3")
+
+    if choice == "4" or choice not in ("1", "2", "3"):
+        info("Cancelled.")
+        return True
+
+    results = []
+
+    if restore_conversation:
+        state.messages = state.messages[:snap.message_index]
+        state.turn_count = snap.turn_count
+        state.total_input_tokens = snap.token_snapshot.get("input", 0)
+        state.total_output_tokens = snap.token_snapshot.get("output", 0)
+        results.append("conversation restored")
+
+    if restore_files:
+        file_results = ckpt.rewind_files(session_id, snap_id)
+        for r in file_results:
+            print(f"  {r}")
+        results.append(f"{len(file_results)} file(s) processed")
+
+    # Reset tracking and create a fresh snapshot of current state
+    ckpt.reset_tracked()
+    ckpt.make_snapshot(
+        session_id, state, config,
+        f"[rewind to #{snap_id}]",
+        tracked_edits=None,
+    )
+
+    info(f"Done: {', '.join(results)}. New checkpoint created.")
+    return True
+
+
+# /rewind is an alias for /checkpoint
+cmd_rewind = cmd_checkpoint
+
 COMMANDS = {
     "help":        cmd_help,
     "clear":       cmd_clear,
@@ -1837,6 +1955,8 @@ COMMANDS = {
     "voice":       cmd_voice,
     "image":       cmd_image,
     "brainstorm":  cmd_brainstorm,
+    "checkpoint":  cmd_checkpoint,
+    "rewind":      cmd_rewind,
     "exit":        cmd_exit,
     "quit":        cmd_exit,
     "resume":      cmd_resume
@@ -1904,6 +2024,8 @@ _CMD_META: dict[str, tuple[str, list[str]]] = {
     "cloudsave":   ("Cloud-sync sessions to GitHub Gist", ["setup", "auto", "list", "load", "push"]),
     "voice":       ("Voice input (record → STT)",         ["lang", "status"]),
     "image":       ("Send clipboard image to model",      []),
+    "checkpoint":  ("List / restore checkpoints",          ["clear"]),
+    "rewind":      ("Rewind to checkpoint (alias)",        ["clear"]),
     "exit":        ("Exit nano-claude-code",              []),
     "quit":        ("Exit (alias for /exit)",             []),
     "resume":      ("Resume last session",                []),
@@ -1977,6 +2099,13 @@ def repl(config: dict, initial_prompt: str = None):
     setup_readline(HISTORY_FILE)
     state = AgentState()
     verbose = config.get("verbose", False)
+
+    # ── Checkpoint system init ──
+    import checkpoint as ckpt
+    session_id = uuid.uuid4().hex[:8]
+    config["_session_id"] = session_id
+    ckpt.set_session(session_id)
+    ckpt.cleanup_old_sessions()
 
     # Banner
     if not initial_prompt:
@@ -2168,7 +2297,15 @@ def repl(config: dict, initial_prompt: str = None):
         # Drain any AskUserQuestion prompts raised during this turn
         from tools import drain_pending_questions
         drain_pending_questions()
-        
+
+        # ── Auto-snapshot after each turn ──
+        try:
+            tracked = ckpt.get_tracked_edits()
+            ckpt.make_snapshot(session_id, state, config, user_input, tracked_edits=tracked)
+            ckpt.reset_tracked()
+        except Exception:
+            pass  # never let checkpoint errors break the REPL
+
         config["_last_interaction_time"] = time.time()
 
     config["_run_query_callback"] = lambda msg: run_query(msg, is_background=True)

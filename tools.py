@@ -1081,3 +1081,8 @@ except Exception as _plugin_err:
 # ── Task tools (TaskCreate, TaskUpdate, TaskGet, TaskList) ─────────────────────
 # task/tools.py registers all four tools into the central registry on import.
 import task.tools as _task_tools  # noqa: F401
+
+
+# ── Checkpoint hooks (backup files before Write/Edit/NotebookEdit) ───────────
+from checkpoint.hooks import install_hooks as _install_checkpoint_hooks
+_install_checkpoint_hooks()

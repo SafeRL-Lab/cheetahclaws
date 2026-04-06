@@ -5,3 +5,4 @@ build/
 dist/
 debug_payload.json
 brainstorm_outputs/
+reference/
