@@ -1917,7 +1917,7 @@ def _tg_poll_loop(token: str, chat_id: int, config: dict):
                 if not text:
                     continue
 
-                # Handle Telegram bot commands (not for the model)
+                # Handle Telegram bot commands
                 if text.strip().startswith("/"):
                     tg_cmd = text.strip().lower()
                     if tg_cmd in ("/stop", "/off"):
@@ -1926,8 +1926,34 @@ def _tg_poll_loop(token: str, chat_id: int, config: dict):
                         break
                     elif tg_cmd == "/start":
                         _tg_send(token, chat_id, "🟢 nano-claude bridge is active. Send me anything.")
-                    else:
-                        _tg_send(token, chat_id, "Commands: /stop to disconnect")
+                        continue
+                    # Pass nano slash commands through handle_slash
+                    slash_cb = config.get("_handle_slash_callback")
+                    if slash_cb:
+                        print(clr(f"\n  📩 Telegram: {text}", "cyan"))
+                        try:
+                            config["_telegram_incoming"] = True
+                            slash_cb(text)
+                        except Exception as e:
+                            _tg_send(token, chat_id, f"⚠ Error: {e}")
+                            continue
+                        # Grab response
+                        tg_state = config.get("_state")
+                        if tg_state and tg_state.messages:
+                            for m in reversed(tg_state.messages):
+                                if m.get("role") == "assistant":
+                                    content = m.get("content", "")
+                                    if isinstance(content, list):
+                                        parts = []
+                                        for block in content:
+                                            if isinstance(block, dict) and block.get("type") == "text":
+                                                parts.append(block["text"])
+                                            elif isinstance(block, str):
+                                                parts.append(block)
+                                        content = "\n".join(parts)
+                                    if content:
+                                        _tg_send(token, chat_id, content)
+                                    break
                     continue
 
                 # Show on local terminal
@@ -2624,6 +2650,30 @@ def repl(config: dict, initial_prompt: str = None):
         config["_last_interaction_time"] = time.time()
 
     config["_run_query_callback"] = lambda msg: run_query(msg, is_background=True)
+
+    def _handle_slash_from_telegram(line: str):
+        """Process a /command from Telegram, handling sentinels inline."""
+        result = handle_slash(line, state, config)
+        if not isinstance(result, tuple):
+            return  # simple command handled (e.g. /verbose, /model)
+        # Process sentinels the same way the REPL does
+        if result[0] == "__brainstorm__":
+            _, brain_prompt, brain_out_file = result
+            run_query(brain_prompt)
+            _save_synthesis(state, brain_out_file)
+            run_query(
+                "Based on the Master Plan you just synthesized, generate a todo_list.txt file in the current directory. "
+                "Format: one task per line, each starting with '- [ ] '. "
+                "Order by priority. Include ALL actionable items from the plan. "
+                "Use the Write tool to create the file. Do NOT explain, just write the file now."
+            )
+        elif result[0] == "__worker__":
+            _, worker_tasks = result
+            for i, (line_idx, task_text, prompt) in enumerate(worker_tasks):
+                print(clr(f"\n  ── Worker ({i+1}/{len(worker_tasks)}): {task_text} ──", "yellow"))
+                run_query(prompt)
+
+    config["_handle_slash_callback"] = _handle_slash_from_telegram
 
     # ── Auto-start Telegram bridge if configured ──────────────────────
     if config.get("telegram_token") and config.get("telegram_chat_id"):
