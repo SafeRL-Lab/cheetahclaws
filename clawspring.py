@@ -3242,7 +3242,7 @@ def repl(config: dict, initial_prompt: str = None):
     ckpt.set_session(session_id)
     ckpt.cleanup_old_sessions()
     # Initial snapshot: capture the "blank slate" before any prompts
-    ckpt.make_snapshot(session_id, state, {}, "(initial state)", tracked_edits=None)
+    ckpt.make_snapshot(session_id, state, config, "(initial state)", tracked_edits=None)
 
     # Banner
     if not initial_prompt:
