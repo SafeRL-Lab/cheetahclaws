@@ -1944,19 +1944,18 @@ def _tg_poll_loop(token: str, chat_id: int, config: dict):
                     # Pass nano slash commands through handle_slash
                     slash_cb = config.get("_handle_slash_callback")
                     if slash_cb:
-                        print(clr(f"\n  📩 Telegram: {text}", "cyan"))
-                        _typing_stop = threading.Event()
-                        _typing_t = threading.Thread(target=_tg_typing_loop, args=(token, chat_id, _typing_stop), daemon=True)
-                        _typing_t.start()
                         try:
                             config["_telegram_incoming"] = True
-                            slash_cb(text)
+                            cmd_type = slash_cb(text)
                         except Exception as e:
-                            _typing_stop.set()
                             _tg_send(token, chat_id, f"⚠ Error: {e}")
                             continue
-                        _typing_stop.set()
-                        # Grab response
+                        # Simple commands (toggle, etc.) — just confirm
+                        if cmd_type == "simple":
+                            cmd_name = text.strip().split()[0]
+                            _tg_send(token, chat_id, f"✅ {cmd_name} executed.")
+                            continue
+                        # Query commands — grab the model response
                         tg_state = config.get("_state")
                         if tg_state and tg_state.messages:
                             for m in reversed(tg_state.messages):
@@ -2676,10 +2675,11 @@ def repl(config: dict, initial_prompt: str = None):
     config["_run_query_callback"] = lambda msg: run_query(msg, is_background=True)
 
     def _handle_slash_from_telegram(line: str):
-        """Process a /command from Telegram, handling sentinels inline."""
+        """Process a /command from Telegram, handling sentinels inline.
+        Returns 'simple' for toggle commands, 'query' if run_query was called."""
         result = handle_slash(line, state, config)
         if not isinstance(result, tuple):
-            return  # simple command handled (e.g. /verbose, /model)
+            return "simple"
         # Process sentinels the same way the REPL does
         if result[0] == "__brainstorm__":
             _, brain_prompt, brain_out_file = result
@@ -2696,6 +2696,7 @@ def repl(config: dict, initial_prompt: str = None):
             for i, (line_idx, task_text, prompt) in enumerate(worker_tasks):
                 print(clr(f"\n  ── Worker ({i+1}/{len(worker_tasks)}): {task_text} ──", "yellow"))
                 run_query(prompt)
+        return "query"
 
     config["_handle_slash_callback"] = _handle_slash_from_telegram
 
@@ -2703,16 +2704,14 @@ def repl(config: dict, initial_prompt: str = None):
     if config.get("telegram_token") and config.get("telegram_chat_id"):
         global _telegram_thread, _telegram_stop
         if not (_telegram_thread and _telegram_thread.is_alive()):
-            _tg_token = config["telegram_token"]
-            _tg_chat = config["telegram_chat_id"]
-            me = _tg_api(_tg_token, "getMe")
-            if me and me.get("ok"):
-                config["_state"] = state
-                _telegram_stop = threading.Event()
-                _telegram_thread = threading.Thread(
-                    target=_tg_poll_loop, args=(_tg_token, _tg_chat, config), daemon=True
-                )
-                _telegram_thread.start()
+            config["_state"] = state
+            _telegram_stop = threading.Event()
+            _telegram_thread = threading.Thread(
+                target=_tg_poll_loop,
+                args=(config["telegram_token"], config["telegram_chat_id"], config),
+                daemon=True
+            )
+            _telegram_thread.start()
 
     # ── Rapid Ctrl+C force-quit ─────────────────────────────────────────
     # 3 Ctrl+C presses within 2 seconds → immediate hard exit
