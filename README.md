@@ -223,8 +223,8 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Multi-agent | Spawn typed sub-agents (coder/reviewer/researcher/…), git worktree isolation, background mode |
 | Skills | Built-in `/commit` · `/review` + custom markdown skills with argument substitution and fork/inline execution |
 | Plugin tools | Register custom tools via `tool_registry.py` |
-| Permission system | `auto` / `accept-all` / `manual` modes |
-| 19 slash commands | `/model` · `/config` · `/save` · `/cost` · `/memory` · `/skills` · `/agents` · `/voice` · `/proactive` · … |
+| Permission system | `auto` / `accept-all` / `manual` / `plan` modes |
+| 19 slash commands | `/model` · `/config` · `/save` · `/cost` · `/memory` · `/skills` · `/agents` · `/voice` · `/proactive` · `/checkpoint` · `/plan` · … |
 | Voice input | Record → transcribe → auto-submit. Backends: `sounddevice` / `arecord` / SoX + `faster-whisper` / `openai-whisper` / OpenAI API. Works fully offline. |
 | Brainstorm | `/brainstorm [topic]` generates N expert personas suited to the topic (2–100, default 5, chosen interactively), runs an iterative debate, saves results to `brainstorm_outputs/`, and synthesizes a Master Plan. |
 | Vision input | `/image [prompt]` captures the clipboard image and sends it to a local vision model (Ollama `llava`, `gemma4`, `llama3.2-vision`). Requires `pip install nano-claude-code[vision]`; Linux also needs `xclip`. |
@@ -234,6 +234,8 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Session persistence | Autosave on exit to `daily/YYYY-MM-DD/` (per-day limit) + `history.json` (master, all sessions) + `session_latest.json` (/resume); sessions include `session_id` and `saved_at` metadata; `/load` grouped by date |
 | Cloud sync | `/cloudsave` syncs sessions to private GitHub Gists; auto-sync on exit; load from cloud by Gist ID. No new dependencies (stdlib `urllib`). |
 | Extended Thinking | Toggle on/off for Claude models; native `<think>` block streaming for local Ollama reasoning models (deepseek-r1, qwen3, gemma4) |
+| Checkpoints | Auto-snapshots conversation + file state after each turn; `/checkpoint` to list, `/checkpoint <id>` to rewind files and/or conversation; `/rewind` alias; 100-snapshot sliding window |
+| Plan mode | `/plan <desc>` enters read-only analysis mode; Claude can only write to the plan file (`.nano_claude/plans/`); `/plan done` exits and restores full permissions for implementation |
 | Cost tracking | Token usage + estimated USD cost |
 | Non-interactive mode | `--print` flag for scripting / CI |
 
@@ -716,6 +718,14 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/cloudsave load <gist_id>` | Download and restore a session from Gist |
 | `/brainstorm` | Run a multi-persona AI brainstorm; prompts for agent count (2–100, default 5) |
 | `/brainstorm <topic>` | Focus the brainstorm on a specific topic; prompts for agent count |
+| `/checkpoint` | List all checkpoints for the current session |
+| `/checkpoint <id>` | Rewind to checkpoint (restore conversation, files, or both) |
+| `/checkpoint clear` | Delete all checkpoints for the current session |
+| `/rewind` | Alias for `/checkpoint` |
+| `/plan <description>` | Enter plan mode: read-only analysis, writes only to plan file |
+| `/plan` | Show current plan file contents |
+| `/plan done` | Exit plan mode and restore original permissions |
+| `/plan status` | Show whether plan mode is active |
 | `/exit` / `/quit` | Exit |
 
 **Switching models inside a session:**
@@ -793,6 +803,7 @@ Keys are saved to `~/.nano_claude/config.json` and loaded automatically on next 
 | `auto` (default) | Read-only operations always allowed. Prompts before Bash commands and file writes. |
 | `accept-all` | Never prompts. All operations proceed automatically. |
 | `manual` | Prompts before every single operation, including reads. |
+| `plan` | Read-only analysis mode. Only the plan file is writable. Entered via `/plan`. |
 
 **When prompted:**
 
@@ -1846,6 +1857,12 @@ nano_claude_code/
 │   ├── recorder.py       # Audio capture: sounddevice → arecord → sox rec
 │   ├── stt.py            # STT: faster-whisper → openai-whisper → OpenAI API
 │   └── keyterms.py       # Coding-domain vocab from git branch + project files
+│
+├── checkpoint/           # Checkpoint system: auto-snapshot + rewind
+│   ├── __init__.py       # Public API exports
+│   ├── types.py          # FileBackup + Snapshot dataclasses
+│   ├── store.py          # File-level backup, snapshot persistence, rewind
+│   └── hooks.py          # Write/Edit/NotebookEdit interception hooks
 │
 └── tests/                # 239+ unit tests
     ├── test_mcp.py
