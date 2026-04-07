@@ -2,11 +2,11 @@ English | [中文](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/READM
 
 <br>
 
-> 注: コードブロック、コマンド、モデル名、パッケージ名、ファイルパスは、すぐに使えるようにするため意図的にほぼ原文のまま残しています。
+
 
 <div align="center">
   <a href="[https://github.com/SafeRL-Lab/Robust-Gymnasium](https://github.com/SafeRL-Lab/clawspring)">
-    <img src="docs/logo-5.png" alt="Logo" width="280"> 
+    <img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/logo-5.png" alt="Logo" width="280"> 
   </a>
 
   
