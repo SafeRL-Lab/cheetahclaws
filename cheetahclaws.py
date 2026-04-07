@@ -469,13 +469,14 @@ def _interactive_ollama_picker(config: dict) -> bool:
         err(f"No local Ollama models found at {base_url}.")
         return False
         
-    print(clr("\n  ── Local Ollama Models ──", "dim"))
+    menu_buf = clr("\n  ── Local Ollama Models ──", "dim")
     for i, m in enumerate(models):
-        print(clr(f"  [{i+1:2d}] ", "yellow") + m)
+        menu_buf += "\n" + clr(f"  [{i+1:2d}] ", "yellow") + m
+    print(menu_buf)
     print()
-    
+
     try:
-        ans = ask_input_interactive(clr("  Select a model number or Enter to cancel > ", "cyan"), config).strip()
+        ans = ask_input_interactive(clr("  Select a model number or Enter to cancel > ", "cyan"), config, menu_buf).strip()
         if not ans: return False
         idx = int(ans) - 1
         if 0 <= idx < len(models):
@@ -1023,13 +1024,14 @@ def cmd_permissions(args: str, _state, config) -> bool:
     }
     if not args.strip():
         current = config.get("permission_mode", "auto")
-        print(clr("\n  ── Permission Mode ──", "dim"))
+        menu_buf = clr("\n  ── Permission Mode ──", "dim")
         for i, m in enumerate(modes):
             marker = clr("●", "green") if m == current else clr("○", "dim")
-            print(f"  {marker} {clr(f'[{i+1}]', 'yellow')} {clr(m, 'cyan')}  {clr(mode_desc[m], 'dim')}")
+            menu_buf += f"\n  {marker} {clr(f'[{i+1}]', 'yellow')} {clr(m, 'cyan')}  {clr(mode_desc[m], 'dim')}"
+        print(menu_buf)
         print()
         try:
-            ans = ask_input_interactive(clr("  Select a mode number or Enter to cancel > ", "cyan"), config).strip()
+            ans = ask_input_interactive(clr("  Select a mode number or Enter to cancel > ", "cyan"), config, menu_buf).strip()
         except (KeyboardInterrupt, EOFError):
             print()
             return True
@@ -2126,38 +2128,42 @@ def _tg_poll_loop(token: str, chat_id: int, config: dict):
                         _tg_send(token, chat_id, "🟢 cheetahclaws bridge is active. Send me anything.")
                         continue
                     # Pass nano slash commands through handle_slash
+                    # Run in a separate thread so interactive commands
+                    # (ask_input_interactive) don't block the polling loop.
                     slash_cb = config.get("_handle_slash_callback")
                     if slash_cb:
-                        try:
-                            config["_in_telegram_turn"] = True
-                            cmd_type = slash_cb(text)
-                            config.pop("_in_telegram_turn", None)
-                        except Exception as e:
-                            _tg_send(token, chat_id, f"⚠ Error: {e}")
-                            config.pop("_in_telegram_turn", None)
-                            continue
-                        # Simple commands (toggle, etc.) — just confirm
-                        if cmd_type == "simple":
-                            cmd_name = text.strip().split()[0]
-                            _tg_send(token, chat_id, f"✅ {cmd_name} executed.")
-                            continue
-                        # Query commands — grab the model response
-                        tg_state = config.get("_state")
-                        if tg_state and tg_state.messages:
-                            for m in reversed(tg_state.messages):
-                                if m.get("role") == "assistant":
-                                    content = m.get("content", "")
-                                    if isinstance(content, list):
-                                        parts = []
-                                        for block in content:
-                                            if isinstance(block, dict) and block.get("type") == "text":
-                                                parts.append(block["text"])
-                                            elif isinstance(block, str):
-                                                parts.append(block)
-                                        content = "\n".join(parts)
-                                    if content:
-                                        _tg_send(token, chat_id, content)
-                                    break
+                        def _slash_runner(_slash_text, _token, _chat_id):
+                            try:
+                                config["_in_telegram_turn"] = True
+                                cmd_type = slash_cb(_slash_text)
+                                config.pop("_in_telegram_turn", None)
+                            except Exception as e:
+                                _tg_send(_token, _chat_id, f"⚠ Error: {e}")
+                                config.pop("_in_telegram_turn", None)
+                                return
+                            # Simple commands (toggle, etc.) — just confirm
+                            if cmd_type == "simple":
+                                cmd_name = _slash_text.strip().split()[0]
+                                _tg_send(_token, _chat_id, f"✅ {cmd_name} executed.")
+                                return
+                            # Query commands — grab the model response
+                            tg_state = config.get("_state")
+                            if tg_state and tg_state.messages:
+                                for m in reversed(tg_state.messages):
+                                    if m.get("role") == "assistant":
+                                        content = m.get("content", "")
+                                        if isinstance(content, list):
+                                            parts = []
+                                            for block in content:
+                                                if isinstance(block, dict) and block.get("type") == "text":
+                                                    parts.append(block["text"])
+                                                elif isinstance(block, str):
+                                                    parts.append(block)
+                                            content = "\n".join(parts)
+                                        if content:
+                                            _tg_send(_token, _chat_id, content)
+                                        break
+                        threading.Thread(target=_slash_runner, args=(text, token, chat_id), daemon=True).start()
                     continue
 
                 # Show on local terminal
@@ -2556,14 +2562,12 @@ def cmd_checkpoint(args: str, state, config) -> bool:
         extra = f" (+{len(changed) - 4} files)" if len(changed) > 4 else ""
         info(f"Files changed since: {', '.join(Path(f).name for f in shown)}{extra}")
     print()
-    print("  1. Restore conversation + files")
-    print("  2. Restore conversation only")
-    print("  3. Restore files only")
-    print("  4. Cancel")
+    menu_buf = "  1. Restore conversation + files\n  2. Restore conversation only\n  3. Restore files only\n  4. Cancel"
+    print(menu_buf)
     print()
 
     try:
-        choice = ask_input_interactive("Choice [1-4]: ", config).strip()
+        choice = ask_input_interactive("Choice [1-4]: ", config, menu_buf).strip()
     except (EOFError, KeyboardInterrupt):
         print()
         return True

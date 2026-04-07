@@ -812,12 +812,12 @@ def ask_input_interactive(prompt: str, config: dict, context: str = "") -> str:
         send = config["_tg_send_callback"]
         strip_ansi = lambda s: re.sub(r'\x1b\[[0-9;]*m', '', s).strip()
 
-        # Send context (menu/list) first if provided
+        payload = ""
         if context:
-            send(token, chat_id, strip_ansi(context))
+            payload += f"{strip_ansi(context)}\n\n"
+        payload += f"❓ *Input Required*\n{strip_ansi(prompt)}"
 
-        clean_prompt = strip_ansi(prompt)
-        send(token, chat_id, f"❓ *Input Required*\n{clean_prompt}")
+        send(token, chat_id, payload)
 
         evt = threading.Event()
         config["_tg_input_event"] = evt
