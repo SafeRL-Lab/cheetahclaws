@@ -75,7 +75,7 @@ def split_identifier(name: str) -> list[str]:
     Fragments ≤ 2 chars or > 20 chars are discarded.
 
     Examples:
-        "nano-claude-code" → ["nano", "claude", "code"]
+        "cheetahclaws" → ["nano", "claude", "code"]
         "MyWebhookHandler" → ["My", "Webhook", "Handler"]
     """
     # camelCase / PascalCase

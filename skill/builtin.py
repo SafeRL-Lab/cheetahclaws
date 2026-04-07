@@ -1,4 +1,4 @@
-"""Built-in skills that ship with nano-claude-code."""
+"""Built-in skills that ship with cheetahclaws."""
 from __future__ import annotations
 
 from .loader import SkillDef, register_builtin_skill

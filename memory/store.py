@@ -1,8 +1,8 @@
 """File-based memory storage with user-level and project-level scopes.
 
 Storage layout:
-  user scope    : ~/.nano_claude/memory/<slug>.md
-  project scope : .nano_claude/memory/<slug>.md  (relative to cwd)
+  user scope    : ~/.cheetahclaws/memory/<slug>.md
+  project scope : .cheetahclaws/memory/<slug>.md  (relative to cwd)
 
 MEMORY.md in each directory is the index file — rebuilt automatically after
 every save/delete. It is loaded into the system prompt to give Claude an
@@ -17,7 +17,7 @@ from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 
-USER_MEMORY_DIR = Path.home() / ".nano_claude" / "memory"
+USER_MEMORY_DIR = Path.home() / ".cheetahclaws" / "memory"
 INDEX_FILENAME = "MEMORY.md"
 
 # Maximum lines/bytes for the index file (mirrors Claude Code limits)
@@ -27,15 +27,15 @@ MAX_INDEX_BYTES = 25_000
 
 def get_project_memory_dir() -> Path:
     """Return the project-local memory directory (relative to cwd)."""
-    return Path.cwd() / ".nano_claude" / "memory"
+    return Path.cwd() / ".cheetahclaws" / "memory"
 
 
 def get_memory_dir(scope: str = "user") -> Path:
     """Return the memory directory for the given scope.
 
     Args:
-        scope: "user" (global ~/.nano_claude/memory) or
-               "project" (.nano_claude/memory relative to cwd)
+        scope: "user" (global ~/.cheetahclaws/memory) or
+               "project" (.cheetahclaws/memory relative to cwd)
     """
     if scope == "project":
         return get_project_memory_dir()

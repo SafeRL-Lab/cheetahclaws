@@ -7,7 +7,7 @@ This change adds a lightweight autosave + resume flow so users can continue thei
 ## What was added
 
 - New autosave function: `save_latest(args, state, _config)`
-  - File: `nano_claude.py`
+  - File: `cheetahclaws.py`
   - Saves to: `MR_SESSION_DIR / "session_latest.json"`
   - Ensures parent directory exists:
     - `path.parent.mkdir(parents=True, exist_ok=True)`
@@ -18,7 +18,7 @@ This change adds a lightweight autosave + resume flow so users can continue thei
     - `total_output_tokens`
 
 - New resume function: `cmd_resume(args, state, _config)`
-  - File: `nano_claude.py`
+  - File: `cheetahclaws.py`
   - `/resume` with no args loads:
     - `MR_SESSION_DIR / "session_latest.json"`
   - `/resume <file>` loads:

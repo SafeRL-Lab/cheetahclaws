@@ -288,7 +288,7 @@ class TestAskUserQuestion:
         """drain_pending_questions returns False when nothing pending."""
         from tools import drain_pending_questions, _pending_questions
         _pending_questions.clear()
-        assert drain_pending_questions() is False
+        assert drain_pending_questions({}) is False
 
     def test_roundtrip_with_freetext(self):
         """Submit a question, simulate user typing 'yes', collect result."""
@@ -310,7 +310,7 @@ class TestAskUserQuestion:
 
         # Simulate REPL drain with user input "yes"
         with patch("builtins.input", return_value="yes"):
-            _tools.drain_pending_questions()
+            _tools.drain_pending_questions({})
 
         answered.wait(timeout=2)
         assert answered.is_set()
@@ -338,7 +338,7 @@ class TestAskUserQuestion:
         import time; time.sleep(0.05)
 
         with patch("builtins.input", return_value="1"):
-            _tools.drain_pending_questions()
+            _tools.drain_pending_questions({})
 
         answered.wait(timeout=2)
         assert result_box == ["Alpha"]

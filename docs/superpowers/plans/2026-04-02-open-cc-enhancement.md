@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Evolve nano-claude-code into a capable AI coding CLI with context management, pluggable tools, sub-agents, memory, skills, and diff view.
+**Goal:** Evolve cheetahclaws into a capable AI coding CLI with context management, pluggable tools, sub-agents, memory, skills, and diff view.
 
 **Architecture:** Layered enhancement on existing 6-file structure. New modules (tool_registry, compaction, memory, subagent, skills) added as flat files alongside existing code. Modules communicate via function params and dataclasses, no globals. Agent.py gains depth/cancel_check params for sub-agent support.
 
@@ -32,7 +32,7 @@
 - `agent.py` — Add compaction call, depth/cancel_check params, sub-agent tool dispatch
 - `context.py` — Inject memory context into system prompt
 - `config.py` — Add new config keys (max_tool_output, max_depth, etc.)
-- `nano_claude.py` — Add /memory, /skill, /agents slash commands, diff rendering
+- `cheetahclaws.py` — Add /memory, /skill, /agents slash commands, diff rendering
 
 ---
 
@@ -139,7 +139,7 @@ def test_duplicate_register_overwrites():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -m pytest tests/test_tool_registry.py -v`
+Run: `cd D:/git/open-cc/cheetahclaws && python -m pytest tests/test_tool_registry.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'tool_registry'`
 
 - [ ] **Step 3: Implement tool_registry.py**
@@ -147,7 +147,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'tool_registry'`
 ```python
 # tool_registry.py
 """
-Tool plugin registry for nano-claude-code.
+Tool plugin registry for cheetahclaws.
 
 Provides a central registry for tool definitions. Tools register themselves
 at import time. The agent loop queries the registry for schemas and dispatches
@@ -246,13 +246,13 @@ def clear_registry() -> None:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -m pytest tests/test_tool_registry.py -v`
+Run: `cd D:/git/open-cc/cheetahclaws && python -m pytest tests/test_tool_registry.py -v`
 Expected: All 7 tests PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd D:/git/open-cc/nano-claude-code
+cd D:/git/open-cc/cheetahclaws
 git add tool_registry.py tests/test_tool_registry.py
 git commit -m "feat: add tool plugin registry with output truncation"
 ```
@@ -376,24 +376,24 @@ Update the `run()` function where it references `TOOL_SCHEMAS` (around line 65) 
 
 - [ ] **Step 3: Run the existing code to verify nothing is broken**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -c "from tools import execute_tool; from tool_registry import get_all_tools; print(f'{len(get_all_tools())} tools registered'); print(execute_tool('Read', {'file_path': 'config.py'}, 'auto'))"`
+Run: `cd D:/git/open-cc/cheetahclaws && python -c "from tools import execute_tool; from tool_registry import get_all_tools; print(f'{len(get_all_tools())} tools registered'); print(execute_tool('Read', {'file_path': 'config.py'}, 'auto'))"`
 Expected: `8 tools registered` + contents of config.py
 
 - [ ] **Step 4: Commit**
 
 ```bash
-cd D:/git/open-cc/nano-claude-code
+cd D:/git/open-cc/cheetahclaws
 git add tools.py agent.py
 git commit -m "refactor: migrate built-in tools to plugin registry"
 ```
 
 ---
 
-## Task 3: Diff View (`tools.py` + `nano_claude.py`)
+## Task 3: Diff View (`tools.py` + `cheetahclaws.py`)
 
 **Files:**
 - Modify: `tools.py` (the `_edit` and `_write` functions)
-- Modify: `nano_claude.py` (the `print_tool_end` function)
+- Modify: `cheetahclaws.py` (the `print_tool_end` function)
 - Create: `tests/test_diff_view.py`
 
 - [ ] **Step 1: Write failing tests for diff generation**
@@ -461,7 +461,7 @@ def test_diff_truncation():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -m pytest tests/test_diff_view.py -v`
+Run: `cd D:/git/open-cc/cheetahclaws && python -m pytest tests/test_diff_view.py -v`
 Expected: FAIL — `ImportError: cannot import name 'generate_unified_diff'`
 
 - [ ] **Step 3: Add diff generation functions to tools.py**
@@ -560,7 +560,7 @@ def _write(file_path, content):
         return f"Created {file_path} ({line_count} lines)"
 ```
 
-- [ ] **Step 6: Add diff rendering to nano_claude.py**
+- [ ] **Step 6: Add diff rendering to cheetahclaws.py**
 
 Add a new function after the `flush_response` function (around line 105):
 
@@ -601,7 +601,7 @@ def print_tool_end(name, result, verbose):
         info(f"  {C.get('dim','')}Result: {result[:200]}{'...' if len(result)>200 else ''}{C.get('reset','')}")
 ```
 
-Also ensure the color dict `C` (line 60-70 of nano_claude.py) includes the needed keys. Check and add if missing:
+Also ensure the color dict `C` (line 60-70 of cheetahclaws.py) includes the needed keys. Check and add if missing:
 
 ```python
 # In the C dict, ensure these entries exist:
@@ -611,12 +611,12 @@ Also ensure the color dict `C` (line 60-70 of nano_claude.py) includes the neede
 
 - [ ] **Step 7: Run tests to verify they pass**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -m pytest tests/test_diff_view.py -v`
+Run: `cd D:/git/open-cc/cheetahclaws && python -m pytest tests/test_diff_view.py -v`
 Expected: All 6 tests PASS
 
 - [ ] **Step 8: Manual smoke test**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -c "
+Run: `cd D:/git/open-cc/cheetahclaws && python -c "
 from tools import _write, _edit
 import tempfile, os
 f = os.path.join(tempfile.mkdtemp(), 'test.py')
@@ -629,8 +629,8 @@ Expected: First call shows "Created", second call shows colored diff with red `-
 - [ ] **Step 9: Commit**
 
 ```bash
-cd D:/git/open-cc/nano-claude-code
-git add tools.py nano_claude.py tests/test_diff_view.py
+cd D:/git/open-cc/cheetahclaws
+git add tools.py cheetahclaws.py tests/test_diff_view.py
 git commit -m "feat: add git-style diff view for Edit and Write tools"
 ```
 
@@ -722,7 +722,7 @@ def test_find_split_point():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -m pytest tests/test_compaction.py -v`
+Run: `cd D:/git/open-cc/cheetahclaws && python -m pytest tests/test_compaction.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'compaction'`
 
 - [ ] **Step 3: Add context_limit to providers.py**
@@ -758,7 +758,7 @@ In `providers.py`, add a `context_limit` field to each entry in the `PROVIDERS` 
 ```python
 # compaction.py
 """
-Context window management for nano-claude-code.
+Context window management for cheetahclaws.
 
 Two-layer compression strategy:
   Layer 1 (snip): Truncate old tool results — rule-based, no model call
@@ -990,7 +990,7 @@ def maybe_compact(state, config: dict) -> bool:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -m pytest tests/test_compaction.py -v`
+Run: `cd D:/git/open-cc/cheetahclaws && python -m pytest tests/test_compaction.py -v`
 Expected: All 8 tests PASS
 
 - [ ] **Step 6: Integrate compaction into agent.py**
@@ -1011,7 +1011,7 @@ In the `run()` function, add compaction check before the API call. Inside the `w
 - [ ] **Step 7: Commit**
 
 ```bash
-cd D:/git/open-cc/nano-claude-code
+cd D:/git/open-cc/cheetahclaws
 git add compaction.py tests/test_compaction.py agent.py providers.py
 git commit -m "feat: add context window management with snip + auto-compact"
 ```
@@ -1117,7 +1117,7 @@ def test_update_existing(memory_dir):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -m pytest tests/test_memory.py -v`
+Run: `cd D:/git/open-cc/cheetahclaws && python -m pytest tests/test_memory.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'memory'`
 
 - [ ] **Step 3: Implement memory.py**
@@ -1125,7 +1125,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'memory'`
 ```python
 # memory.py
 """
-File-based memory system for nano-claude-code.
+File-based memory system for cheetahclaws.
 
 Stores memories as individual markdown files with YAML frontmatter.
 MEMORY.md serves as an index. Memories persist across conversations.
@@ -1146,7 +1146,7 @@ from pathlib import Path
 from typing import List
 
 
-MEMORY_DIR = Path.home() / ".nano_claude" / "memory"
+MEMORY_DIR = Path.home() / ".cheetahclaws" / "memory"
 INDEX_FILE = MEMORY_DIR / "MEMORY.md"
 
 
@@ -1312,7 +1312,7 @@ def get_memory_context() -> str:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -m pytest tests/test_memory.py -v`
+Run: `cd D:/git/open-cc/cheetahclaws && python -m pytest tests/test_memory.py -v`
 Expected: All 9 tests PASS
 
 - [ ] **Step 5: Register MemorySave and MemoryDelete tools**
@@ -1396,7 +1396,7 @@ At the end of `build_system_prompt()`, before the return statement, add:
 - [ ] **Step 7: Commit**
 
 ```bash
-cd D:/git/open-cc/nano-claude-code
+cd D:/git/open-cc/cheetahclaws
 git add memory.py tests/test_memory.py tools.py context.py
 git commit -m "feat: add file-based memory system with MemorySave/MemoryDelete tools"
 ```
@@ -1508,7 +1508,7 @@ def test_get_result_unknown():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -m pytest tests/test_subagent.py -v`
+Run: `cd D:/git/open-cc/cheetahclaws && python -m pytest tests/test_subagent.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'subagent'`
 
 - [ ] **Step 3: Update agent.py to accept depth and cancel_check**
@@ -1539,7 +1539,7 @@ Add a cancellation check inside the `while True` loop, at the very top of the lo
 ```python
 # subagent.py
 """
-Sub-agent lifecycle management for nano-claude-code.
+Sub-agent lifecycle management for cheetahclaws.
 
 Sub-agents run in background threads via ThreadPoolExecutor.
 Each has independent message history and fresh context.
@@ -1718,7 +1718,7 @@ class SubAgentManager:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -m pytest tests/test_subagent.py -v`
+Run: `cd D:/git/open-cc/cheetahclaws && python -m pytest tests/test_subagent.py -v`
 Expected: All 7 tests PASS
 
 - [ ] **Step 6: Register Agent, CheckAgentResult, ListAgentTasks tools**
@@ -1835,7 +1835,7 @@ register_tool(ToolDef(name="ListAgentTasks", schema=_LIST_AGENT_TASKS_SCHEMA,
 - [ ] **Step 7: Commit**
 
 ```bash
-cd D:/git/open-cc/nano-claude-code
+cd D:/git/open-cc/cheetahclaws
 git add subagent.py tests/test_subagent.py agent.py tools.py
 git commit -m "feat: add threaded sub-agent system with Agent/CheckAgentResult/ListAgentTasks tools"
 ```
@@ -1847,7 +1847,7 @@ git commit -m "feat: add threaded sub-agent system with Agent/CheckAgentResult/L
 **Files:**
 - Create: `skills.py`
 - Create: `tests/test_skills.py`
-- Modify: `nano_claude.py` (skill dispatch in REPL)
+- Modify: `cheetahclaws.py` (skill dispatch in REPL)
 
 - [ ] **Step 1: Write failing tests for skills**
 
@@ -1947,7 +1947,7 @@ def test_load_skills_nonexistent_dir(monkeypatch):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -m pytest tests/test_skills.py -v`
+Run: `cd D:/git/open-cc/cheetahclaws && python -m pytest tests/test_skills.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'skills'`
 
 - [ ] **Step 3: Implement skills.py**
@@ -1955,7 +1955,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'skills'`
 ```python
 # skills.py
 """
-Skill loading and execution for nano-claude-code.
+Skill loading and execution for cheetahclaws.
 
 Skills are markdown files with YAML frontmatter that define reusable
 prompt templates. They are injected into the agent loop as user messages.
@@ -1974,8 +1974,8 @@ from typing import Generator, List, Optional
 
 
 SKILL_PATHS = [
-    Path.cwd() / ".nano_claude" / "skills",
-    Path.home() / ".nano_claude" / "skills",
+    Path.cwd() / ".cheetahclaws" / "skills",
+    Path.home() / ".cheetahclaws" / "skills",
 ]
 
 
@@ -2115,12 +2115,12 @@ def execute_skill(skill: SkillDef, args: str, state, config: dict,
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -m pytest tests/test_skills.py -v`
+Run: `cd D:/git/open-cc/cheetahclaws && python -m pytest tests/test_skills.py -v`
 Expected: All 7 tests PASS
 
-- [ ] **Step 5: Integrate skills into nano_claude.py REPL**
+- [ ] **Step 5: Integrate skills into cheetahclaws.py REPL**
 
-In `nano_claude.py`, add import near the top:
+In `cheetahclaws.py`, add import near the top:
 
 ```python
 from skills import find_skill, execute_skill, load_skills
@@ -2174,7 +2174,7 @@ Also add a `/skills` slash command to list available skills:
 def cmd_skills(_args, _state, _config):
     skills = load_skills()
     if not skills:
-        info("No skills found. Place .md files in ~/.nano_claude/skills/")
+        info("No skills found. Place .md files in ~/.cheetahclaws/skills/")
         return True
     for s in skills:
         triggers = ", ".join(s.triggers)
@@ -2187,8 +2187,8 @@ Add `"skills": cmd_skills` to the `COMMANDS` dict.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd D:/git/open-cc/nano-claude-code
-git add skills.py tests/test_skills.py nano_claude.py
+cd D:/git/open-cc/cheetahclaws
+git add skills.py tests/test_skills.py cheetahclaws.py
 git commit -m "feat: add skills system with markdown definitions and /skills command"
 ```
 
@@ -2198,7 +2198,7 @@ git commit -m "feat: add skills system with markdown definitions and /skills com
 
 **Files:**
 - Modify: `config.py` (new config keys)
-- Modify: `nano_claude.py` (add /memory, /agents commands)
+- Modify: `cheetahclaws.py` (add /memory, /agents commands)
 
 - [ ] **Step 1: Add new config defaults**
 
@@ -2212,7 +2212,7 @@ In `config.py`, add to the `DEFAULTS` dict (line 11):
 
 - [ ] **Step 2: Add /memory slash command**
 
-In `nano_claude.py`, add:
+In `cheetahclaws.py`, add:
 
 ```python
 def cmd_memory(args, _state, _config):
@@ -2240,7 +2240,7 @@ Add `"memory": cmd_memory` to the `COMMANDS` dict.
 
 - [ ] **Step 3: Add /agents slash command**
 
-In `nano_claude.py`, add:
+In `cheetahclaws.py`, add:
 
 ```python
 def cmd_agents(_args, _state, _config):
@@ -2274,14 +2274,14 @@ In `cmd_help`, add the new commands to the help text:
 
 - [ ] **Step 5: Verify all tests pass**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -m pytest tests/ -v`
+Run: `cd D:/git/open-cc/cheetahclaws && python -m pytest tests/ -v`
 Expected: All tests across all test files PASS
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd D:/git/open-cc/nano-claude-code
-git add config.py nano_claude.py
+cd D:/git/open-cc/cheetahclaws
+git add config.py cheetahclaws.py
 git commit -m "feat: add /memory, /skills, /agents commands and new config defaults"
 ```
 
@@ -2293,7 +2293,7 @@ git commit -m "feat: add /memory, /skills, /agents commands and new config defau
 
 - [ ] **Step 1: Verify tool registry loads all tools**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -c "
+Run: `cd D:/git/open-cc/cheetahclaws && python -c "
 from tool_registry import get_all_tools
 tools = get_all_tools()
 print(f'{len(tools)} tools registered:')
@@ -2304,7 +2304,7 @@ Expected: 13 tools (8 built-in + MemorySave + MemoryDelete + Agent + CheckAgentR
 
 - [ ] **Step 2: Verify compaction module loads**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -c "
+Run: `cd D:/git/open-cc/cheetahclaws && python -c "
 from compaction import estimate_tokens, get_context_limit
 msgs = [{'role': 'user', 'content': 'hello ' * 1000}]
 print(f'Tokens: {estimate_tokens(msgs)}')
@@ -2315,7 +2315,7 @@ Expected: Token count ~1700, GPT-4o 128000, Gemini 1000000
 
 - [ ] **Step 3: Verify memory roundtrip**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -c "
+Run: `cd D:/git/open-cc/cheetahclaws && python -c "
 import tempfile
 from pathlib import Path
 import memory
@@ -2331,7 +2331,7 @@ Expected: 1 entry, context contains "test"
 
 - [ ] **Step 4: Verify skills loading**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -c "
+Run: `cd D:/git/open-cc/cheetahclaws && python -c "
 from skills import load_skills
 skills = load_skills()
 print(f'{len(skills)} skills loaded')
@@ -2342,13 +2342,13 @@ Expected: 0 skills (none created yet), no errors
 
 - [ ] **Step 5: Run full test suite**
 
-Run: `cd D:/git/open-cc/nano-claude-code && python -m pytest tests/ -v --tb=short`
+Run: `cd D:/git/open-cc/cheetahclaws && python -m pytest tests/ -v --tb=short`
 Expected: All tests PASS
 
 - [ ] **Step 6: Final commit with all tests passing**
 
 ```bash
-cd D:/git/open-cc/nano-claude-code
+cd D:/git/open-cc/cheetahclaws
 git add -A
 git status
 # Only commit if there are uncommitted changes

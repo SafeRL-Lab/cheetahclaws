@@ -1,10 +1,10 @@
-"""Memory package for nano-claude-code.
+"""Memory package for cheetahclaws.
 
 Provides persistent, file-based memory across conversations.
 
 Storage layout:
-  user scope    : ~/.nano_claude/memory/<slug>.md   (shared across projects)
-  project scope : .nano_claude/memory/<slug>.md     (local to cwd)
+  user scope    : ~/.cheetahclaws/memory/<slug>.md   (shared across projects)
+  project scope : .cheetahclaws/memory/<slug>.md     (local to cwd)
 
 The MEMORY.md index in each directory is auto-maintained and injected
 into the system prompt so Claude has an overview of available memories.

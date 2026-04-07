@@ -1,4 +1,4 @@
-"""Voice package for nano-claude-code.
+"""Voice package for cheetahclaws.
 
 Public API
 ----------

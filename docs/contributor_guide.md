@@ -1,4 +1,4 @@
-# Contributor Guide: Where to Change What in nano-claude-code
+# Contributor Guide: Where to Change What in cheetahclaws
 
 This guide is for contributors implementing new features or updating existing behavior.
 It focuses on **which files matter**, **how data flows**, and **how to make safe changes quickly**.
@@ -9,7 +9,7 @@ It focuses on **which files matter**, **how data flows**, and **how to make safe
 
 If you remember only one thing, remember this flow:
 
-1. `nano_claude.py` handles CLI + REPL + slash commands.
+1. `cheetahclaws.py` handles CLI + REPL + slash commands.
 2. `context.py` rebuilds the system prompt each turn.
 3. `agent.py` runs the core loop (stream model output, execute tools, append tool results, continue).
 4. `providers.py` adapts model APIs (Anthropic vs OpenAI-compatible providers).
@@ -21,7 +21,7 @@ If you remember only one thing, remember this flow:
 ## 2) Core files you should read first
 
 ### Runtime + UX shell
-- `nano_claude.py`
+- `cheetahclaws.py`
   - Entry point (`main()`), REPL loop (`repl()`), command dispatch (`COMMANDS`, `handle_slash()`), permission prompt UI, diff rendering, voice command handling.
   - Add or change slash commands here.
 
@@ -96,7 +96,7 @@ Use this package for status transitions, dependency graph behavior, metadata sem
 - `checkpoint/types.py` `FileBackup` + `Snapshot` data models.
 - `checkpoint/store.py` file-level backup, snapshot persistence, rewind, cleanup.
 - `checkpoint/hooks.py` Write/Edit/NotebookEdit interception (backup before modify).
-- REPL command wiring lives in `nano_claude.py` (`cmd_checkpoint`, `cmd_rewind`).
+- REPL command wiring lives in `cheetahclaws.py` (`cmd_checkpoint`, `cmd_rewind`).
 
 Use this package for snapshot policies, backup strategies, file restore behavior, or storage format updates.
 
@@ -104,7 +104,7 @@ Use this package for snapshot policies, backup strategies, file restore behavior
 - `voice/recorder.py` capture backends (`sounddevice`, `arecord`, `sox`) + silence detection.
 - `voice/stt.py` backend fallback chain (`faster-whisper`, `openai-whisper`, OpenAI API).
 - `voice/keyterms.py` keyterm extraction from repo/branch/files.
-- REPL command wiring lives in `nano_claude.py` (`cmd_voice`).
+- REPL command wiring lives in `cheetahclaws.py` (`cmd_voice`).
 
 Use this package for STT backend changes, audio capture behavior, and prompt-boosting vocabulary logic.
 
@@ -120,7 +120,7 @@ Use this package for STT backend changes, audio capture behavior, and prompt-boo
 5. Add tests in `tests/test_tool_registry.py` and/or feature-specific tests.
 
 ### Add a new slash command
-1. Add `cmd_<name>` function in `nano_claude.py`.
+1. Add `cmd_<name>` function in `cheetahclaws.py`.
 2. Add command mapping in `COMMANDS`.
 3. If command needs tool behavior, prefer a tool module and call that logic.
 4. Add tests in relevant test module (or create a focused one).
@@ -144,7 +144,7 @@ Use this package for STT backend changes, audio capture behavior, and prompt-boo
 ### Add a new feature package
 1. Create package module(s) with clear API + `ToolDef` registrations.
 2. Ensure package is imported from `tools.py` so registrations execute at startup.
-3. Add slash command wiring in `nano_claude.py` only if user-facing command is needed.
+3. Add slash command wiring in `cheetahclaws.py` only if user-facing command is needed.
 4. Add focused tests under `tests/test_<feature>.py`.
 
 ---
@@ -163,9 +163,6 @@ Current tests are organized by subsystem:
 - `tests/test_task.py`
 - `tests/test_voice.py`
 - `tests/test_diff_view.py`
-- `tests/test_checkpoint.py`
-- `tests/e2e_checkpoint.py`
-- `tests/e2e_plan_mode.py`
 
 Recommended contributor workflow:
 
@@ -183,7 +180,7 @@ Recommended contributor workflow:
 - **Context pressure is real:** large tool outputs are truncated in `tool_registry.execute_tool`, then old results may be snipped/compacted.
 - **Neutral message format is the internal contract:** provider adapters must preserve tool call IDs and arguments correctly.
 - **Task and memory persistence are cwd/home dependent:** behavior can vary if tests or runtime change working directory.
-- **Path naming note:** most runtime dirs use `.nano_claude` (underscore).
+- **Path naming note:** most runtime dirs use `.cheetahclaws` (underscore).
 
 ---
 
@@ -192,7 +189,7 @@ Recommended contributor workflow:
 If you are new and want to ship your first feature quickly, read in this order:
 
 1. `README.md` (user surface)
-2. `nano_claude.py` (runtime shell)
+2. `cheetahclaws.py` (runtime shell)
 3. `agent.py` (core loop)
 4. `tool_registry.py` + `tools.py` (extension spine)
 5. Your target package (`memory/`, `mcp/`, `task/`, etc.)

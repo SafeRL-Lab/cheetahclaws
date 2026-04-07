@@ -1,8 +1,8 @@
-# Claude Code vs Nano Claude Code v3.03：对比分析
+# Claude Code vs CheetahClaws v3.03：对比分析
 
 ## 整体概览
 
-| 维度 | Claude Code (TypeScript) | Nano Claude Code (Python) |
+| 维度 | Claude Code (TypeScript) | CheetahClaws (Python) |
 |------|--------------------------|---------------------------|
 | **语言** | TypeScript + React/Ink | Python 3.8+ |
 | **文件数量** | 1,332 个 TS/TSX 文件 | 51 个 Python 文件 |
@@ -22,7 +22,7 @@
 - 多层权限检查系统（MDM、团队管理、per-tool gates）
 - 内置上下文压缩调度器
 
-**Nano Claude Code** — `agent.py` (174 行)
+**CheetahClaws** — `agent.py` (174 行)
 - 生成器模式（`yield TextChunk | ToolStart | ToolEnd`）
 - 清晰的事件流，代码极易阅读
 - 合作式取消支持（sub-agents 用）
@@ -34,7 +34,7 @@
 - 工具之间有复杂依赖关系（EnterWorktree → 隔离环境 → ExitWorktree）
 - `SyntheticOutputTool`、`RemoteTriggerTool` 等高级工具
 
-**Nano Claude Code**
+**CheetahClaws**
 - `ToolDef` 注册表模式，任何模块可 `register_tool()` 动态注入
 - `read_only` / `concurrent_safe` 标志驱动自动权限决策
 - 输出截断（32KB 上限）防止上下文膨胀
@@ -43,7 +43,7 @@
 
 **Claude Code**：React + Ink，完整组件树，有 diff 可视化、对话框、进度条、流式渲染
 
-**Nano Claude Code**：`rich` 库，Markdown 语法高亮，简单但够用
+**CheetahClaws**：`rich` 库，Markdown 语法高亮，简单但够用
 
 ---
 
@@ -62,15 +62,15 @@
 3. **构建依赖重** — Bun + esbuild + TypeScript，改动需要完整构建链
 4. **封闭性** — 功能开关（`internal-only modules`）在编译时死代码消除，外部无法扩展
 
-### Nano Claude Code 优势
+### CheetahClaws 优势
 1. **多提供商** — Anthropic/OpenAI/Gemini/Kimi/Qwen/DeepSeek/Ollama 自动识别
 2. **极度可读** — 51 文件，10K 行，架构一眼看穿，适合学习和研究
 3. **零构建** — 纯 Python，`pip install` 即用，改完即生效
 4. **动态扩展** — `register_tool()` 运行时注入，Plugin 系统支持 git URL 安装
-5. **Markdown Skills** — `~/.nano_claude/skills/*.md` 可自定义技能，无需改代码
+5. **Markdown Skills** — `~/.cheetahclaws/skills/*.md` 可自定义技能，无需改代码
 6. **任务依赖图** — `task/store.py` 有 `blocks/blocked_by` 依赖追踪（Claude Code 没有）
 
-### Nano Claude Code 劣势
+### CheetahClaws 劣势
 1. **UI 功能薄** — 无 diff 可视化、无对话框系统、无进度条组件
 2. **工具覆盖少** — 缺少 `WebSearch`（需要 API key）、`NotebookEdit`、`LSP Diagnostics`
 3. **安全体系弱** — 无 MDM 管控、无团队权限同步、无 keychain 集成
@@ -83,7 +83,7 @@
 
 ### 上下文压缩策略
 
-| | Claude Code | Nano Claude Code |
+| | Claude Code | CheetahClaws |
 |-|-------------|-----------------|
 | 触发条件 | 精确 token 计数 | `len/3.5` 估算触发 70% |
 | 压缩层 | 单层 AI 摘要 | 双层：Snip（规则）+ AI 摘要 |
@@ -108,7 +108,7 @@ services/
 └── MagicDocs/       # 文档生成
 ```
 
-**Nano Claude Code**（扁平包结构）：
+**CheetahClaws**（扁平包结构）：
 ```
 mcp/          # MCP 客户端（stdio/SSE/HTTP）
 memory/       # 双作用域持久化内存
@@ -124,7 +124,7 @@ plugin/       # 插件加载/推荐系统
 
 **Claude Code**：仅 Anthropic（`claude-opus-4-6`、`claude-sonnet-4-6`、`claude-haiku-4-5`）
 
-**Nano Claude Code**：
+**CheetahClaws**：
 
 | 提供商 | 支持模型 |
 |--------|----------|
@@ -141,7 +141,7 @@ plugin/       # 插件加载/推荐系统
 
 ## 总结
 
-Nano Claude Code 是对 Claude Code 核心理念的**极简复现**，在多提供商支持和代码可读性上超越了原版，非常适合作为研究基础或个人工具。Claude Code 则是完整的工程产品，在 UI、安全、企业功能上不可比拟。
+CheetahClaws 是对 Claude Code 核心理念的**极简复现**，在多提供商支持和代码可读性上超越了原版，非常适合作为研究基础或个人工具。Claude Code 则是完整的工程产品，在 UI、安全、企业功能上不可比拟。
 
 两者之间最值得填补的 gap：
 

@@ -151,13 +151,13 @@ def load_agent_definitions() -> Dict[str, AgentDefinition]:
     """Load all agent definitions: built-ins → user-level → project-level.
 
     Search paths:
-      ~/.nano-claude/agents/*.md   (user-level)
-      .nano-claude/agents/*.md     (project-level, overrides user)
+      ~/.cheetahclaws/agents/*.md   (user-level)
+      .cheetahclaws/agents/*.md     (project-level, overrides user)
     """
     defs: Dict[str, AgentDefinition] = dict(_BUILTIN_AGENTS)
 
     # User-level
-    user_dir = Path.home() / ".nano-claude" / "agents"
+    user_dir = Path.home() / ".cheetahclaws" / "agents"
     if user_dir.is_dir():
         for p in sorted(user_dir.glob("*.md")):
             try:
@@ -167,7 +167,7 @@ def load_agent_definitions() -> Dict[str, AgentDefinition]:
                 pass
 
     # Project-level (overrides user)
-    proj_dir = Path.cwd() / ".nano-claude" / "agents"
+    proj_dir = Path.cwd() / ".cheetahclaws" / "agents"
     if proj_dir.is_dir():
         for p in sorted(proj_dir.glob("*.md")):
             try:

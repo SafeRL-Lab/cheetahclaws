@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate animated GIF demo of nano claude code using PIL.
+Generate animated GIF demo of cheetahclaws using PIL.
 Simulates a realistic terminal session with tool calls.
 """
 from PIL import Image, ImageDraw, ImageFont
@@ -86,7 +86,7 @@ def draw_frame(lines_segments):
 # ── Pre-defined screen content blocks ───────────────────────────────────
 
 BANNER = [
-    [seg("╭─ Nano Claude Code ──────────────────────────────────────────╮", SUBTEXT)],
+    [seg("╭─ CheetahClaws ──────────────────────────────────────────╮", SUBTEXT)],
     [seg("│  ", SUBTEXT), seg("Model: ", SUBTEXT), seg("claude-opus-4-6", CYAN, True)],
     [seg("│  ", SUBTEXT), seg("Permissions: ", SUBTEXT), seg("auto", YELLOW)],
     [seg("│  Type /help for commands, Ctrl+C to cancel                  │", SUBTEXT)],
@@ -97,7 +97,7 @@ BANNER = [
 def prompt_line(text="", cursor=False):
     cur = "█" if cursor else ""
     return [
-        seg("[nano_claude_code] ", SUBTEXT),
+        seg("[cheetahclaws] ", SUBTEXT),
         seg("» ", CYAN, True),
         seg(text + cur, TEXT),
     ]
@@ -188,11 +188,11 @@ def build_scenes():
         " 100  context.py     — System prompt builder, CLAUDE.md + git injection",
         " 173  agent.py       — Core agent loop with streaming API calls",
         " 359  tools.py       — 8 built-in tools (Read/Write/Edit/Bash/Glob/Grep/Web)",
-        " 553  nano_claude.py — REPL entry point, slash commands, rich rendering",
+        " 553  cheetahclaws.py — REPL entry point, slash commands, rich rendering",
         "────────────────────────────────────────────────────",
         "1261  total",
         "",
-        "The largest file is `nano_claude.py` containing the interactive REPL,",
+        "The largest file is `cheetahclaws.py` containing the interactive REPL,",
         "14 slash commands, permission handling, and markdown rendering.",
     ]
     tool_section = [
@@ -220,7 +220,7 @@ def build_scenes():
     add(full1 + [prompt_line(cursor=True)], 800)
 
     # ── Scene 7: User types query 2 ──────────────────────────────────────
-    msg2 = "Write a hello_world.py that prints 'Hello from Nano Claude!'"
+    msg2 = "Write a hello_world.py that prints 'Hello from CheetahClaws!'"
     for i in range(0, len(msg2) + 1, 4):
         add(full1 + [prompt_line(msg2[:i], cursor=(i < len(msg2)))], 55)
     add(full1 + [prompt_line(msg2)], 400)
@@ -241,23 +241,23 @@ def build_scenes():
         tool_ok("Wrote 3 lines to /tmp/hello_world.py"),
         None,
         tool_line("⚙", "Bash", "python3 /tmp/hello_world.py"),
-        tool_ok("→ Hello from Nano Claude!"),
+        tool_ok("→ Hello from CheetahClaws!"),
     ], 800)
 
     # ── Scene 9: Final response ──────────────────────────────────────────
     resp2 = [
         "Done! Created `/tmp/hello_world.py` and ran it successfully.",
         "",
-        "  print('Hello from Nano Claude!')",
+        "  print('Hello from CheetahClaws!')",
         "",
-        "Output: Hello from Nano Claude!",
+        "Output: Hello from CheetahClaws!",
     ]
     tool2 = [
         tool_line("⚙", "Write", "/tmp/hello_world.py", MAUVE),
         tool_ok("Wrote 3 lines to /tmp/hello_world.py"),
         None,
         tool_line("⚙", "Bash", "python3 /tmp/hello_world.py"),
-        tool_ok("→ Hello from Nano Claude!"),
+        tool_ok("→ Hello from CheetahClaws!"),
         None,
         [seg("│ ", SUBTEXT)],
     ]
@@ -375,11 +375,11 @@ def render_screenshot(output_path="screenshot.png"):
             text_line(" 100  context.py     — System prompt + git injection", 2),
             text_line(" 173  agent.py       — Core agent loop", 2),
             text_line(" 359  tools.py       — 8 built-in tools", 2),
-            text_line(" 553  nano_claude.py — REPL + slash commands", 2),
+            text_line(" 553  cheetahclaws.py — REPL + slash commands", 2),
             text_line("────────────────────────────────", 2),
             text_line("1261  total", 2),
             None,
-            text_line("The main entry point `nano_claude.py` contains the REPL,", 2),
+            text_line("The main entry point `cheetahclaws.py` contains the REPL,", 2),
             text_line("14 slash commands, permission handling, and rich rendering.", 2),
             claude_sep(),
             None,

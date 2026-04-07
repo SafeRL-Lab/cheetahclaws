@@ -202,39 +202,39 @@ class TestVoiceInit:
 
 class TestReplVoiceIntegration:
     def test_voice_in_commands(self):
-        import nano_claude
-        assert "voice" in nano_claude.COMMANDS
+        import cheetahclaws
+        assert "voice" in cheetahclaws.COMMANDS
 
     def test_voice_command_callable(self):
-        import nano_claude
-        assert callable(nano_claude.COMMANDS["voice"])
+        import cheetahclaws
+        assert callable(cheetahclaws.COMMANDS["voice"])
 
     def test_handle_slash_voice_sentinel(self):
         """handle_slash('/voice ...') propagates __voice__ sentinel from cmd_voice."""
-        import nano_claude
+        import cheetahclaws
 
         # Patch cmd_voice to return a sentinel directly
         sentinel = ("__voice__", "hello world")
-        with patch.object(nano_claude, "cmd_voice", return_value=sentinel):
+        with patch.object(cheetahclaws, "cmd_voice", return_value=sentinel):
             # Re-bind in COMMANDS so the patch is seen
-            nano_claude.COMMANDS["voice"] = nano_claude.cmd_voice
-            result = nano_claude.handle_slash("/voice", object(), {})
+            cheetahclaws.COMMANDS["voice"] = cheetahclaws.cmd_voice
+            result = cheetahclaws.handle_slash("/voice", object(), {})
             assert result == sentinel
 
     def test_voice_status_no_crash(self, capsys):
         """'/voice status' should not raise even without audio hardware."""
-        import nano_claude
+        import cheetahclaws
         # Should not raise
         try:
-            nano_claude.cmd_voice("status", object(), {})
+            cheetahclaws.cmd_voice("status", object(), {})
         except SystemExit:
             pass
         # Output captured — just ensure no uncaught exception
 
     def test_voice_lang_set(self, capsys):
-        import nano_claude
-        nano_claude.cmd_voice("lang zh", object(), {})
-        assert nano_claude._voice_language == "zh"
+        import cheetahclaws
+        cheetahclaws.cmd_voice("lang zh", object(), {})
+        assert cheetahclaws._voice_language == "zh"
         # Reset
-        nano_claude.cmd_voice("lang auto", object(), {})
-        assert nano_claude._voice_language == "auto"
+        cheetahclaws.cmd_voice("lang auto", object(), {})
+        assert cheetahclaws._voice_language == "auto"

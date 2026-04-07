@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nano-claude-code"
-version = "3.05.5"
-description = "Minimal Python implementation of Claude Code"
+name = "cheetahclaws"
+version = "3.05.6"
+description = "CheetahClaws: A Fast, Hackable Python AI Coding Assistant"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -21,11 +21,11 @@ voice  = ["sounddevice"]
 vision = ["Pillow"]
 
 [project.scripts]
-nano_claude = "nano_claude:main"
+cheetahclaws = "cheetahclaws:main"
 
 [tool.setuptools]
 py-modules = [
-    "nano_claude",
+    "cheetahclaws",
     "agent",
     "cloudsave",
     "compaction",
@@ -37,4 +37,4 @@ py-modules = [
     "tool_registry",
     "tools",
 ]
-packages = ["mcp", "memory", "multi_agent", "plugin", "skill", "task", "voice"]
+packages = ["mcp", "memory", "multi_agent", "plugin", "skill", "task", "voice", "checkpoint"]

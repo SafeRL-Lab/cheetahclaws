@@ -1,4 +1,4 @@
-"""Task system for nano-claude-code."""
+"""Task system for cheetahclaws."""
 from .types import Task, TaskStatus
 from .store import (
     create_task, get_task, list_tasks, update_task,

@@ -1,16 +1,16 @@
-# Open-CC: Nano Claude Code Enhancement Design
+# Open-CC: CheetahClaws Enhancement Design
 
 **Date:** 2026-04-02
 **Status:** Approved
 **Target:** GPT-5.4, Gemini 3/3.1 Pro (Claude not in scope)
 **Code budget:** ~10K lines total (currently ~2.2K)
-**Constraint:** PR-friendly, mergeable back to nano-claude-code upstream
+**Constraint:** PR-friendly, mergeable back to cheetahclaws upstream
 
 ---
 
 ## 1. Overview
 
-Evolve nano-claude-code from a minimal ~2.2K-line reference implementation into a capable AI coding CLI, approaching Claude Code's core functionality while staying lean. Five enhancement areas:
+Evolve cheetahclaws from a minimal ~2.2K-line reference implementation into a capable AI coding CLI, approaching Claude Code's core functionality while staying lean. Five enhancement areas:
 
 1. **Context Window Management** (`compaction.py`)
 2. **Tool System Enhancement** (`tool_registry.py` + `tools.py` refactor)
@@ -34,8 +34,8 @@ Evolve nano-claude-code from a minimal ~2.2K-line reference implementation into 
 ## 2. File Structure
 
 ```
-nano-claude-code/
-├── nano_claude.py      # REPL -- add /memory, /skill slash commands
+cheetahclaws/
+├── cheetahclaws.py      # REPL -- add /memory, /skill slash commands
 ├── agent.py            # Agent loop -- add compaction call + sub-agent dispatch
 ├── providers.py        # No changes (already solid)
 ├── tools.py            # Refactor: register built-in tools via registry
@@ -52,7 +52,7 @@ nano-claude-code/
 ### Module Dependency Graph (unidirectional)
 
 ```
-nano_claude.py
+cheetahclaws.py
     ├-> agent.py
     │    ├-> providers.py
     │    ├-> tool_registry.py -> tools.py (built-in implementations)
@@ -393,7 +393,7 @@ Returns a table of `[id, status, prompt_preview]` for all tasks.
 ### 6.1 Storage
 
 ```
-~/.nano_claude/memory/
+~/.cheetahclaws/memory/
 ├── MEMORY.md              # Index file (max 200 lines)
 ├── user_role.md           # Individual memory files
 ├── feedback_testing.md
@@ -452,7 +452,7 @@ Two tools for model-driven memory management:
 Markdown files with frontmatter:
 
 ```
-~/.nano_claude/skills/commit.md
+~/.cheetahclaws/skills/commit.md
 ```
 
 ```markdown
@@ -473,8 +473,8 @@ Analyze staged changes and create a well-formatted commit message.
 
 ```python
 SKILL_PATHS = [
-    Path.cwd() / ".nano_claude" / "skills",    # project-level (priority)
-    Path.home() / ".nano_claude" / "skills",    # user-level
+    Path.cwd() / ".cheetahclaws" / "skills",    # project-level (priority)
+    Path.home() / ".cheetahclaws" / "skills",    # user-level
 ]
 ```
 
@@ -511,7 +511,7 @@ def execute_skill(skill, args, state, config):
 
 ### 7.5 REPL Integration
 
-In `nano_claude.py`, unmatched `/` commands fall through to skill lookup:
+In `cheetahclaws.py`, unmatched `/` commands fall through to skill lookup:
 
 ```python
 if user_input.startswith("/"):
@@ -558,7 +558,7 @@ Tool return values change:
 - **Write** (existing file): `"File updated:\n\n{diff}"`
 - **Write** (new file): `"New file created: {filename} ({n} lines)"` (no diff)
 
-### 8.2 REPL Rendering (in nano_claude.py)
+### 8.2 REPL Rendering (in cheetahclaws.py)
 
 Detect diff blocks in tool output and render with ANSI colors:
 
@@ -605,11 +605,11 @@ Each step is an independent PR:
 | Phase | Module | Depends On | Estimated Lines |
 |-------|--------|-----------|-----------------|
 | 1 | `tool_registry.py` + `tools.py` refactor | None | ~600 |
-| 2 | Diff view in `tools.py` + `nano_claude.py` | Phase 1 | ~100 |
+| 2 | Diff view in `tools.py` + `cheetahclaws.py` | Phase 1 | ~100 |
 | 3 | `compaction.py` + agent.py integration | Phase 1 | ~300 |
 | 4 | `memory.py` + context.py integration | Phase 1 | ~200 |
 | 5 | `subagent.py` + agent.py integration (threading) | Phase 1 | ~350 |
-| 6 | `skills.py` + nano_claude.py integration | Phase 1, 4 | ~200 |
+| 6 | `skills.py` + cheetahclaws.py integration | Phase 1, 4 | ~200 |
 | 7 | Slash commands + config updates | All above | ~300 |
 
 **Total new code: ~2050 lines. Grand total: ~4.2K lines.**

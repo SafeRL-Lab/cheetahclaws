@@ -12,7 +12,7 @@ import tools as _tools_init  # ensure built-in tools are registered on import
 from providers import stream, AssistantTurn, TextChunk, ThinkingChunk, detect_provider
 from compaction import maybe_compact
 
-# ── Re-export event types (used by nano_claude.py) ────────────────────────
+# ── Re-export event types (used by cheetahclaws.py) ────────────────────────
 __all__ = [
     "AgentState", "run",
     "TextChunk", "ThinkingChunk",
@@ -180,7 +180,6 @@ def _check_permission(tc: dict, config: dict) -> bool:
         return False   # always ask
 
     if perm_mode == "plan":
-        name = tc["name"]
         # Allow writes ONLY to the plan file
         if name in ("Write", "Edit"):
             plan_file = config.get("_plan_file", "")
@@ -197,7 +196,6 @@ def _check_permission(tc: dict, config: dict) -> bool:
         return True  # reads are fine
 
     # "auto" mode: only ask for writes and non-safe bash
-    name = tc["name"]
     if name in ("Read", "Glob", "Grep", "WebFetch", "WebSearch"):
         return True
     if name == "Bash":

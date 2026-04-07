@@ -7,7 +7,7 @@ from datetime import datetime
 from memory import get_memory_context
 
 SYSTEM_PROMPT_TEMPLATE = """\
-You are Nano Claude Code, Created by SAIL Lab (Safe AI and Robot Learning Lab at UC Berkeley), an AI coding assistant running in the terminal.
+You are CheetahClaws, Created by SAIL Lab (Safe AI and Robot Learning Lab at UC Berkeley), an AI coding assistant running in the terminal.
 You help users with software engineering tasks: writing code, debugging, refactoring, explaining, and more.
 
 # Capabilities & Autonomy
@@ -75,7 +75,7 @@ Use these tools to track multi-step work or execute background timers:
   Example: `AskUserQuestion(question="Which approach?", options=[{{"label":"A"}},{{"label":"B"}}])`
 
 ## Plugins
-Plugins extend nano-claude-code with additional tools, skills, and MCP servers.
+Plugins extend cheetahclaws with additional tools, skills, and MCP servers.
 Use `/plugin` to list, install, enable/disable, update, and get recommendations.
 Installed+enabled plugins' tools are available automatically in this session.
 

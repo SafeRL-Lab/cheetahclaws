@@ -1,4 +1,4 @@
-"""Tool definitions and implementations for nano claude."""
+"""Tool definitions and implementations for CheetahClaws."""
 import json
 import os
 import re
@@ -771,7 +771,7 @@ def _ask_user_question(
     """
     Block the agent loop and surface a question to the user in the terminal.
 
-    The REPL loop (nano_claude.py) periodically calls drain_pending_questions()
+    The REPL loop (cheetahclaws.py) periodically calls drain_pending_questions()
     to render any questions and collect answers.  We use a threading.Event to
     block this call until the user responds.
     """
@@ -795,7 +795,45 @@ def _ask_user_question(
     return "(no answer — timeout)"
 
 
-def drain_pending_questions() -> bool:
+def ask_input_interactive(prompt: str, config: dict, context: str = "") -> str:
+    """Prompt the user for input, routing to Telegram if in a Telegram turn.
+
+    Args:
+        prompt:  The input prompt shown to the user.
+        config:  Agent config dict (used to detect Telegram context).
+        context: Optional menu/list text to send to Telegram *before* the prompt,
+                 so the remote user can see the available options.
+    """
+    is_tg = config.get("_in_telegram_turn", False)
+    if is_tg and "_tg_send_callback" in config:
+        import re, threading
+        token = config.get("telegram_token")
+        chat_id = config.get("telegram_chat_id")
+        send = config["_tg_send_callback"]
+        strip_ansi = lambda s: re.sub(r'\x1b\[[0-9;]*m', '', s).strip()
+
+        # Send context (menu/list) first if provided
+        if context:
+            send(token, chat_id, strip_ansi(context))
+
+        clean_prompt = strip_ansi(prompt)
+        send(token, chat_id, f"❓ *Input Required*\n{clean_prompt}")
+
+        evt = threading.Event()
+        config["_tg_input_event"] = evt
+        evt.wait()
+
+        text = config.pop("_tg_input_value", "").strip()
+        config.pop("_tg_input_event", None)
+        return text
+    else:
+        try:
+            return input(prompt)
+        except (KeyboardInterrupt, EOFError):
+            print()
+            return ""
+
+def drain_pending_questions(config: dict) -> bool:
     """
     Called by the REPL loop after each streaming turn.
     Renders pending questions and collects user input.
@@ -833,10 +871,8 @@ def drain_pending_questions() -> bool:
             print()
 
             while True:
-                try:
-                    raw = input("Your choice (number or text): ").strip()
-                except (EOFError, KeyboardInterrupt):
-                    raw = ""
+                raw = ask_input_interactive("Your choice (number or text): ", config).strip()
+                if not raw:
                     break
 
                 if raw.isdigit():
@@ -845,20 +881,18 @@ def drain_pending_questions() -> bool:
                         raw = options[idx - 1]["label"]
                         break
                     elif idx == 0 and allow_ft:
-                        try:
-                            raw = input("Your answer: ").strip()
-                        except (EOFError, KeyboardInterrupt):
-                            raw = ""
+                        raw = ask_input_interactive("Your answer: ", config).strip()
                         break
+                    else:
+                        print(f"Invalid option: {idx}")
+                        raw = ""
+                        continue
                 elif allow_ft:
                     break  # accept free text directly
         else:
             # Free-text only
             print()
-            try:
-                raw = input("Your answer: ").strip()
-            except (EOFError, KeyboardInterrupt):
-                raw = ""
+            raw = ask_input_interactive("Your answer: ", config).strip()
 
         result.append(raw)
         event.set()
@@ -870,7 +904,7 @@ def _sleeptimer(seconds: int, config: dict) -> str:
     import threading
     cb = config.get("_run_query_callback")
     if not cb:
-        return "Error: Internal callback missing, nano_claude did not provide _run_query_callback"
+        return "Error: Internal callback missing, cheetahclaws did not provide _run_query_callback"
         
     def worker():
         import time

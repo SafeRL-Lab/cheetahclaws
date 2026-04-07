@@ -1,4 +1,4 @@
-"""Tool plugin registry for nano-claude-code.
+"""Tool plugin registry for cheetahclaws.
 
 Provides a central registry for tool definitions, lookup, schema export,
 and dispatch with output truncation.

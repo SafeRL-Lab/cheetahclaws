@@ -22,7 +22,7 @@ def isolated_store(tmp_path, monkeypatch):
     """Each test gets a fresh in-memory + on-disk task store."""
     monkeypatch.setattr(_store, "_tasks", {})
     monkeypatch.setattr(_store, "_loaded", False)
-    monkeypatch.setattr(_store, "_tasks_file", lambda: tmp_path / ".nano_claude" / "tasks.json")
+    monkeypatch.setattr(_store, "_tasks_file", lambda: tmp_path / ".cheetahclaws" / "tasks.json")
     yield
     _store._tasks.clear()
     _store._loaded = False

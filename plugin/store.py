@@ -12,14 +12,14 @@ from .types import PluginEntry, PluginManifest, PluginScope, parse_plugin_identi
 
 # ── Config paths ──────────────────────────────────────────────────────────────
 
-USER_PLUGIN_DIR  = Path.home() / ".nano_claude" / "plugins"
-USER_PLUGIN_CFG  = Path.home() / ".nano_claude" / "plugins.json"
+USER_PLUGIN_DIR  = Path.home() / ".cheetahclaws" / "plugins"
+USER_PLUGIN_CFG  = Path.home() / ".cheetahclaws" / "plugins.json"
 
 def _project_plugin_dir() -> Path:
-    return Path.cwd() / ".nano_claude" / "plugins"
+    return Path.cwd() / ".cheetahclaws" / "plugins"
 
 def _project_plugin_cfg() -> Path:
-    return Path.cwd() / ".nano_claude" / "plugins.json"
+    return Path.cwd() / ".cheetahclaws" / "plugins.json"
 
 
 # ── Config read/write ─────────────────────────────────────────────────────────
