@@ -2106,6 +2106,31 @@ def _tg_poll_loop(token: str, chat_id: int, config: dict):
                     })
                     continue
 
+                # ── Handle photo messages from Telegram ──
+                photo_list = msg.get("photo")
+                if photo_list:
+                    caption = msg.get("caption", "").strip() or "What do you see in this image? Describe it in detail."
+                    file_id = photo_list[-1]["file_id"]  # largest size
+                    try:
+                        file_info = _tg_api(token, "getFile", {"file_id": file_id})
+                        if file_info and file_info.get("ok"):
+                            file_path = file_info["result"]["file_path"]
+                            import urllib.request, base64
+                            url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+                            with urllib.request.urlopen(url) as resp:
+                                img_bytes = resp.read()
+                            b64 = base64.b64encode(img_bytes).decode("utf-8")
+                            size_kb = len(img_bytes) / 1024
+                            config["_pending_image"] = b64
+                            text = caption
+                            print(clr(f"\n  📩 Telegram: 📷 image ({size_kb:.0f} KB) + \"{caption[:50]}\"", "cyan"))
+                        else:
+                            _tg_send(token, chat_id, "⚠ Could not download image.")
+                            continue
+                    except Exception as e:
+                        _tg_send(token, chat_id, f"⚠ Image error: {e}")
+                        continue
+
                 if not text:
                     continue
 
