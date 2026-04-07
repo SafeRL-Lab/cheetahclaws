@@ -94,6 +94,7 @@ English | [中文](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/READM
   - All documentation, GitHub URLs, and internal references updated accordingly.
   - Added **CheetahClaws vs OpenClaw** comparison section to README.
 
+For more news, see [here](https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/news.md)
 
 
 ---
