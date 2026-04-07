@@ -61,6 +61,8 @@ Slash commands in REPL:
 """
 from __future__ import annotations
 
+from tools import ask_input_interactive
+
 import os
 import re
 import sys
@@ -326,17 +328,20 @@ def _tool_desc(name: str, inputs: dict) -> str:
 # ── Permission prompt ──────────────────────────────────────────────────────
 
 def ask_permission_interactive(desc: str, config: dict) -> bool:
-    try:
-        print()
-        ans = input(clr(f"  Allow: {desc}  [y/N/a(ccept-all)] ", "yellow")).strip().lower()
-        if ans == "a":
-            config["permission_mode"] = "accept-all"
+    text = ask_input_interactive(f"  Allow: {desc}  [y/N/a(ccept-all)] ", config).strip().lower()
+
+    if text == "a" or text == "accept all" or text == "accept-all":
+        config["permission_mode"] = "accept-all"
+        is_tg = config.get("_in_telegram_turn", False)
+        if is_tg:
+            token = config.get("telegram_token")
+            chat_id = config.get("telegram_chat_id")
+            _tg_send(token, chat_id, "✅ Permission mode set to accept-all for this session.")
+        else:
             ok("  Permission mode set to accept-all for this session.")
-            return True
-        return ans in ("y", "yes")
-    except (KeyboardInterrupt, EOFError):
-        print()
-        return False
+        return True
+    
+    return text in ("y", "yes")
 
 
 # ── Slash commands ─────────────────────────────────────────────────────────
@@ -367,7 +372,7 @@ def _proactive_watcher_loop(config):
             traceback.print_exc()
             print(f"\n[proactive watcher error]: {e}", flush=True)
 
-def cmd_help(_args: str, _state, _config) -> bool:
+def cmd_help(_args: str, _state, config) -> bool:
     print(__doc__)
     return True
 
@@ -470,7 +475,7 @@ def _interactive_ollama_picker(config: dict) -> bool:
     print()
     
     try:
-        ans = input(clr("  Select a model number or Enter to cancel > ", "cyan")).strip()
+        ans = ask_input_interactive(clr("  Select a model number or Enter to cancel > ", "cyan"), config).strip()
         if not ans: return False
         idx = int(ans) - 1
         if 0 <= idx < len(models):
@@ -515,7 +520,7 @@ def cmd_brainstorm(args: str, state, config) -> bool:
         agent_count = 5  # skip interactive input when called from Telegram
     else:
         try:
-            ans = input(clr(f"  How many agents? (2-100, default 5) > ", "cyan")).strip()
+            ans = ask_input_interactive(clr(f"  How many agents? (2-100, default 5) > ", "cyan"), config).strip()
             agent_count = int(ans) if ans else 5
             agent_count = max(2, min(agent_count, 100))
         except (ValueError, KeyboardInterrupt, EOFError):
@@ -667,7 +672,7 @@ def _save_synthesis(state, out_file: str) -> None:
         return
 
 
-def cmd_clear(_args: str, state, _config) -> bool:
+def cmd_clear(_args: str, state, config) -> bool:
     state.messages.clear()
     state.turn_count = 0
     ok("Conversation cleared.")
@@ -695,7 +700,7 @@ def cmd_config(args: str, _state, config) -> bool:
         info(f"{k} = {v}")
     return True
 
-def cmd_save(args: str, state, _config) -> bool:
+def cmd_save(args: str, state, config) -> bool:
     from config import SESSIONS_DIR
     import uuid
     sid   = uuid.uuid4().hex[:8]
@@ -707,13 +712,13 @@ def cmd_save(args: str, state, _config) -> bool:
     ok(f"Session saved → {path}  (id: {sid})"  )
     return True
 
-def save_latest(args: str, state, config_or_none=None) -> bool:
+def save_latest(args: str, state, config=None) -> bool:
     """Save session on exit: session_latest.json + daily/ copy + append to history.json."""
     from config import MR_SESSION_DIR, DAILY_DIR, SESSION_HIST_FILE
     if not state.messages:
         return True
 
-    cfg = config_or_none or {}
+    cfg = config or {}
     daily_limit   = cfg.get("session_daily_limit",   5)
     history_limit = cfg.get("session_history_limit", 100)
 
@@ -763,7 +768,7 @@ def save_latest(args: str, state, config_or_none=None) -> bool:
     ok(f"             → {daily_path}  (id: {sid})")
     ok(f"             → {SESSION_HIST_FILE}  ({len(hist['sessions'])} sessions / {hist['total_turns']} total turns)")
     return True
-def cmd_load(args: str, state, _config) -> bool:
+def cmd_load(args: str, state, config) -> bool:
     from config import SESSIONS_DIR, MR_SESSION_DIR, DAILY_DIR
 
     path = None
@@ -786,12 +791,14 @@ def cmd_load(args: str, state, _config) -> bool:
             return True
 
         print(clr("  Select a session to load:", "cyan", "bold"))
+        menu_buf = clr('  Select a session to load:', 'cyan', 'bold')
         prev_date = None
         for i, s in enumerate(sessions):
             # Group by date header
             date_label = s.parent.name if s.parent.name != "mr_sessions" else ""
             if date_label and date_label != prev_date:
                 print(clr(f"\n  ── {date_label} ──", "dim"))
+                menu_buf += "\n" + clr(f"\n  ── {date_label} ──", "dim")
                 prev_date = date_label
 
             label = s.name
@@ -804,6 +811,7 @@ def cmd_load(args: str, state, _config) -> bool:
             except Exception:
                 pass
             print(clr(f"  [{i+1:2d}] ", "yellow") + label)
+            menu_buf += "\n" + clr(f"  [{i+1:2d}] ", "yellow") + label
 
         # Show history.json option at the bottom if it exists
         from config import SESSION_HIST_FILE
@@ -814,13 +822,15 @@ def cmd_load(args: str, state, _config) -> bool:
                 n_sess  = len(hist_meta.get("sessions", []))
                 n_turns = hist_meta.get("total_turns", 0)
                 print(clr(f"\n  ── Complete History ──", "dim"))
-                print(clr("  [ H] ", "yellow") +
-                      f"Load ALL history  ({n_sess} sessions / {n_turns} total turns)  {SESSION_HIST_FILE}")
+                menu_buf += "\n" + clr(f"\n  ── Complete History ──", "dim")
+                hist_prt = clr("  [ H] ", "yellow") + f"Load ALL history  ({n_sess} sessions / {n_turns} total turns)  {SESSION_HIST_FILE}"
+                print(hist_prt)
+                menu_buf += "\n" + hist_prt
             except Exception:
                 has_history = False
 
         print()
-        ans = input(clr("  Enter number(s) (e.g. 1 or 1,2,3), H for full history, or Enter to cancel > ", "cyan")).strip().lower()
+        ans = ask_input_interactive(clr("  Enter number(s) (e.g. 1 or 1,2,3), H for full history, or Enter to cancel > ", "cyan"), config, menu_buf).strip().lower()
 
         if not ans:
             info("  Cancelled.")
@@ -842,7 +852,7 @@ def cmd_load(args: str, state, _config) -> bool:
             est_tokens = sum(len(str(m.get("content", ""))) for m in all_messages) // 4
             print()
             print(clr(f"  {len(all_messages)} messages / ~{est_tokens:,} tokens estimated", "dim"))
-            confirm = input(clr("  Load full history into current session? [y/N] > ", "yellow")).strip().lower()
+            confirm = ask_input_interactive(clr("  Load full history into current session? [y/N] > ", "yellow"), config).strip().lower()
             if confirm != "y":
                 info("  Cancelled.")
                 return True
@@ -882,7 +892,7 @@ def cmd_load(args: str, state, _config) -> bool:
             est_tokens = sum(len(str(m.get("content", ""))) for m in all_messages) // 4
             print()
             print(clr(f"  {len(loaded_names)} sessions / {len(all_messages)} messages / ~{est_tokens:,} tokens estimated", "dim"))
-            confirm = input(clr("  Merge and load? [y/N] > ", "yellow")).strip().lower()
+            confirm = ask_input_interactive(clr("  Merge and load? [y/N] > ", "yellow"), config).strip().lower()
             if confirm != "y":
                 info("  Cancelled.")
                 return True
@@ -913,7 +923,7 @@ def cmd_load(args: str, state, _config) -> bool:
     ok(f"Session loaded from {path} ({len(state.messages)} messages)")
     return True
 
-def cmd_resume(args: str, state, _config) -> bool:
+def cmd_resume(args: str, state, config) -> bool:
     from config import MR_SESSION_DIR
 
     if not args.strip():
@@ -937,7 +947,7 @@ def cmd_resume(args: str, state, _config) -> bool:
     ok(f"Session loaded from {path} ({len(state.messages)} messages)")
     return True
 
-def cmd_history(_args: str, state, _config) -> bool:
+def cmd_history(_args: str, state, config) -> bool:
     if not state.messages:
         info("(empty conversation)")
         return True
@@ -1019,7 +1029,7 @@ def cmd_permissions(args: str, _state, config) -> bool:
             print(f"  {marker} {clr(f'[{i+1}]', 'yellow')} {clr(m, 'cyan')}  {clr(mode_desc[m], 'dim')}")
         print()
         try:
-            ans = input(clr("  Select a mode number or Enter to cancel > ", "cyan")).strip()
+            ans = ask_input_interactive(clr("  Select a mode number or Enter to cancel > ", "cyan"), config).strip()
         except (KeyboardInterrupt, EOFError):
             print()
             return True
@@ -1042,7 +1052,7 @@ def cmd_permissions(args: str, _state, config) -> bool:
             ok(f"Permission mode set to: {m}")
     return True
 
-def cmd_cwd(args: str, _state, _config) -> bool:
+def cmd_cwd(args: str, _state, config) -> bool:
     if not args.strip():
         info(f"Working directory: {os.getcwd()}")
     else:
@@ -1188,31 +1198,31 @@ def cmd_cloudsave(args: str, state, config) -> bool:
     return True
 
 
-def cmd_exit(_args: str, _state, _config) -> bool:
+def cmd_exit(_args: str, _state, config) -> bool:
     if sys.stdin.isatty() and sys.platform != "win32":
         sys.stdout.write("\x1b[?2004l")  # disable bracketed paste mode
         sys.stdout.flush()
     ok("Goodbye!")
-    save_latest("", _state, _config)
+    save_latest("", _state, config)
     # Auto cloud-sync if enabled
-    if _config.get("cloudsave_auto") and _config.get("gist_token") and _state.messages:
+    if config.get("cloudsave_auto") and config.get("gist_token") and _state.messages:
         info("Auto cloud-sync: uploading session to Gist…")
         from cloudsave import upload_session
         from config import save_config
         session_data = _build_session_data(_state)
         gist_id, err_msg = upload_session(
-            session_data, _config["gist_token"],
-            existing_gist_id=_config.get("cloudsave_last_gist_id"),
+            session_data, config["gist_token"],
+            existing_gist_id=config.get("cloudsave_last_gist_id"),
         )
         if err_msg:
             err(f"Cloud sync failed: {err_msg}")
         else:
-            _config["cloudsave_last_gist_id"] = gist_id
-            save_config(_config)
+            config["cloudsave_last_gist_id"] = gist_id
+            save_config(config)
             ok(f"Session synced → https://gist.github.com/{gist_id}")
     sys.exit(0)
 
-def cmd_memory(args: str, _state, _config) -> bool:
+def cmd_memory(args: str, _state, config) -> bool:
     from memory import search_memory, load_index
     from memory.scan import scan_all_memories, format_memory_manifest, memory_freshness_text
 
@@ -1223,7 +1233,7 @@ def cmd_memory(args: str, _state, _config) -> bool:
         from memory import consolidate_session
         msgs = _state.get("messages", [])
         info("  Analyzing session for long-term memories…")
-        saved = consolidate_session(msgs, _config)
+        saved = consolidate_session(msgs, config)
         if saved:
             info(f"  ✓ Consolidated {len(saved)} memory/memories: {', '.join(saved)}")
         else:
@@ -1257,7 +1267,7 @@ def cmd_memory(args: str, _state, _config) -> bool:
             info(f"    {h.description}")
     return True
 
-def cmd_agents(_args: str, _state, _config) -> bool:
+def cmd_agents(_args: str, _state, config) -> bool:
     try:
         from multi_agent.tools import get_agent_manager
         mgr = get_agent_manager()
@@ -1307,7 +1317,7 @@ def _print_background_notifications():
                 print(clr(f"    {preview}", "dim"))
             print()
 
-def cmd_skills(_args: str, _state, _config) -> bool:
+def cmd_skills(_args: str, _state, config) -> bool:
     from skill import load_skills
     skills = load_skills()
     if not skills:
@@ -1323,7 +1333,7 @@ def cmd_skills(_args: str, _state, _config) -> bool:
             print(f"    {clr(s.when_to_use[:80], 'dim')}")
     return True
 
-def cmd_mcp(args: str, _state, _config) -> bool:
+def cmd_mcp(args: str, _state, config) -> bool:
     """Show MCP server status, or manage servers.
 
     /mcp               — list all configured servers and their tools
@@ -1420,7 +1430,7 @@ def cmd_mcp(args: str, _state, _config) -> bool:
     return True
 
 
-def cmd_plugin(args: str, _state, _config) -> bool:
+def cmd_plugin(args: str, _state, config) -> bool:
     """Manage plugins.
 
     /plugin                      — list installed plugins
@@ -1552,7 +1562,7 @@ def cmd_plugin(args: str, _state, _config) -> bool:
     return True
 
 
-def cmd_tasks(args: str, _state, _config) -> bool:
+def cmd_tasks(args: str, _state, config) -> bool:
     """Show and manage tasks.
 
     /tasks                  — list all tasks
@@ -1695,10 +1705,10 @@ def cmd_ssj(args: str, state, config) -> bool:
         if not files:
             err("No matching files found in current directory.")
             return None
-        print(clr(f"\n  📂 Files in {Path.cwd().name}/", "cyan"))
+        menu_text = clr(f"\n  📂 Files in {Path.cwd().name}/", "cyan")
         for i, f in enumerate(files, 1):
-            print(f"  {i:3d}. {f.name}")
-        sel = input(clr(prompt_text, "cyan")).strip()
+            menu_text += ("\n" + f"  {i:3d}. {f.name}")
+        sel = ask_input_interactive(clr(prompt_text, "cyan"), config, menu_text).strip()
         if sel.isdigit() and 1 <= int(sel) <= len(files):
             return str(files[int(sel) - 1])
         elif sel:  # typed a filename directly
@@ -1710,7 +1720,7 @@ def cmd_ssj(args: str, state, config) -> bool:
 
     while True:
         try:
-            choice = input(clr("\n  ⚡ SSJ » ", "yellow", "bold")).strip()
+            choice = ask_input_interactive(clr("\n  ⚡ SSJ » ", "yellow", "bold"), config, _SSJ_MENU).strip()
         except (KeyboardInterrupt, EOFError):
             break
 
@@ -1723,7 +1733,7 @@ def cmd_ssj(args: str, state, config) -> bool:
             break
 
         elif choice == "1":
-            topic = input(clr("  Topic (Enter for general): ", "cyan")).strip()
+            topic = ask_input_interactive(clr("  Topic (Enter for general): ", "cyan"), config).strip()
             return ("__ssj_cmd__", "brainstorm", topic)
 
         elif choice == "2":
@@ -1765,7 +1775,7 @@ def cmd_ssj(args: str, state, config) -> bool:
                           "You can specify a path or generate one from a brainstorm file.", "dim"))
             print(clr("  ──────────────────────────────────────────────────────", "dim"))
             print(clr("  Note: todo file must contain tasks in '- [ ] task' format.", "dim"))
-            todo_input = input(clr("  Path to todo file (Enter for default): ", "cyan")).strip()
+            todo_input = ask_input_interactive(clr("  Path to todo file (Enter for default): ", "cyan"), config).strip()
 
             # Track original md path in case we need Promote→Worker chain
             _original_md = None
@@ -1773,13 +1783,13 @@ def cmd_ssj(args: str, state, config) -> bool:
                 warn("That looks like a brainstorm output file, not a todo list.")
                 _suggested = str(Path(todo_input).parent / "todo_list.txt")
                 print(clr(f"  Suggested todo path: {_suggested}", "yellow"))
-                _fix = input(clr("  Use that path instead? [Y/n]: ", "cyan")).strip().lower()
+                _fix = ask_input_interactive(clr("  Use that path instead? [Y/n]: ", "cyan"), config).strip().lower()
                 if _fix in ("", "y"):
                     _original_md = todo_input
                     todo_input = _suggested
 
-            task_num = input(clr("  Task # (Enter for all, or e.g. 1,4,6): ", "cyan")).strip()
-            workers  = input(clr("  Max tasks this session (Enter for all): ", "cyan")).strip()
+            task_num = ask_input_interactive(clr("  Task # (Enter for all, or e.g. 1,4,6): ", "cyan"), config).strip()
+            workers  = ask_input_interactive(clr("  Max tasks this session (Enter for all): ", "cyan"), config).strip()
 
             # Resolve the final path to check existence
             _resolved = Path(todo_input) if todo_input else _default_todo
@@ -1787,8 +1797,8 @@ def cmd_ssj(args: str, state, config) -> bool:
                 if _original_md and Path(_original_md).exists():
                     # Offer to auto-generate todo_list.txt from the brainstorm .md, then run worker
                     print(clr(f"\n  ℹ  {_resolved} not found.", "yellow"))
-                    _gen = input(clr(f"  Generate todo_list.txt from {Path(_original_md).name} first, then run Worker? [Y/n]: ",
-                                     "cyan")).strip().lower()
+                    _gen = ask_input_interactive(clr(f"  Generate todo_list.txt from {Path(_original_md).name} first, then run Worker? [Y/n]: ",
+                                     "cyan"), config).strip().lower()
                     if _gen in ("", "y"):
                         return ("__ssj_promote_worker__",
                                 _original_md, str(_resolved), task_num, workers)
@@ -1806,7 +1816,7 @@ def cmd_ssj(args: str, state, config) -> bool:
             filepath = _pick_file("  File to debate #: ")
             if not filepath:
                 continue
-            _nagents_raw = input(clr("  Number of debate agents (Enter for 2): ", "cyan")).strip()
+            _nagents_raw = ask_input_interactive(clr("  Number of debate agents (Enter for 2): ", "cyan"), config).strip()
             try:
                 _nagents = max(2, int(_nagents_raw)) if _nagents_raw else 2
             except ValueError:
@@ -2098,6 +2108,13 @@ def _tg_poll_loop(token: str, chat_id: int, config: dict):
                 if not text:
                     continue
 
+                # Intercept text if a permission prompt is waiting
+                evt = config.get("_tg_input_event")
+                if evt:
+                    config["_tg_input_value"] = text
+                    evt.set()
+                    continue
+
                 # Handle Telegram bot commands
                 if text.strip().startswith("/"):
                     tg_cmd = text.strip().lower()
@@ -2112,10 +2129,12 @@ def _tg_poll_loop(token: str, chat_id: int, config: dict):
                     slash_cb = config.get("_handle_slash_callback")
                     if slash_cb:
                         try:
-                            config["_telegram_incoming"] = True
+                            config["_in_telegram_turn"] = True
                             cmd_type = slash_cb(text)
+                            config.pop("_in_telegram_turn", None)
                         except Exception as e:
                             _tg_send(token, chat_id, f"⚠ Error: {e}")
+                            config.pop("_in_telegram_turn", None)
                             continue
                         # Simple commands (toggle, etc.) — just confirm
                         if cmd_type == "simple":
@@ -2144,38 +2163,42 @@ def _tg_poll_loop(token: str, chat_id: int, config: dict):
                 # Show on local terminal
                 print(clr(f"\n  📩 Telegram: {text}", "cyan"))
 
-                # Run through nano's model
-                _typing_stop = threading.Event()
-                _typing_t = threading.Thread(target=_tg_typing_loop, args=(token, chat_id, _typing_stop), daemon=True)
-                _typing_t.start()
-                if run_query_cb:
-                    try:
-                        config["_telegram_incoming"] = True
-                        run_query_cb(text)
-                    except Exception as e:
-                        _typing_stop.set()
-                        _tg_send(token, chat_id, f"⚠ Error: {e}")
-                        continue
-                _typing_stop.set()
+                # Run through nano's model in a separate thread to prevent blocking poll loop
+                def _bg_runner(q_text, chat_token, chat_id):
+                    _typing_stop = threading.Event()
+                    _typing_t = threading.Thread(target=_tg_typing_loop, args=(chat_token, chat_id, _typing_stop), daemon=True)
+                    _typing_t.start()
+                    
+                    if run_query_cb:
+                        try:
+                            config["_telegram_incoming"] = True
+                            run_query_cb(q_text)
+                        except Exception as e:
+                            _typing_stop.set()
+                            _tg_send(chat_token, chat_id, f"⚠ Error: {e}")
+                            return
+                            
+                    _typing_stop.set()
 
-                # Grab the last assistant response from state
-                state = config.get("_state")
-                if state and state.messages:
-                    for m in reversed(state.messages):
-                        if m.get("role") == "assistant":
-                            content = m.get("content", "")
-                            if isinstance(content, list):
-                                # Extract text blocks from content array
-                                parts = []
-                                for block in content:
-                                    if isinstance(block, dict) and block.get("type") == "text":
-                                        parts.append(block["text"])
-                                    elif isinstance(block, str):
-                                        parts.append(block)
-                                content = "\n".join(parts)
-                            if content:
-                                _tg_send(token, chat_id, content)
-                            break
+                    # Grab the last assistant response from state
+                    state = config.get("_state")
+                    if state and state.messages:
+                        for m in reversed(state.messages):
+                            if m.get("role") == "assistant":
+                                content = m.get("content", "")
+                                if isinstance(content, list):
+                                    parts = []
+                                    for block in content:
+                                        if isinstance(block, dict) and block.get("type") == "text":
+                                            parts.append(block["text"])
+                                        elif isinstance(block, str):
+                                            parts.append(block)
+                                    content = "\n".join(parts)
+                                if content:
+                                    _tg_send(chat_token, chat_id, content)
+                                break
+
+                threading.Thread(target=_bg_runner, args=(text, token, chat_id), daemon=True).start()
         except Exception:
             _telegram_stop.wait(5)
 
@@ -2540,7 +2563,7 @@ def cmd_checkpoint(args: str, state, config) -> bool:
     print()
 
     try:
-        choice = input("Choice [1-4]: ").strip()
+        choice = ask_input_interactive("Choice [1-4]: ", config).strip()
     except (EOFError, KeyboardInterrupt):
         print()
         return True
@@ -3235,6 +3258,7 @@ def repl(config: dict, initial_prompt: str = None):
     setup_readline(HISTORY_FILE)
     state = AgentState()
     verbose = config.get("verbose", False)
+    config["_tg_send_callback"] = _tg_send
 
     # ── Checkpoint system init ──
     import checkpoint as ckpt
@@ -3259,28 +3283,28 @@ def repl(config: dict, initial_prompt: str = None):
             "✦ · · · · ·",
         ]
         _CHEETAH_LOGO = [
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⣠⣤⣤⣤⡴⣶⣶⠆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣤⣴⣶⣿⣿⣿⣿⣿⣿⣷⣿⣶⣿⣧⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣄⣀⣀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⣴⣾⣿⣿⣿⠿⠿⠛⠛⠛⠋⠉⠉⠉⠛⠛⠛⠛⠿⠟⠛⠛⠛⠛⠛⠛⠛⠛⠛⣻⣿⣿⠋⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⣠⣴⣿⣿⣿⠟⠋⠉⠀⠀⠀⠀⣀⣤⣄⢴⣖⣒⣂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣿⣟⡁⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⣠⣾⣿⣿⠟⠋⠀⠀⠀⣀⣤⣦⣿⣿⣿⣿⣿⣯⠋⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠴⠿⠿⠿⣿⣿⣷⣦⡀⠀⠀⠀⠀",
-            "⠀⠀⠀⢰⣿⣿⡿⠁⠀⠀⠀⣀⣶⣿⣿⡟⠯⠍⠋⢁⣀⣠⣄⣀⣀⣀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠿⣶⣄⠀⠀",
-            "⠀⠀⠀⢸⣿⣿⣿⣦⣤⣴⣿⣿⣟⣋⣡⣤⠴⠖⠋⢉⣽⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⠧⡀",
-            "⠀⠀⢠⣿⠟⠉⠁⠈⠉⠉⠙⠛⠛⠿⠿⣿⣿⣿⣿⣿⣿⠿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈",
-            "⠀ ⣿⡁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠽⠟⠛⠉⠀⢀⣀⣥⣴⣶⣶⣶⣶⣶⣶⣤⣤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⣿⣿⣿⣷⣶⣦⣤⣤⣤⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠁⠀⠀⠀⠀⠁⠂⠈⢉⠛⠿⣿⣿⣿⣶⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⢸⣿⠘⢿⣿⣿⠿⠛⠉⠀⠀⠀⠀⠀⠀⠀⢀⣀⣤⣤⣤⣤⣀⡀⠀⠀⠀⠀⠀⠀⠁⠀⠂⠽⣿⣿⣿⣿⣦⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠈⣿⣴⣿⣿⣄⠀⠀⠀⠀⠀⣀⣠⣴⠶⣿⣿⠋⠉⠉⠉⠙⢻⣿⡆⠀⠀⠀⠀⠀⠀⣀⣴⣶⣿⣿⣿⣿⣿⣷⡄⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⢹⣿⡍⠛⠻⢷⣶⣶⣶⠟⢿⣿⠗⠀⠹⠃⡀⠀⠀⠀⠀⠀⣿⡇⠀⠀⠀⢀⣴⣿⣿⣿⣿⠿⠿⠛⠛⠛⠛⠛⠂⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⢻⡇⠀⠀⠀⢻⣽⣿⠀⠈⠛⠀⠀⠀⢹⠇⠀⠀⠀⠀⢶⣿⠇⠀⢀⣴⣿⣿⠿⠛⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠁⠀⠀⠀⠀⠹⡇⠀⠀⠀⠀⠀⣀⡾⠀⠀⠀⠀⠀⢸⡿⠀⣠⣿⣿⡟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠁⠀⣦⠀⠀⢠⣿⢳⠀⠀⠀⠙⣿⣿⠁⢰⣿⡿⣻⡿⣦⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠰⣿⣷⡾⠿⠃⢸⣷⣀⠀⢀⣾⠃⢀⣿⣿⣻⣿⡿⡯⣻⣣⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿⠻⠷⢾⣿⣿⣷⡿⠁⠀⢸⣿⣟⡿⣏⣿⣿⣿⣯⣿⣗⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹⢿⣷⣄⠀⠀⠉⠛⠀⠀⠀⢸⣿⡇⠈⠉⠛⢧⣝⣟⣯⣿⣿⣿⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠿⣿⣦⣄⡀⠀⠀⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠉⠙⠯⣯⣿⣿⣷⣆⡀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠿⣿⣶⣶⣾⣿⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠑⠻⠯⣿⣇⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠛⠛⠿⠧⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠃⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠰⣶⣶⢦⣤⣤⣤⣄⣀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⣀⣀⣠⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣼⣿⣶⣿⣾⣿⣿⣿⣿⣿⣿⣶⣦⣤⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠙⣿⣿⣟⠛⠛⠛⠛⠛⠛⠛⠛⠛⠻⠿⠛⠛⠛⠛⠉⠉⠉⠙⠛⠛⠛⠿⠿⣿⣿⣿⣷⣦⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⢈⣻⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣐⣒⣲⡦⣠⣤⣀⠀⠀⠀⠀⠉⠙⠻⣿⣿⣿⣦⣄⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⢀⣴⣾⣿⣿⠿⠿⠿⠦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠙⣽⣿⣿⣿⣿⣿⣴⣤⣀⠀⠀⠀⠙⠻⣿⣿⣷⣄⠀⠀⠀⠀",
+            "⠀⠀⣠⣶⠿⠛⠉⠀⠀⠀⠀⠀⠀⠀⡀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⣀⣠⣄⣀⡈⠙⠩⠽⢻⣿⣿⣶⣀⠀⠀⠀⠈⢿⣿⣿⡆⠀⠀⠀",
+            "⢀⠼⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣯⡉⠙⠲⠦⣤⣌⣙⣻⣿⣿⣦⣤⣴⣿⣿⣿⡇⠀⠀⠀",
+            "⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠿⣿⣿⣿⣿⣿⣿⠿⠿⠛⠛⠋⠉⠉⠁⠈⠉⠻⣿⡄⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣤⣶⣶⣶⣶⣶⣶⣦⣬⣀⡀⠀⠉⠛⠻⠯⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢈⣿ ⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣶⣿⣿⣿⠿⠛⡉⠁⠐⠈⠀⠀⠀⠀⠈⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⣤⣤⣤⣴⣶⣾⣿⣿⣿⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣴⣿⣿⣿⣿⠯⠐⠀⠈⠀⠀⠀⠀⠀⠀⢀⣀⣤⣤⣤⣤⣀⡀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠿⣿⣿⡿⠃⣿⡇",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⣿⣿⣿⣿⣿⣶⣦⣀⠀⠀⠀⠀⠀⠀⢰⣿⡟⠋⠉⠉⠉⠙⣿⣿⠶⣦⣄⣀⠀⠀⠀⠀⠀⣠⣿⣿⣦⣿⠁",
+            "⠀⠀⠀⠀⠀⠀⠀⠐⠛⠛⠛⠛⠛⠿⠿⣿⣿⣿⣿⣦⡀⠀⠀⠀⢸⣿⠀⠀⠀⠀⠀⢀⠘⠏⠀⠺⣿⡿⠻⣶⣶⣶⡾⠟⠛⢩⣿⡏⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠿⣿⣿⣦⡀⠀⠸⣿⡶⠀⠀⠀⠀⠸⡏⠀⠀⠀⠛⠁⠀⣿⣯⡟⠀⠀⠀⢸⡟⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢻⣿⣿⣄⠀⢿⡇⠀⠀⠀⠀⠀⢷⣀⠀⠀⠀⠀⠀⢸⠏⠀⠀⠀⠀⠈⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣴⢿⣟⢿⣿⡆⠈⣿⣿⠋⠀⠀⠀⡞⣿⡄⠀⠀⣴⠀⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣜⣟⢽⢿⣿⣟⣿⣿⡀⠘⣷⡀⠀⣀⣾⡇⠘⠿⢷⣾⣿⠆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣰⣺⣿⣽⣿⣿⣿⣹⢿⣻⣿⡇⠀⠈⢿⣾⣿⣿⡷⠾⠟⣿⣿⡟⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣿⣿⣿⣿⣽⣻⣫⡼⠛⠉⠁⢸⣿⡇⠀⠀⠀⠛⠉⠀⠀⣠⣾⡿⠏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⠀⢀⣰⣾⣿⣿⣽⠽⠋⠉⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⢀⣠⣴⣿⠿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠀⠀⣸⣿⠽⠟⠊⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣾⣿⣷⣶⣶⣿⠿⠛⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+            "⠀⠀⠀⠀⠀⠘⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠼⠿⠛⠛⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
         ]
 
         # Spinning galaxy animation
@@ -3360,7 +3384,7 @@ def repl(config: dict, initial_prompt: str = None):
 
             if is_background and not config.get("_telegram_incoming"):
                 print(clr("\n\n[Background Event Triggered]", "yellow"))
-            config.pop("_telegram_incoming", None)
+            config["_in_telegram_turn"] = config.pop("_telegram_incoming", False)
 
             print(clr("\n╭─ CheetahClaws ", "dim") + clr("●", "green") + clr(" ─────────────────────────", "dim"))
 
@@ -3483,10 +3507,24 @@ def repl(config: dict, initial_prompt: str = None):
             # If this was a background task, we redraw the prompt for the user
             if is_background:
                 print(clr("\n[claude-code-local] » ", "yellow"), end="", flush=True)
+                
+                # If Telegram is connected and this background task didn't originate from a live Telegram query, 
+                # forward the alert to the Telegram user so they are notified!
+                is_tg_turn = config.get("_in_telegram_turn", False)
+                ttok = config.get("telegram_token")
+                tchat = config.get("telegram_chat_id")
+                if not is_tg_turn and ttok and tchat:
+                    if state.messages and state.messages[-1].get("role") == "assistant":
+                        ans_content = state.messages[-1].get("content", "")
+                        if isinstance(ans_content, list):
+                            parts = [b["text"] if isinstance(b, dict) else str(b) for b in ans_content if (isinstance(b, dict) and b.get("type") == "text") or isinstance(b, str)]
+                            ans_content = "\n".join(parts)
+                        if ans_content:
+                            _tg_send(ttok, tchat, ans_content)
 
         # Drain any AskUserQuestion prompts raised during this turn
         from tools import drain_pending_questions
-        drain_pending_questions()
+        drain_pending_questions(config)
 
         # ── Auto-snapshot after each turn ──
         try:

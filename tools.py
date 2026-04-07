@@ -795,7 +795,31 @@ def _ask_user_question(
     return "(no answer — timeout)"
 
 
-def drain_pending_questions() -> bool:
+def ask_input_interactive(prompt: str, config: dict) -> str:
+    """Prompt the user for input, routing to Telegram if in a Telegram turn."""
+    is_tg = config.get("_in_telegram_turn", False)
+    if is_tg and "_tg_send_callback" in config:
+        token = config.get("telegram_token")
+        chat_id = config.get("telegram_chat_id")
+        import re, threading
+        clean_prompt = re.sub(r'\x1b\[[0-9;]*m', '', prompt).strip()
+        config["_tg_send_callback"](token, chat_id, f"❓ *Input Required*\n{clean_prompt}")
+        
+        evt = threading.Event()
+        config["_tg_input_event"] = evt
+        evt.wait()
+        
+        text = config.pop("_tg_input_value", "").strip()
+        config.pop("_tg_input_event", None)
+        return text
+    else:
+        try:
+            return input(prompt)
+        except (KeyboardInterrupt, EOFError):
+            print()
+            return ""
+
+def drain_pending_questions(config: dict) -> bool:
     """
     Called by the REPL loop after each streaming turn.
     Renders pending questions and collects user input.
@@ -833,10 +857,8 @@ def drain_pending_questions() -> bool:
             print()
 
             while True:
-                try:
-                    raw = input("Your choice (number or text): ").strip()
-                except (EOFError, KeyboardInterrupt):
-                    raw = ""
+                raw = ask_input_interactive("Your choice (number or text): ", config).strip()
+                if not raw:
                     break
 
                 if raw.isdigit():
@@ -845,20 +867,18 @@ def drain_pending_questions() -> bool:
                         raw = options[idx - 1]["label"]
                         break
                     elif idx == 0 and allow_ft:
-                        try:
-                            raw = input("Your answer: ").strip()
-                        except (EOFError, KeyboardInterrupt):
-                            raw = ""
+                        raw = ask_input_interactive("Your answer: ", config).strip()
                         break
+                    else:
+                        print(f"Invalid option: {idx}")
+                        raw = ""
+                        continue
                 elif allow_ft:
                     break  # accept free text directly
         else:
             # Free-text only
             print()
-            try:
-                raw = input("Your answer: ").strip()
-            except (EOFError, KeyboardInterrupt):
-                raw = ""
+            raw = ask_input_interactive("Your answer: ", config).strip()
 
         result.append(raw)
         event.set()

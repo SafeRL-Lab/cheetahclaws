@@ -4,7 +4,7 @@ English | [中文](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/READM
 
 <div align="center">
   <a href="[https://github.com/SafeRL-Lab/Robust-Gymnasium](https://github.com/SafeRL-Lab/clawspring)">
-    <img src="https://github.com/SafeRL-Lab/clawspring/blob/main/docs/logo-5.png" alt="Logo" width="280"> 
+    <img src="docs/logo-7.png" alt="Logo" width="280"> 
   </a>
 
   
