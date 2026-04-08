@@ -73,7 +73,7 @@ English | [中文](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/READM
 ## 🔥🔥🔥 News (Pacific Time)
 
 
-- Apr 07, 2026 (**v3.05.54**): **Video factory major upgrade: custom script mode, PIL subtitle engine, web image search, wizard UX overhaul: Idea → Story → Final AI Video**.
+- Apr 07, 2026 (**v3.05.54**): **Video factory major upgrade: custom script mode, PIL subtitle engine, web image search, wizard UX overhaul: Idea → Story → Final AI Video**. Inspired by Kevin, with sincere thanks for his great help and inspiration in making this project better.
   - **Custom script mode** — new content mode in `/video` wizard. Choose "Custom script" to paste your own narration text: TTS reads it aloud, and the same text is automatically shown as subtitles (timed proportionally). No AI story generation step, no Whisper required. Ideal for product promos, personal narrations, and multilingual content.
   - **PIL subtitle rendering engine** — subtitles are now rendered with Pillow (PIL) + NotoSansSC font instead of the libass filter. This fixes non-Latin characters (Chinese, Japanese, Korean, Cyrillic, Arabic) showing as black boxes. The pipeline uses a two-pass approach: fast `-c:v copy` assembly, then PIL-rendered PNG overlays burned in via ffmpeg `filter_complex`. Falls back to no subtitles if PIL fails — never crashes the pipeline.
   - **Subtitle source selection** — new wizard step to choose subtitle mode: Auto (Whisper transcription), Story text (burn script/story as subtitles — works for all languages, no Whisper needed), Custom text (paste your own), or None.
