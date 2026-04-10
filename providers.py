@@ -649,7 +649,12 @@ def stream(
     if prov["type"] == "anthropic":
         yield from stream_anthropic(api_key, model_name, system, messages, tool_schemas, config)
     elif prov["type"] == "ollama":
-        base_url = prov.get("base_url", "http://localhost:11434")
+        import os as _os
+        base_url = (
+            _os.environ.get("OLLAMA_BASE_URL")
+            or config.get("ollama_base_url")
+            or prov.get("base_url", "http://localhost:11434")
+        )
         yield from stream_ollama(base_url, model_name, system, messages, tool_schemas, config)
     else:
         import os as _os

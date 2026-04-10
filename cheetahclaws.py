@@ -3226,10 +3226,15 @@ def setup_readline(history_file: Path):
         return
     try:
         readline.read_history_file(str(history_file))
-    except FileNotFoundError:
+    except (FileNotFoundError, PermissionError, OSError):
         pass
     readline.set_history_length(1000)
-    atexit.register(readline.write_history_file, str(history_file))
+    def _save_history():
+        try:
+            readline.write_history_file(str(history_file))
+        except Exception:
+            pass
+    atexit.register(_save_history)
 
     # Allow "/" to be part of a completion token so "/model" is one word
     delims = readline.get_completer_delims().replace("/", "")
