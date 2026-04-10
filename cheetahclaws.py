@@ -494,7 +494,11 @@ def _interactive_ollama_picker(config: dict) -> bool:
     """Prompt the user to select from locally available Ollama models."""
     from providers import PROVIDERS, list_ollama_models
     prov = PROVIDERS.get("ollama", {})
-    base_url = prov.get("base_url", "http://localhost:11434")
+    base_url = (
+        os.environ.get("OLLAMA_BASE_URL")
+        or config.get("ollama_base_url")
+        or prov.get("base_url", "http://localhost:11434")
+    )
     
     models = list_ollama_models(base_url)
     if not models:
