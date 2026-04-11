@@ -82,6 +82,15 @@ English | [中文](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/READM
 ## 🔥🔥🔥 News (Pacific Time)
 
  
+- Apr 11, 2026 (**v3.05.60**): **Slack bridge via Slack Web API**
+  - **Slack bridge (`/slack`)** (`cheetahclaws.py`) — `/slack <xoxb-token> <channel_id>` connects cheetahclaws to a Slack channel using the Slack Web API (no external packages required — stdlib `urllib` only). Polls `conversations.history` every 2 seconds for new messages; sends responses via `chat.postMessage`. A "⏳ Thinking…" placeholder is posted immediately and then updated in-place with the real reply when the model finishes.
+  - **Slash command passthrough** — send `/cost`, `/model gpt-4o`, `/clear`, etc. from Slack and they execute in cheetahclaws; results are sent back to the same channel.
+  - **Interactive menu routing** — permission prompts and interactive menus are routed to Slack; your next message is used as the selection input.
+  - **Auth check on start** — `auth.test` is called before starting the poll loop; invalid or revoked tokens are caught immediately with a clear error message.
+  - **Auto-start** — `slack_token` + `slack_channel` saved to `~/.cheetahclaws/config.json`; bridge starts automatically on every subsequent launch.
+  - **`/slack stop` / `/slack logout` / `/slack status`** — full lifecycle control; `/stop` sent from Slack also stops the bridge gracefully.
+  - **WeChat / Slack auto-start banner flags** — the startup banner now shows `wechat` and `slack` flags when the respective bridges are configured (previously only `telegram` was shown).
+
 - Apr 11, 2026 (**v3.05.57**): **WeChat bridge, tmux integration, shell escape, `max_tokens` fix, new OpenAI models**
   - **WeChat bridge (`/wechat`)** (`cheetahclaws.py`) — `/wechat login` authenticates with WeChat by scanning a QR code (same iLink Bot API used by the official WeixinClawBot / `@tencent-weixin/openclaw-weixin` plugin). After a one-time scan, `token` + `base_url` are saved to `~/.cheetahclaws/config.json` and the bridge auto-starts on every subsequent launch. The bridge runs a long-poll loop (`POST /ilink/bot/getupdates`, 35-second window) in a daemon thread — normal timeouts are handled transparently and do not trigger backoff or reconnect.
   - **context_token echo** — the iLink protocol requires each reply to include the sender's latest `context_token`. The bridge caches this per `user_id` in memory and echoes it automatically on every outbound message.
@@ -151,6 +160,7 @@ CheetahClaws: **A Lightweight** and **Easy-to-Use** Python Reimplementation of C
   * [SSJ Developer Mode](#ssj-developer-mode)
   * [Telegram Bridge](#telegram-bridge)
   * [WeChat Bridge](#wechat-bridge)
+  * [Slack Bridge](#slack-bridge)
   * [Video Content Factory](#video-content-factory)
   * [TTS Content Factory](#tts-content-factory)
   * [Tmux Integration](#tmux-integration)
@@ -215,6 +225,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 - **SSJ Developer Mode** — `/ssj` opens a persistent power menu with 10 workflow shortcuts: Brainstorm → TODO → Worker pipeline, expert debate, code review, README generation, commit helper, and more. Stays open between actions; supports `/command` passthrough.
 - **Telegram Bot Bridge** — `/telegram <token> <chat_id>` turns cheetahclaws into a Telegram bot: receive user messages, run the model, and send back responses — all from your phone. Slash commands pass through, and a typing indicator keeps the chat feeling live.
 - **WeChat Bridge** — `/wechat login` authenticates with WeChat via a QR code scan (the same iLink Bot API used by the official WeixinClawBot / `openclaw-weixin` plugin), then starts a long-poll bridge. Slash command passthrough, interactive menu routing, typing indicator, session auto-recovery, and per-peer `context_token` management all work out of the box.
+- **Slack Bridge** — `/slack <xoxb-token> <channel_id>` connects cheetahclaws to a Slack channel using the Slack Web API (stdlib only — no `slack_sdk` required). Polls `conversations.history` every 2 seconds; replies update an in-place "Thinking…" placeholder. Slash command passthrough, interactive menu routing, and auto-start on launch.
 - **Worker command** — `/worker` auto-implements pending tasks from `brainstorm_outputs/todo_list.txt`, marks each one done after completion, and supports task selection by number (e.g. `1,4,6`).
 - **Force quit** — 3× Ctrl+C within 2 seconds triggers immediate `os._exit(1)`, unblocking any frozen I/O.
 - **Proactive background monitoring** — `/proactive 5m` activates a sentinel daemon that wakes the agent automatically after a period of inactivity, enabling continuous monitoring loops, scheduled checks, or trading bots without user prompts.
@@ -241,7 +252,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Lines of code | ~245K | ~12K |
 | Primary focus | Personal life assistant across messaging channels | AI **coding** assistant / developer tool |
 | Architecture | Always-on Gateway daemon + companion apps | Zero-install terminal REPL |
-| Messaging channels | 20+ (WhatsApp · Telegram · Slack · Discord · Signal · iMessage · Matrix · WeChat · …) | Terminal + Telegram bridge + WeChat bridge (iLink) |
+| Messaging channels | 20+ (WhatsApp · Telegram · Slack · Discord · Signal · iMessage · Matrix · WeChat · …) | Terminal + Telegram bridge + WeChat bridge (iLink) + Slack bridge (Web API) |
 | Model providers | Multiple (cloud-first) | 7+ including full local support (Ollama · vLLM · LM Studio · …) |
 | Local / offline models | Limited | Full — Ollama, vLLM, any OpenAI-compatible endpoint |
 | Voice | Wake word · PTT · Talk Mode (macOS/iOS/Android) | Offline Whisper STT (local, no API key) |
@@ -342,6 +353,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Worker | `/worker [task#s]` reads `brainstorm_outputs/todo_list.txt`, implements each pending task with a dedicated model prompt, and marks it done (`- [x]`). Supports task selection (`/worker 1,4,6`), custom path (`--path`), and worker count limit (`--workers`). Detects and redirects accidental brainstorm `.md` paths. |
 | Telegram bridge | `/telegram <token> <chat_id>` starts a bot bridge: receive messages from Telegram, run the model, and reply — all from your phone. Typing indicator, slash command passthrough (including interactive menus), and auto-start on launch if configured. |
 | WeChat bridge | `/wechat login` authenticates via QR code scan (same as WeixinClawBot / openclaw-weixin plugin), then starts the iLink long-poll bridge. `context_token` echoed per peer, typing indicator, slash command passthrough, session expiry auto-recovery. Credentials saved for auto-start on next launch. |
+| Slack bridge | `/slack <xoxb-token> <channel_id>` connects to a Slack channel via the Web API (no external packages). Polls `conversations.history` every 2 s; replies update an in-place "Thinking…" placeholder. Slash command passthrough, interactive menu routing, auth validation on start, auto-start on next launch. |
 | Video factory | `/video [topic]` runs the full AI video pipeline: story generation (active model) → TTS narration (Edge/Gemini/ElevenLabs) → AI images (Gemini Web free or placeholders) → subtitle burn (Whisper) → FFmpeg assembly → final `.mp4`. 10 viral content niches, landscape or short format, zero-cost path available. |
 | TTS factory | `/tts` interactive wizard: AI writes script (or paste your own) → synthesize to MP3 in any voice style (narrator, newsreader, storyteller, ASMR, motivational, documentary, children, podcast, meditation, custom). Engine auto-selects: Gemini TTS → ElevenLabs → Edge TTS (always-free). CJK text auto-switches to a matching voice. |
 | Vision input | `/image` (or `/img`) captures the clipboard image and sends it to any vision-capable model — Ollama (`llava`, `gemma4`, `llama3.2-vision`) via native format, or cloud models (GPT-4o, Gemini 2.0 Flash, …) via OpenAI `image_url` multipart format. Requires `pip install cheetahclaws[vision]`; Linux also needs `xclip`. |
@@ -880,6 +892,11 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/wechat stop` | Stop the WeChat bridge |
 | `/wechat status` | Show running state and account info |
 | `/wechat logout` | Clear saved credentials and stop the bridge |
+| `/slack <token> <channel_id>` | Configure and start the Slack bridge |
+| `/slack` | Start with saved credentials |
+| `/slack stop` | Stop the Slack bridge |
+| `/slack status` | Show running state and channel |
+| `/slack logout` | Clear saved credentials and stop the bridge |
 | `/video [topic]` | AI video factory: story → voice → images → subtitles → `.mp4` |
 | `/video status` | Show video pipeline dependency availability |
 | `/video niches` | List all 10 viral content niches |
@@ -2093,6 +2110,81 @@ If `wechat_token` is set in `~/.cheetahclaws/config.json`, the bridge starts aut
 
 ---
 
+## Slack Bridge
+
+`/slack` connects cheetahclaws to a Slack channel via the **Slack Web API** — no external packages required, just a Bot User OAuth Token and a channel ID. Messages are polled every 2 seconds using `conversations.history`; replies update an in-place "⏳ Thinking…" placeholder so the conversation feels responsive.
+
+### Prerequisites
+
+1. Go to [https://api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → From scratch.
+2. **OAuth & Permissions** → add **Bot Token Scopes**:
+   - `channels:history` `chat:write` `groups:history` `im:history` `mpim:history` `channels:read`
+3. **Install to Workspace** → copy the **Bot User OAuth Token** (`xoxb-...`).
+4. Invite the bot to your target channel: `/invite @<bot_name>` in Slack.
+5. Copy the **Channel ID** (right-click channel → **Copy Link** → the `C...` segment, or via the channel's **About** panel).
+
+### Setup (one-time, ~2 minutes)
+
+```
+[myproject] ❯ /slack xoxb-12345-... C0123456789
+  ℹ Slack credentials saved (channel: C0123456789).
+  ℹ Slack authenticated as @cheetahclaws_bot
+  ✓ Slack bridge started.
+  ℹ Send a message in the configured Slack channel — it will be processed here.
+  ℹ Stop with /slack stop or send /stop in Slack.
+```
+
+Credentials are saved to `~/.cheetahclaws/config.json` and the bridge auto-starts on every subsequent launch — you only need to configure once.
+
+### How it works
+
+```
+Slack channel                    cheetahclaws terminal
+─────────────                    ──────────────────────────────────
+"List files here"      →         📩 Slack [U04ABZ]: List files here
+                                 [⏳ Thinking… posted to Slack]
+                                 ⚙ model processes query
+                       ←         "Here are the files: …"  (placeholder updated)
+```
+
+Every 2 seconds, cheetahclaws polls `GET conversations.history?oldest=<last_ts>`. When a message arrives, a `⏳ Thinking…` placeholder is posted immediately via `chat.postMessage`, then updated in-place with the real reply via `chat.update` once the model finishes.
+
+### Features
+
+- **No external packages** — uses only Python's stdlib `urllib`; no `slack_sdk` or `requests` needed.
+- **In-place reply update** — "⏳ Thinking…" placeholder is replaced with the actual response, keeping the channel tidy.
+- **Slash command passthrough** — send `/cost`, `/model gpt-4o`, `/clear`, etc. from Slack and they execute in cheetahclaws; results are sent back to the same channel.
+- **Interactive menu routing** — permission prompts and interactive menus route to Slack; your next message is used as the selection input.
+- **Auth validation on start** — `auth.test` is called before the poll loop; invalid tokens surface a clear error immediately.
+- **`/stop` or `/off`** sent from Slack stops the bridge gracefully.
+- **Message deduplication** — `ts` (Slack timestamp) dedup prevents double-processing.
+- **Error resilience** — after 5 consecutive connection failures the loop backs off for 30 s; auth errors (`invalid_auth`, `token_revoked`) stop the bridge with a clear message.
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `/slack <token> <channel_id>` | Configure and start the bridge |
+| `/slack` | Start with saved credentials |
+| `/slack status` | Show running state and channel ID |
+| `/slack stop` | Stop the bridge |
+| `/slack logout` | Clear saved credentials and stop the bridge |
+
+### Auto-start
+
+If `slack_token` and `slack_channel` are set in `~/.cheetahclaws/config.json`, the bridge starts automatically on every cheetahclaws launch:
+
+```
+╭─ CheetahClaws ────────────────────────────────╮
+│  Model:       claude-opus-4-6
+│  Permissions: auto   flags: [slack]
+│  Type /help for commands, Ctrl+C to cancel    │
+╰───────────────────────────────────────────────╯
+✓ Slack bridge started.
+```
+
+---
+
 ## Video Content Factory
 
 <div align=center>
@@ -2926,7 +3018,7 @@ From that point on, every `/exit` or `/quit` automatically uploads the session b
 
 ```
 cheetahclaws/
-├── cheetahclaws.py        # Entry point: REPL + slash commands + diff rendering + Rich Live streaming + proactive sentinel daemon + SSJ mode + Telegram bridge + WeChat bridge + Worker command
+├── cheetahclaws.py        # Entry point: REPL + slash commands + diff rendering + Rich Live streaming + proactive sentinel daemon + SSJ mode + Telegram bridge + WeChat bridge + Slack bridge + Worker command
 ├── agent.py              # Agent loop: streaming, tool dispatch, compaction
 ├── providers.py          # Multi-provider: Anthropic, OpenAI-compat streaming
 ├── tools.py              # Core tools (Read/Write/Edit/Bash/Glob/Grep/Web/NotebookEdit/GetDiagnostics) + registry wiring
