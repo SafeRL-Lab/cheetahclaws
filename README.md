@@ -539,13 +539,15 @@ pip install ".[all]"                # everything above
 # Install uv (if not already installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Clone and install
+# Clone and install with all optional dependencies (voice, vision, autosuggest, browser, files, OCR, trading etc.)
 git clone https://github.com/SafeRL-Lab/cheetahclaws.git
 cd cheetahclaws
-uv tool install .
+uv tool install ".[all]"
 ```
 
-To update: `uv tool install . --reinstall`
+Prefer a minimal install? Use `uv tool install .` (core only) and add extras later, e.g. `uv tool install ".[voice,vision,autosuggest]" --reinstall`.
+
+To update: `uv tool install ".[all]" --reinstall`
 
 To uninstall: `uv tool uninstall cheetahclaws`
 
@@ -604,9 +606,8 @@ Get your API key at [aistudio.google.com](https://aistudio.google.com).
 ```bash
 export GEMINI_API_KEY=AIza...
 
-cheetahclaws --model gemini/gemini-2.0-flash
-cheetahclaws --model gemini/gemini-1.5-pro
-cheetahclaws --model gemini/gemini-2.5-pro-preview-03-25
+cheetahclaws --model gemini/gemini-3-flash-preview
+cheetahclaws --model gemini/gemini-3.1-pro-preview
 ```
 
 ### Kimi (Moonshot AI)
@@ -1105,10 +1106,10 @@ Use `uv tool install` — it creates an isolated environment and puts `cheetahcl
 
 ```bash
 cd cheetahclaws
-uv tool install .
+uv tool install ".[all]"
 ```
 
-After that, just run `cheetahclaws` from any directory. To update after pulling changes, run `uv tool install . --reinstall`.
+After that, just run `cheetahclaws` from any directory. To update after pulling changes, run `uv tool install ".[all]" --reinstall`. For a minimal install, use `uv tool install .` and add extras as needed.
 
 **Q: How do I set up voice input?**
 
