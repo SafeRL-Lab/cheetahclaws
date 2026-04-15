@@ -3,7 +3,11 @@ anthropic>=0.40.0
 openai>=1.30.0
 httpx>=0.27.0
 rich>=13.0.0
-pyte>=0.8.0
+pyte>=0.8.0            # terminal emulator for !claude / !python bridge rendering
+
+# Optional — install to enable typing-time slash-command autosuggest.
+# Also available as an extra: `pip install cheetahclaws[autosuggest]`.
+prompt_toolkit>=3.0.43
 
 # ── Optional dependencies ────────────────────────────────────────────────
 # Voice input:  pip install cheetahclaws[voice]

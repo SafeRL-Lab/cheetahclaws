@@ -5,6 +5,17 @@ import difflib
 from pathlib import Path
 
 
+def _read_preserving_newlines(p: Path) -> str:
+    """Read a text file without newline translation.
+
+    Path.read_text gained a `newline=` parameter only in Python 3.14; the
+    project supports 3.10+, so we use open() which has accepted `newline=`
+    since the pathlib API was introduced.
+    """
+    with p.open(encoding="utf-8", errors="replace", newline="") as f:
+        return f.read()
+
+
 # ── Diff helpers ──────────────────────────────────────────────────────────
 
 def generate_unified_diff(old: str, new: str, filename: str,
@@ -37,8 +48,7 @@ def _read(file_path: str, limit: int = None, offset: int = None) -> str:
     if p.is_dir():
         return f"Error: {file_path} is a directory"
     try:
-        lines = p.read_text(encoding="utf-8", errors="replace",
-                            newline="").splitlines(keepends=True)
+        lines = _read_preserving_newlines(p).splitlines(keepends=True)
         start = offset or 0
         chunk = lines[start:start + limit] if limit else lines[start:]
         if not chunk:
@@ -54,8 +64,7 @@ def _write(file_path: str, content: str) -> str:
     p = Path(file_path)
     try:
         is_new      = not p.exists()
-        old_content = ("" if is_new
-                       else p.read_text(encoding="utf-8", errors="replace", newline=""))
+        old_content = "" if is_new else _read_preserving_newlines(p)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8", newline="")
         if is_new:
@@ -77,7 +86,7 @@ def _edit(file_path: str, old_string: str, new_string: str,
     if not p.exists():
         return f"Error: file not found: {file_path}"
     try:
-        content = p.read_text(encoding="utf-8", errors="replace", newline="")
+        content = _read_preserving_newlines(p)
 
         crlf_count = content.count("\r\n")
         lf_count   = content.count("\n")

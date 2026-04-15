@@ -18,8 +18,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-voice  = ["sounddevice"]
-vision = ["Pillow"]
+voice       = ["sounddevice"]
+vision      = ["Pillow"]
+autosuggest = ["prompt_toolkit>=3.0.43"]
 
 [project.scripts]
 cheetahclaws = "cheetahclaws:main"
