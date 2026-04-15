@@ -115,11 +115,7 @@ English | [中文](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/READM
   - **`CONTRIBUTING.md`** — new contributor guide covering project structure, architecture (config vs RuntimeContext, tool/plugin/hooks systems), development conventions, and a PR checklist. Addresses recurring PR issues where contributors misunderstood the plugin loader (`TOOL_DEFS` vs `register_tool()`), hooks system (no event-based hooks), and runtime state management.
   - **Version bumped to 3.05.69.**
 
-- Apr 14, 2026 (**v3.05.68**): **CI/CD, config/runtime separation, and module reorganization**
-  - **GitHub Actions CI** (`.github/workflows/ci.yml`) — added automated testing on every push and PR: `pytest` across Python 3.10–3.13, plus a package smoke test that installs via `pip install .` and verifies all modules are importable. No more silent packaging regressions.
-  - **Config/runtime separation** (`runtime.py`) — runtime state (`_proactive_thread`, `_pending_image`, `_plan_file`, bridge turn flags, etc.) moved out of the `config` dict into `RuntimeContext` fields. The `config` dict now holds only serializable user configuration. Added `runtime.get_ctx(config)` helper for easy access. Migrated 18 files; 327 tests pass.
-  - **Tool module reorganization** — 7 top-level `tools_*.py` files consolidated into a `tools/` package (`tools/security.py`, `tools/fs.py`, `tools/shell.py`, `tools/web.py`, `tools/notebook.py`, `tools/diagnostics.py`, `tools/interaction.py`). All existing `from tools import ...` code continues to work unchanged via `tools/__init__.py`.
-  - **Version bumped to 3.05.68.**
+
 
 
 
