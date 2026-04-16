@@ -87,13 +87,18 @@ def stream_auxiliary(
     """
     model = get_auxiliary_model(config)
     text = ""
-    for event in providers.stream(
-        model=model,
-        system=system,
-        messages=messages,
-        tool_schemas=[],
-        config=config,
-    ):
-        if isinstance(event, providers.TextChunk):
-            text += event.text
+    try:
+        for event in providers.stream(
+            model=model,
+            system=system,
+            messages=messages,
+            tool_schemas=[],
+            config=config,
+        ):
+            if isinstance(event, providers.TextChunk):
+                text += event.text
+    except Exception:
+        # Auxiliary model failure should not crash the caller.
+        # Return whatever text was collected so far.
+        pass
     return text

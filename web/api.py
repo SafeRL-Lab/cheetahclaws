@@ -204,6 +204,7 @@ class ChatSession:
 
         # Message history for UI replay on reconnect
         self.messages: list[dict] = []
+        self._msg_lock = threading.Lock()
 
         self._init_runtime()
 
@@ -307,7 +308,7 @@ class ChatSession:
         # Clear event buffer for fresh turn — don't replay stale events
         with self._sub_lock:
             self._event_buffer.clear()
-        self.messages.append({"role": "user", "content": prompt})
+        self._append_msg({"role": "user", "content": prompt})
         self._broadcast(ChatEvent("status", {"state": "running"}))
 
         def _run():
@@ -338,7 +339,7 @@ class ChatSession:
         import re as _re
         self.last_active = time.monotonic()
 
-        self.messages.append({"role": "user", "content": line})
+        self._append_msg({"role": "user", "content": line})
 
         # Parse command and args
         cmd_parts = line[1:].split(None, 1)
@@ -517,7 +518,7 @@ class ChatSession:
         output = _re.sub(r'\x1b\[[0-9;]*m', '', output)
 
         if output:
-            self.messages.append({"role": "assistant", "content": output})
+            self._append_msg({"role": "assistant", "content": output})
             self._broadcast(ChatEvent("command_result", {
                 "command": line, "output": output,
             }))
@@ -649,7 +650,7 @@ class ChatSession:
 
         output = _re.sub(r'\x1b\[[0-9;]*m', '', capture.getvalue().strip())
         if output:
-            self.messages.append({"role": "assistant", "content": output})
+            self._append_msg({"role": "assistant", "content": output})
             self._broadcast(ChatEvent("command_result", {
                 "command": line, "output": output,
             }))
@@ -709,13 +710,19 @@ class ChatSession:
                     # Block until browser responds
                     evt = threading.Event()
                     ctx.web_input_event = evt
-                    if evt.wait(timeout=300):
-                        val = ctx.web_input_value.strip().lower()
-                        event.granted = val in ("y", "yes", "true", "1")
-                    else:
-                        event.granted = False
-                    ctx.web_input_event = None
-                    ctx.web_input_value = ""
+                    try:
+                        if evt.wait(timeout=300):
+                            val = ctx.web_input_value.strip().lower()
+                            event.granted = val in ("y", "yes", "true", "1")
+                        else:
+                            event.granted = False
+                            self._broadcast(ChatEvent("error", {
+                                "message": "Permission request timed out (5 min)",
+                            }))
+                    finally:
+                        # Always clean up — prevents dangling event objects
+                        ctx.web_input_event = None
+                        ctx.web_input_value = ""
                     self._broadcast(ChatEvent("permission_response", {
                         "granted": event.granted,
                     }))
@@ -743,7 +750,7 @@ class ChatSession:
             msg: dict = {"role": "assistant", "content": final_text}
             if tool_calls:
                 msg["tool_calls"] = tool_calls
-            self.messages.append(msg)
+            self._append_msg(msg)
 
         except Exception as exc:
             self._broadcast(ChatEvent("error", {"message": str(exc)}))
@@ -766,8 +773,13 @@ class ChatSession:
 
     # ── Introspection ──────────────────────────────────────────────────
 
+    def _append_msg(self, msg: dict):
+        with self._msg_lock:
+            self.messages.append(msg)
+
     def get_messages(self) -> list[dict]:
-        return list(self.messages)
+        with self._msg_lock:
+            return list(self.messages)
 
     def get_safe_config(self) -> dict:
         result = {k: self.config.get(k) for k in _SAFE_CONFIG_KEYS

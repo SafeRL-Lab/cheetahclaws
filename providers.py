@@ -696,7 +696,9 @@ def stream_ollama(
         ) from e
     except urllib.error.HTTPError as e:
         if e.code == 500 and "tools" in payload:
-            # Model doesn't support tool calling — retry without tools
+            # Model doesn't support tool calling — retry without tools.
+            # Close the error response before retrying.
+            e.close()
             print(
                 f"\n\033[33m[warn] {model} does not support tool calling."
                 " Retrying in chat-only mode (no file editing, search, etc.).\033[0m"

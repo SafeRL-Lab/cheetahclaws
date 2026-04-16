@@ -353,7 +353,7 @@ def execute_tool(
             return True
         if ask_permission:
             return ask_permission(desc)
-        return True
+        return False  # deny by default when no permission handler is set
 
     if name == "Write":
         if not _check(f"Write to {inputs['file_path']}"):

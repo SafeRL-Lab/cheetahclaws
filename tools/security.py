@@ -17,9 +17,19 @@ _SAFE_PREFIXES = (
 )
 
 
+_CHAIN_OPERATORS = (";", "&&", "||", "|", "`", "$(", "\n")
+
+
 def _is_safe_bash(cmd: str) -> bool:
-    """Return True if cmd is read-only and never needs a permission prompt."""
+    """Return True if cmd is read-only and never needs a permission prompt.
+
+    Rejects commands that contain shell chaining operators (;, &&, ||, |,
+    backticks, $(…)) — these could execute arbitrary code after a safe prefix.
+    """
     c = cmd.strip()
+    # Reject any command that chains multiple commands
+    if any(op in c for op in _CHAIN_OPERATORS):
+        return False
     return any(c.startswith(p) for p in _SAFE_PREFIXES)
 
 

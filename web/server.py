@@ -110,10 +110,11 @@ class _PtySession:
 
     def write(self, data: bytes) -> None:
         if not self.closed:
-            try:
-                os.write(self.master_fd, data)
-            except OSError:
-                pass
+            with self.lock:
+                try:
+                    os.write(self.master_fd, data)
+                except OSError:
+                    pass
 
     def resize(self, rows: int, cols: int) -> None:
         if self.closed:

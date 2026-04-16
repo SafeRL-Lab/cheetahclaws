@@ -99,7 +99,10 @@ def run(
         assistant_turn: AssistantTurn | None = None
 
         # Compact context if approaching window limit
-        maybe_compact(state, config)
+        try:
+            maybe_compact(state, config)
+        except Exception as _compact_err:
+            _log.warn("compact_failed", error=str(_compact_err))
 
         # ── Quota check — before spending tokens ──────────────────────────
         try:

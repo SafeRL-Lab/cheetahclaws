@@ -93,12 +93,11 @@ def _notebook_edit(
         if idx is None:
             return f"Error: cell '{cell_id}' not found"
         cells.pop(idx)
-        nb["cells"] = cells
-        p.write_text(json.dumps(nb, indent=1, ensure_ascii=False), encoding="utf-8")
-        return f"Deleted cell '{cell_id}' from {notebook_path}"
     else:
         return f"Error: unknown edit_mode '{edit_mode}' — use replace, insert, or delete"
 
     nb["cells"] = cells
     p.write_text(json.dumps(nb, indent=1, ensure_ascii=False), encoding="utf-8")
+    if edit_mode == "delete":
+        return f"Deleted cell '{cell_id}' from {notebook_path}"
     return f"NotebookEdit({edit_mode}) applied to cell '{cell_id}' in {notebook_path}"
