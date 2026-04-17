@@ -1,3 +1,4 @@
+# [desc] Multi-agent tool registrations: Agent spawn, SendMessage, CheckAgentResult, ListAgentTasks, ListAgentTypes [/desc]
 """Multi-agent tool registrations.
 
 Registers the following tools into the central tool_registry:

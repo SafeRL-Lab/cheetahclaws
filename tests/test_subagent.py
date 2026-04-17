@@ -1,164 +1,137 @@
-"""Tests for multi_agent package split (PR5).
-
-Verifies that the 3-module split (definitions, manager, task) works correctly
-and the backward-compat shim re-exports everything.
-"""
-
-import textwrap
-from pathlib import Path
+# [desc] Tests for SubAgentManager: spawn, wait, cancel, depth limits, and result extraction [/desc]
+"""Tests for the sub-agent system (subagent.py)."""
+import time
+import threading
 
 import pytest
 
-from multi_agent.definitions import (
-    AgentDefinition,
-    _parse_agent_md,
-    get_agent_definition,
-    load_agent_definitions,
-)
-from multi_agent.manager import SubAgentManager
-from multi_agent.task import SubAgentTask, TaskStatus, _extract_final_text
+from multi_agent.subagent import SubAgentManager, SubAgentTask, _extract_final_text
 
 
-# --- definitions.py tests ---
+# ── Mock for _agent_run ──────────────────────────────────────────────────
+
+def _make_mock_agent_run(sleep_per_iter=0.05, iters=3):
+    """Return a mock _agent_run that simulates work and checks cancellation."""
+
+    def mock_agent_run(prompt, state, config, system_prompt, depth=0, cancel_check=None):
+        for i in range(iters):
+            if cancel_check and cancel_check():
+                return
+            time.sleep(sleep_per_iter)
+        # Append an assistant message to state
+        state.messages.append({
+            "role": "assistant",
+            "content": f"Result for: {prompt}",
+            "tool_calls": [],
+        })
+        # Yield a TurnDone-like event (generator protocol)
+        yield None
+
+    return mock_agent_run
 
 
-def test_builtin_agents_loaded():
-    agents = load_agent_definitions(config_dir=Path("nonexistent_dir"))
-    assert "general-purpose" in agents
-    assert "coder" in agents
-    assert "reviewer" in agents
-    assert "researcher" in agents
-    assert "tester" in agents
+def _make_slow_mock(sleep_per_iter=0.2, iters=10):
+    """Return a slow mock for cancellation testing."""
+    return _make_mock_agent_run(sleep_per_iter=sleep_per_iter, iters=iters)
 
 
-def test_get_agent_definition_valid():
-    defn = get_agent_definition("coder", config_dir=Path("nonexistent_dir"))
-    assert defn.name == "coder"
-    assert isinstance(defn.tools, list)
-    assert "Read" in defn.tools
+@pytest.fixture
+def manager(monkeypatch):
+    """Create a SubAgentManager with mocked _agent_run."""
+    mock = _make_mock_agent_run()
+    monkeypatch.setattr("multi_agent.subagent._agent_run", mock)
+    mgr = SubAgentManager(max_concurrent=3, max_depth=3)
+    yield mgr
+    mgr.shutdown()
 
 
-def test_get_agent_definition_invalid():
-    with pytest.raises(ValueError, match="Unknown agent type"):
-        get_agent_definition("nonexistent_type", config_dir=Path("nonexistent_dir"))
+@pytest.fixture
+def slow_manager(monkeypatch):
+    """Create a SubAgentManager with a slow mock for cancel testing."""
+    mock = _make_slow_mock()
+    monkeypatch.setattr("multi_agent.subagent._agent_run", mock)
+    mgr = SubAgentManager(max_concurrent=3, max_depth=3)
+    yield mgr
+    mgr.shutdown()
 
 
-def test_parse_agent_md(tmp_path):
-    md = tmp_path / "custom.md"
-    md.write_text(textwrap.dedent("""\
-        ---
-        tools: Read, Write, Bash
-        model: gpt-4
-        description: A custom agent
-        ---
-        You are a custom agent for testing.
-    """), encoding="utf-8")
-    defn = _parse_agent_md(md)
-    assert defn.name == "custom"
-    assert defn.tools == ["Read", "Write", "Bash"]
-    assert defn.model == "gpt-4"
-    assert defn.description == "A custom agent"
-    assert "custom agent for testing" in defn.system_prompt
+# ── Tests ────────────────────────────────────────────────────────────────
+
+class TestSpawnAndWait:
+    def test_spawn_and_wait_completes(self, manager):
+        task = manager.spawn("hello", {}, "system")
+        result_task = manager.wait(task.id, timeout=5)
+        assert result_task is not None
+        assert result_task.status == "completed"
+        assert result_task.result == "Result for: hello"
+
+    def test_spawn_returns_immediately(self, manager):
+        task = manager.spawn("hello", {}, "system")
+        # Task should be pending or running, not yet completed
+        assert task.status in ("pending", "running")
 
 
-def test_parse_agent_md_no_frontmatter(tmp_path):
-    md = tmp_path / "simple.md"
-    md.write_text("Just a system prompt.", encoding="utf-8")
-    defn = _parse_agent_md(md)
-    assert defn.name == "simple"
-    assert defn.system_prompt == "Just a system prompt."
-    assert defn.tools == []
+class TestListTasks:
+    def test_list_tasks(self, manager):
+        t1 = manager.spawn("task1", {}, "system")
+        t2 = manager.spawn("task2", {}, "system")
+        tasks = manager.list_tasks()
+        task_ids = [t.id for t in tasks]
+        assert t1.id in task_ids
+        assert t2.id in task_ids
+        assert len(tasks) == 2
 
 
-def test_custom_agents_loaded_from_dir(tmp_path):
-    agents_dir = tmp_path / "agents"
-    agents_dir.mkdir()
-    (agents_dir / "mybot.md").write_text("---\ndescription: My bot\n---\nHello!", encoding="utf-8")
-    agents = load_agent_definitions(config_dir=tmp_path)
-    assert "mybot" in agents
-    assert agents["mybot"].description == "My bot"
-    assert "general-purpose" in agents  # builtins still there
+class TestCancel:
+    def test_cancel_running_task(self, slow_manager):
+        task = slow_manager.spawn("slow task", {}, "system")
+        # Wait briefly to ensure the task starts running
+        time.sleep(0.1)
+        assert task.status == "running"
+        success = slow_manager.cancel(task.id)
+        assert success is True
+        # Wait for the task to actually finish
+        slow_manager.wait(task.id, timeout=5)
+        assert task.status == "cancelled"
 
 
-# --- task.py tests ---
+class TestDepthLimit:
+    def test_spawn_at_max_depth_fails(self, manager):
+        task = manager.spawn("deep", {}, "system", depth=3)
+        assert task.status == "failed"
+        assert "Max depth" in task.result
 
 
-def test_extract_final_text_simple():
-    text = "line1\nline2\nline3\n"
-    result = _extract_final_text(text)
-    assert "line3" in result
+class TestGetResult:
+    def test_get_result_completed(self, manager):
+        task = manager.spawn("hello", {}, "system")
+        manager.wait(task.id, timeout=5)
+        result = manager.get_result(task.id)
+        assert result == "Result for: hello"
+
+    def test_get_result_unknown_id(self, manager):
+        result = manager.get_result("nonexistent_id")
+        assert result is None
 
 
-def test_extract_final_text_with_blanks():
-    text = "intro\n\nresult line 1\nresult line 2\n"
-    result = _extract_final_text(text)
-    assert "result line 1" in result
-    assert "result line 2" in result
+class TestExtractFinalText:
+    def test_extracts_last_assistant(self):
+        messages = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "first"},
+            {"role": "user", "content": "more"},
+            {"role": "assistant", "content": "second"},
+        ]
+        assert _extract_final_text(messages) == "second"
+
+    def test_returns_none_for_empty(self):
+        assert _extract_final_text([]) is None
+
+    def test_returns_none_no_assistant(self):
+        messages = [{"role": "user", "content": "hi"}]
+        assert _extract_final_text(messages) is None
 
 
-def test_extract_final_text_empty():
-    assert _extract_final_text("") == ""
-
-
-def test_task_status_enum():
-    assert TaskStatus.PENDING.value == "pending"
-    assert TaskStatus.RUNNING.value == "running"
-    assert TaskStatus.COMPLETED.value == "completed"
-    assert TaskStatus.FAILED.value == "failed"
-
-
-def test_task_creation():
-    task = SubAgentTask(prompt="Do something", agent_type="coder", name="test-agent")
-    assert len(task.id) == 12
-    assert task.prompt == "Do something"
-    assert task.agent_type == "coder"
-    assert task.name == "test-agent"
-    assert task.status == TaskStatus.PENDING
-
-
-def test_task_messaging():
-    task = SubAgentTask(prompt="test")
-    task.send_message("hello")
-    task.send_message("world")
-    msgs = task.get_pending_messages()
-    assert msgs == ["hello", "world"]
-    assert task.get_pending_messages() == []  # cleared
-
-
-def test_task_to_dict():
-    task = SubAgentTask(prompt="Do X", agent_type="coder", name="bob")
-    d = task.to_dict()
-    assert d["name"] == "bob"
-    assert d["agent_type"] == "coder"
-    assert d["status"] == "pending"
-
-
-# --- manager.py tests ---
-
-
-def test_manager_creation():
-    mgr = SubAgentManager(config_dir=Path("nonexistent"))
-    assert mgr._tasks == {}
-
-
-def test_manager_list_agent_types():
-    mgr = SubAgentManager(config_dir=Path("nonexistent"))
-    types = mgr.list_agent_types()
-    names = [t["name"] for t in types]
-    assert "general-purpose" in names
-    assert "coder" in names
-
-
-# --- backward compat shim ---
-
-
-def test_backward_compat_imports():
-    """The subagent.py shim re-exports all public names."""
-    import subagent
-    assert hasattr(subagent, "AgentDefinition")
-    assert hasattr(subagent, "SubAgentTask")
-    assert hasattr(subagent, "SubAgentManager")
-    assert hasattr(subagent, "load_agent_definitions")
-    assert hasattr(subagent, "get_agent_definition")
-    assert hasattr(subagent, "_extract_final_text")
-    assert hasattr(subagent, "_agent_run")
+class TestWaitUnknown:
+    def test_wait_unknown_returns_none(self, manager):
+        assert manager.wait("nonexistent") is None

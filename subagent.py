@@ -1,13 +1,12 @@
-"""Backward-compatibility shim — real implementation is in multi_agent/."""
-from multi_agent.definitions import (  # noqa: F401
+# [desc] Backward-compatibility shim re-exporting all symbols from multi_agent/subagent.py [/desc]
+"""Backward-compatibility shim — real implementation is in multi_agent/subagent.py."""
+from multi_agent.subagent import (  # noqa: F401
     AgentDefinition,
+    SubAgentTask,
+    SubAgentManager,
     load_agent_definitions,
     get_agent_definition,
-    _BUILTIN_AGENTS,
-)
-from multi_agent.manager import SubAgentManager  # noqa: F401
-from multi_agent.task import (  # noqa: F401
-    SubAgentTask,
     _extract_final_text,
     _agent_run,
+    _BUILTIN_AGENTS,
 )
