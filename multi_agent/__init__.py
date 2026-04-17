@@ -1,23 +1,18 @@
-"""Multi-agent package for cheetahclaws.
+"""Multi-agent orchestration for cheetahclaws."""
 
-Provides:
-  - AgentDefinition  — typed agent definition (name, system_prompt, model, tools)
-  - SubAgentTask     — lifecycle-tracked task
-  - SubAgentManager  — thread-pool manager for spawning agents
-  - load_agent_definitions / get_agent_definition — agent registry
-"""
-from .subagent import (
+from .definitions import (
     AgentDefinition,
-    SubAgentTask,
-    SubAgentManager,
-    load_agent_definitions,
     get_agent_definition,
+    load_agent_definitions,
 )
+from .manager import SubAgentManager
+from .task import SubAgentTask, TaskStatus
 
 __all__ = [
     "AgentDefinition",
-    "SubAgentTask",
     "SubAgentManager",
-    "load_agent_definitions",
+    "SubAgentTask",
+    "TaskStatus",
     "get_agent_definition",
+    "load_agent_definitions",
 ]
