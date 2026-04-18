@@ -11,7 +11,7 @@ from tool_registry import get_tool_schemas
 from tools import execute_tool
 import tools as _tools_init  # ensure built-in tools are registered on import
 from providers import stream, AssistantTurn, TextChunk, ThinkingChunk, detect_provider
-from compaction import maybe_compact, estimate_tokens, get_context_limit, compact_messages
+from compaction import maybe_compact, estimate_tokens, get_context_limit, compact_messages, sanitize_history
 import logging_utils as _log
 import quota as _quota
 from circuit_breaker import CircuitOpenError as _CircuitOpenError
@@ -103,6 +103,17 @@ def run(
             maybe_compact(state, config)
         except Exception as _compact_err:
             _log.warn("compact_failed", error=str(_compact_err))
+
+        # Enforce tool_calls ↔ tool-response pairing before every API call.
+        # Defends against compaction artifacts, crashed tool execs, or any
+        # other source of orphan 'tool' messages that OpenAI-compatible
+        # providers (DeepSeek et al.) reject with a 400.
+        _before_len = len(state.messages)
+        state.messages = sanitize_history(state.messages)
+        if len(state.messages) != _before_len:
+            _log.warn("history_sanitized",
+                      session_id=session_id,
+                      removed=_before_len - len(state.messages))
 
         # ── Quota check — before spending tokens ──────────────────────────
         try:

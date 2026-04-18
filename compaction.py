@@ -105,17 +105,41 @@ def snip_old_tool_results(
 
 # ── Layer 2: Auto-compact ─────────────────────────────────────────────────
 
+def _respect_tool_pairs(messages: list, split: int) -> int:
+    """Advance split so it never falls inside a tool_calls → tool-response block.
+
+    OpenAI-compatible APIs (DeepSeek, etc.) reject any 'tool' message that is
+    not preceded by an 'assistant' with matching tool_calls. If the split lands
+    between an assistant(tool_calls) and its tool responses, the recent half
+    would contain orphan tool messages after compaction.
+    """
+    n = len(messages)
+    if split <= 0 or split >= n:
+        return split
+    prev = messages[split - 1]
+    if prev.get("role") == "assistant" and (prev.get("tool_calls") or []):
+        j = split
+        while j < n and messages[j].get("role") == "tool":
+            j += 1
+        split = j
+    while split < n and messages[split].get("role") == "tool":
+        split += 1
+    return split
+
+
 def find_split_point(messages: list, keep_ratio: float = 0.3) -> int:
     """Find index that splits messages so ~keep_ratio of tokens are in the recent portion.
 
     Walks backwards from end, accumulating token estimates, and returns the
-    index where the recent portion reaches ~keep_ratio of total tokens.
+    index where the recent portion reaches ~keep_ratio of total tokens. The
+    index is then adjusted so it never cuts a tool-call response block.
 
     Args:
         messages: list of message dicts
         keep_ratio: fraction of tokens to keep in the recent portion
     Returns:
-        split index (messages[:idx] = old, messages[idx:] = recent)
+        split index (messages[:idx] = old, messages[idx:] = recent).
+        Returns 0 if no safe split exists (caller should skip compaction).
     """
     if not messages:
         return 0
@@ -123,11 +147,78 @@ def find_split_point(messages: list, keep_ratio: float = 0.3) -> int:
     total = estimate_tokens(messages)
     target = int(total * keep_ratio)
     running = 0
+    raw = 0
     for i in range(len(messages) - 1, -1, -1):
         running += estimate_tokens([messages[i]])
         if running >= target:
-            return i
-    return 0
+            raw = i
+            break
+    adjusted = _respect_tool_pairs(messages, raw)
+    if adjusted >= len(messages):
+        return 0
+    return adjusted
+
+
+def sanitize_history(messages: list) -> list:
+    """Enforce the tool-calls ↔ tool-response invariant required by OpenAI-compatible APIs.
+
+    Walks the list in order maintaining a set of pending tool_call_ids from the
+    most recent assistant(tool_calls). Drops any 'tool' message whose
+    tool_call_id is not in that set (orphan). When a non-tool message arrives
+    with pending ids still open, strips those unanswered tool_calls from the
+    preceding assistant message (so DeepSeek won't reject it).
+
+    Returns a new list; the input is not mutated.
+    """
+    cleaned: list = []
+    pending: set[str] = set()
+
+    def _strip_unanswered():
+        if not pending:
+            return
+        # Walk back past any trailing tool messages to reach the assistant that owns them.
+        target = None
+        for k in range(len(cleaned) - 1, -1, -1):
+            role_k = cleaned[k].get("role")
+            if role_k == "tool":
+                continue
+            if role_k == "assistant":
+                target = k
+            break
+        if target is None:
+            return
+        prev = cleaned[target]
+        tcs = prev.get("tool_calls") or []
+        kept = [tc for tc in tcs if tc.get("id") not in pending]
+        if len(kept) == len(tcs):
+            return
+        new_prev = dict(prev)
+        if kept:
+            new_prev["tool_calls"] = kept
+        else:
+            new_prev.pop("tool_calls", None)
+            if new_prev.get("content") in (None, ""):
+                new_prev["content"] = ""
+        cleaned[target] = new_prev
+
+    for m in messages:
+        role = m.get("role")
+        if role == "tool":
+            tid = m.get("tool_call_id")
+            if tid in pending:
+                cleaned.append(m)
+                pending.discard(tid)
+            continue
+        _strip_unanswered()
+        pending = set()
+        if role == "assistant":
+            tcs = m.get("tool_calls") or []
+            if tcs:
+                pending = {tc["id"] for tc in tcs if tc.get("id")}
+        cleaned.append(m)
+
+    _strip_unanswered()
+    return cleaned
 
 
 def compact_messages(messages: list, config: dict, focus: str = "") -> list:

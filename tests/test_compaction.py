@@ -7,7 +7,14 @@ import os
 # Ensure project root is on sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from compaction import estimate_tokens, get_context_limit, snip_old_tool_results, find_split_point
+from compaction import (
+    estimate_tokens,
+    get_context_limit,
+    snip_old_tool_results,
+    find_split_point,
+    sanitize_history,
+    _respect_tool_pairs,
+)
 
 
 # ── estimate_tokens ───────────────────────────────────────────────────────
@@ -207,3 +214,166 @@ class TestFindSplitPoint:
         # Recent should be roughly 30% of total (allow some tolerance)
         assert recent >= total * 0.2
         assert recent <= total * 0.5
+
+    def test_split_never_splits_tool_pair(self):
+        # Large old portion, then one tool-call pair right where the natural
+        # split would fall, followed by a small recent portion.
+        msgs = (
+            [{"role": "user", "content": "U" * 2000}]
+            + [{"role": "assistant", "content": "A" * 2000} for _ in range(3)]
+            + [
+                {"role": "assistant", "content": "", "tool_calls": [
+                    {"id": "c1", "name": "Bash", "input": {"command": "ls"}},
+                ]},
+                {"role": "tool", "tool_call_id": "c1", "name": "Bash", "content": "R" * 500},
+                {"role": "user", "content": "continue"},
+                {"role": "assistant", "content": "ok"},
+            ]
+        )
+        for ratio in (0.2, 0.3, 0.4, 0.5):
+            idx = find_split_point(msgs, keep_ratio=ratio)
+            # The split must not leave an orphan 'tool' as messages[idx].
+            if 0 < idx < len(msgs):
+                assert msgs[idx].get("role") != "tool", (
+                    f"split at {idx} orphans a tool message (ratio={ratio})")
+                prev = msgs[idx - 1]
+                if prev.get("role") == "assistant" and prev.get("tool_calls"):
+                    # Must have kept the tool responses with it.
+                    assert msgs[idx].get("role") != "tool"
+
+
+class TestRespectToolPairs:
+    def test_noop_when_not_on_tool_pair(self):
+        msgs = [
+            {"role": "user", "content": "a"},
+            {"role": "assistant", "content": "b"},
+            {"role": "user", "content": "c"},
+        ]
+        assert _respect_tool_pairs(msgs, 2) == 2
+
+    def test_advances_past_tool_response(self):
+        msgs = [
+            {"role": "user", "content": "a"},
+            {"role": "assistant", "content": "", "tool_calls": [
+                {"id": "c1", "name": "Bash", "input": {"command": "ls"}},
+            ]},
+            {"role": "tool", "tool_call_id": "c1", "name": "Bash", "content": "ok"},
+            {"role": "user", "content": "next"},
+        ]
+        # Natural split at 2 (between assistant and its tool response) → push to 3.
+        assert _respect_tool_pairs(msgs, 2) == 3
+
+    def test_advances_past_multiple_tool_responses(self):
+        msgs = [
+            {"role": "assistant", "content": "", "tool_calls": [
+                {"id": "c1", "name": "Bash", "input": {"command": "a"}},
+                {"id": "c2", "name": "Bash", "input": {"command": "b"}},
+            ]},
+            {"role": "tool", "tool_call_id": "c1", "name": "Bash", "content": "1"},
+            {"role": "tool", "tool_call_id": "c2", "name": "Bash", "content": "2"},
+            {"role": "user", "content": "next"},
+        ]
+        assert _respect_tool_pairs(msgs, 1) == 3
+
+    def test_orphan_tool_at_split_gets_skipped(self):
+        # messages[split]=='tool' but messages[split-1] is not an assistant
+        # with tool_calls → still push forward past the tool.
+        msgs = [
+            {"role": "user", "content": "a"},
+            {"role": "tool", "tool_call_id": "cX", "name": "Bash", "content": "x"},
+            {"role": "user", "content": "b"},
+        ]
+        assert _respect_tool_pairs(msgs, 1) == 2
+
+
+# ── sanitize_history ──────────────────────────────────────────────────────
+
+class TestSanitizeHistory:
+    def test_well_formed_history_unchanged(self):
+        msgs = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "", "tool_calls": [
+                {"id": "c1", "name": "Bash", "input": {"command": "ls"}},
+            ]},
+            {"role": "tool", "tool_call_id": "c1", "name": "Bash", "content": "ok"},
+            {"role": "assistant", "content": "done"},
+        ]
+        out = sanitize_history(msgs)
+        assert out == msgs
+
+    def test_drops_orphan_tool_message(self):
+        # tool with no preceding assistant(tool_calls) — simulates post-compaction orphan.
+        msgs = [
+            {"role": "user", "content": "[summary]"},
+            {"role": "assistant", "content": "understood"},
+            {"role": "tool", "tool_call_id": "c1", "name": "Bash", "content": "orphan"},
+            {"role": "user", "content": "thanks"},
+        ]
+        out = sanitize_history(msgs)
+        assert all(m.get("role") != "tool" for m in out)
+        assert len(out) == 3
+        assert [m["role"] for m in out] == ["user", "assistant", "user"]
+
+    def test_strips_unanswered_tool_calls(self):
+        msgs = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "", "tool_calls": [
+                {"id": "c1", "name": "Bash", "input": {"command": "a"}},
+                {"id": "c2", "name": "Bash", "input": {"command": "b"}},
+            ]},
+            {"role": "tool", "tool_call_id": "c1", "name": "Bash", "content": "A"},
+            {"role": "user", "content": "next"},
+        ]
+        out = sanitize_history(msgs)
+        asst = out[1]
+        # c2 had no response → stripped; c1 remains.
+        assert [tc["id"] for tc in asst["tool_calls"]] == ["c1"]
+        assert out[2]["role"] == "tool" and out[2]["tool_call_id"] == "c1"
+
+    def test_strips_all_tool_calls_when_none_answered(self):
+        msgs = [
+            {"role": "assistant", "content": "thinking", "tool_calls": [
+                {"id": "c1", "name": "Bash", "input": {"command": "a"}},
+            ]},
+            {"role": "user", "content": "never mind"},
+        ]
+        out = sanitize_history(msgs)
+        assert "tool_calls" not in out[0]
+        assert out[0]["content"] == "thinking"
+
+    def test_unanswered_at_end_also_stripped(self):
+        # No trailing user/assistant; unanswered tool_calls at the very end.
+        msgs = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "", "tool_calls": [
+                {"id": "c1", "name": "Bash", "input": {"command": "a"}},
+            ]},
+        ]
+        out = sanitize_history(msgs)
+        assert "tool_calls" not in out[1]
+
+    def test_input_not_mutated(self):
+        msgs = [
+            {"role": "assistant", "content": "", "tool_calls": [
+                {"id": "c1", "name": "Bash", "input": {"command": "a"}},
+            ]},
+            {"role": "user", "content": "x"},
+        ]
+        import copy
+        snapshot = copy.deepcopy(msgs)
+        sanitize_history(msgs)
+        assert msgs == snapshot
+
+    def test_tool_with_wrong_id_dropped(self):
+        msgs = [
+            {"role": "assistant", "content": "", "tool_calls": [
+                {"id": "c1", "name": "Bash", "input": {"command": "a"}},
+            ]},
+            {"role": "tool", "tool_call_id": "WRONG", "name": "Bash", "content": "bad"},
+            {"role": "tool", "tool_call_id": "c1", "name": "Bash", "content": "good"},
+            {"role": "user", "content": "ok"},
+        ]
+        out = sanitize_history(msgs)
+        tool_msgs = [m for m in out if m.get("role") == "tool"]
+        assert len(tool_msgs) == 1
+        assert tool_msgs[0]["tool_call_id"] == "c1"
