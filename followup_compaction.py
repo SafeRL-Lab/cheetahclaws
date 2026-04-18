@@ -184,7 +184,10 @@ def build_messages_for_api(state, config: dict) -> list:
 def _apply_context_gc(messages: list, state) -> list:
     """Apply model-driven GC decisions and inject working memory notes."""
     try:
-        from context_gc import apply_gc, inject_notes, prepend_verbatim_audit
+        try:
+            from context_gc import apply_gc
+        except ImportError:
+            return messages  # context_gc not available yet, skip, inject_notes, prepend_verbatim_audit
     except ImportError:
         return messages
     gc_state = getattr(state, 'gc_state', None)
