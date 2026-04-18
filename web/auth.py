@@ -2,6 +2,12 @@
 
 We issue a stateless JWT signed with a server-side secret. The secret is
 persisted to ~/.cheetahclaws/web_secret so restarts don't invalidate sessions.
+
+Password hashing uses the `bcrypt` package directly. We previously routed
+through passlib, but passlib 1.7.4 is unmaintained and crashes on
+`bcrypt>=4.1` (it reads the removed `bcrypt.__about__.__version__`).
+Existing `$2b$...` hashes in the DB remain compatible — bcrypt verifies
+them natively.
 """
 from __future__ import annotations
 
@@ -12,10 +18,10 @@ from pathlib import Path
 from typing import Optional
 
 try:
-    from passlib.context import CryptContext
+    import bcrypt
 except ImportError as exc:  # pragma: no cover
     raise ImportError(
-        "passlib[bcrypt] is required for the web UI. "
+        "bcrypt is required for the web UI. "
         "Install it with: pip install 'cheetahclaws[web]'"
     ) from exc
 
@@ -28,7 +34,9 @@ except ImportError as exc:  # pragma: no cover
     ) from exc
 
 
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt caps the input at 72 bytes; longer passwords silently truncate.
+# That matches what passlib did, so existing hashes remain verifiable.
+_BCRYPT_MAX_BYTES = 72
 
 JWT_ALG = "HS256"
 JWT_TTL_SECONDS = 7 * 24 * 3600  # 7 days
@@ -68,13 +76,19 @@ def _secret() -> str:
 
 # ── Password hashing ─────────────────────────────────────────────────────
 
+def _pw_bytes(password: str) -> bytes:
+    return password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
+
+
 def hash_password(password: str) -> str:
-    return _pwd_ctx.hash(password)
+    return bcrypt.hashpw(_pw_bytes(password), bcrypt.gensalt()).decode("ascii")
 
 
 def verify_password(password: str, hashed: str) -> bool:
+    if not hashed:
+        return False
     try:
-        return _pwd_ctx.verify(password, hashed)
+        return bcrypt.checkpw(_pw_bytes(password), hashed.encode("ascii"))
     except (ValueError, TypeError):
         return False
 

@@ -11,7 +11,7 @@ CheetahClaws ships with a production-ready browser UI built on a pure Python std
 ## Install and launch
 
 ```bash
-# Install the web extras (SQLAlchemy, passlib[bcrypt], PyJWT):
+# Install the web extras (SQLAlchemy, bcrypt, PyJWT):
 pip install 'cheetahclaws[web]'
 
 # Launch (auto-picks a free port if 8080 is taken):
@@ -61,7 +61,7 @@ POST /api/auth/logout      →  clears ccjwt
 GET  /api/auth/whoami      →  { user: { id, username, is_admin, created_at } }
 ```
 
-- Password hashing: **passlib + bcrypt**.
+- Password hashing: **bcrypt** (called directly — passlib was dropped because it crashes on `bcrypt>=4.1`; existing `$2b$...` hashes remain compatible).
 - JWT: **PyJWT**, HS256, **7-day TTL**. Signing secret is generated once and persisted to `~/.cheetahclaws/web_secret` (0600), so logins survive server restarts. Override with `CHEETAHCLAWS_WEB_SECRET` env var.
 - Cookie: `ccjwt=<jwt>; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800`.
 - `--no-auth` short-circuits auth to a synthetic single-user `user_id=1` for localhost testing.
@@ -291,7 +291,7 @@ web/
 
 Key design choices:
 
-- **Pure stdlib HTTP server.** Raw sockets, manual header parsing, RFC 6455 WebSocket implementation. No Flask / FastAPI / aiohttp. The only new runtime deps are the three chat-UI extras (`sqlalchemy`, `passlib[bcrypt]`, `PyJWT`).
+- **Pure stdlib HTTP server.** Raw sockets, manual header parsing, RFC 6455 WebSocket implementation. No Flask / FastAPI / aiohttp. The only new runtime deps are the three chat-UI extras (`sqlalchemy`, `bcrypt`, `PyJWT`).
 - **In-process agent.** The Chat UI runs `agent.run()` directly (no PTY subprocess). A `queue.Queue` fans events out to WS subscribers; a 500-event ring buffer lets late-joining subscribers replay missed events.
 - **Write-through persistence.** Messages live in memory (for fast replay) AND SQLite (for survival). Config changes PATCH both.
 - **Two cookies on the same origin.** Chat UI uses `ccjwt` (7-day JWT), PTY terminal uses `cctoken` (one-time password). The browser sends both; each route only reads the one it cares about.
@@ -316,7 +316,7 @@ The `ccjwt` cookie is missing or expired. Refresh the page; the Chat UI will pop
 Normal reload now works (we send `Cache-Control: no-cache, must-revalidate` + weak ETag). If it's really stuck, `Ctrl+Shift+R` / `Cmd+Shift+R` forces a bypass.
 
 **Lost my admin password**
-Blow away the SQLite DB and re-register: `rm ~/.cheetahclaws/web.db` then restart. You'll lose all chat history — for real recovery, open the DB with any SQLite client and rewrite the `password_hash` (bcrypt hash via passlib).
+Blow away the SQLite DB and re-register: `rm ~/.cheetahclaws/web.db` then restart. You'll lose all chat history — for real recovery, open the DB with any SQLite client and rewrite the `password_hash` (`bcrypt.hashpw(b"newpass", bcrypt.gensalt()).decode()`).
 
 **Can't connect from another device**
 Start with `--host 0.0.0.0`. Your firewall must also allow the port, and mobile devices need to reach the host by IP (not `localhost`).

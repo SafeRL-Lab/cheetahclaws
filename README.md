@@ -897,7 +897,7 @@ A production-ready browser interface with real user accounts, SQLite-backed sess
 ### Install and start
 
 ```bash
-pip install 'cheetahclaws[web]'              # pulls sqlalchemy + passlib + PyJWT
+pip install 'cheetahclaws[web]'              # pulls sqlalchemy + bcrypt + PyJWT
 
 cheetahclaws --web                           # auto-picks a free port (tries 8080 first)
 cheetahclaws --web --port 9000               # bind exactly :9000 (fails loudly if taken)
