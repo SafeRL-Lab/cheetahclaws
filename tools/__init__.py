@@ -347,7 +347,6 @@ TOOL_SCHEMAS = [
                 "keep_snippets": {"type": "array", "description": "Partial keeps with text anchors"},
                 "notes":         {"type": "array", "description": "Named scratchpad entries: {name, content}"},
                 "trash_notes":   {"type": "array", "items": {"type": "string"}, "description": "Note names to discard"},
-                "compact_xml":   {"type": "boolean", "description": "Strip verbose XML from old assistant outputs"},
             },
             "required": [],
         },

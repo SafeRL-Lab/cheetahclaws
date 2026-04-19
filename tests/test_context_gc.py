@@ -14,7 +14,6 @@ class TestGCState:
         assert gs.trashed_ids == set()
         assert gs.snippets == {}
         assert gs.notes == {}
-        assert gs.compact_xml is False
 
 
 class TestProcessGCCall:
@@ -62,12 +61,6 @@ class TestProcessGCCall:
             {"keep_snippets": [{"id": "r1", "keep_after": "x"}]}, cfg
         )
         assert "r1" not in cfg["_gc_state"].snippets
-
-    def test_compact_xml(self):
-        cfg = self._make_config()
-        result = process_gc_call({"compact_xml": True}, cfg)
-        assert "XML compaction enabled" in result
-        assert cfg["_gc_state"].compact_xml is True
 
 
 class TestApplyGC:

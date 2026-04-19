@@ -13,7 +13,6 @@ class GCState:
     trashed_ids: set = field(default_factory=set)
     snippets: dict = field(default_factory=dict)
     notes: dict = field(default_factory=dict)
-    compact_xml: bool = False
 
 
 def process_gc_call(params: dict, config: dict) -> str:
@@ -44,9 +43,6 @@ def process_gc_call(params: dict, config: dict) -> str:
     for name in trash_notes:
         gc_state.notes.pop(name, None)
 
-    if params.get("compact_xml"):
-        gc_state.compact_xml = True
-
     parts = []
     if trashed:
         parts.append(f"trashed {len(trashed)} results")
@@ -56,81 +52,46 @@ def process_gc_call(params: dict, config: dict) -> str:
         parts.append(f"{len(notes)} notes saved")
     if trash_notes:
         parts.append(f"{len(trash_notes)} notes removed")
-    if params.get("compact_xml"):
-        parts.append("XML compaction enabled")
     parts.append(f"{len(gc_state.notes)} active notes, {len(gc_state.trashed_ids)} total trashed")
     return "GC applied: " + ", ".join(parts)
 
 
 def apply_gc(messages: list, gc_state: GCState) -> list:
-    if not gc_state.trashed_ids and not gc_state.snippets and not gc_state.compact_xml:
+    """Return a new message list with trashed tool_results stubbed and kept snippets trimmed.
+
+    Non-destructive: original messages are preserved in state.messages so /save + /load
+    can restore the full conversation. Only the message list sent to the API is reshaped.
+    """
+    if not gc_state.trashed_ids and not gc_state.snippets:
         return messages
+    return [_apply_gc_to_message(msg, gc_state) for msg in messages]
 
-    _compact_all = None
-    _compact_selective = None
-    last_asst_idx = -1
 
-    if gc_state.compact_xml:
-        try:
-            try:
-                from followup_compaction import compact_assistant_xml
-            except ImportError:
-                compact_assistant_xml = None  # followup_compaction not available yet
-            _compact_all = compact_assistant_xml
-        except ImportError:
-            pass
-        for i in range(len(messages) - 1, -1, -1):
-            if messages[i].get("role") == "assistant":
-                last_asst_idx = i
-                break
+def _apply_gc_to_message(msg: dict, gc_state: GCState) -> dict:
+    """Apply GC rules to a single message; returns original msg untouched if no rule matches."""
+    if msg.get("role") != "tool":
+        return msg
+    tool_call_id = msg.get("tool_call_id", "")
+    if tool_call_id in gc_state.trashed_ids:
+        return _stub_trashed_tool_result(msg)
+    if tool_call_id in gc_state.snippets:
+        return _apply_snippet_to_message(msg, gc_state.snippets[tool_call_id])
+    return msg
 
-    if gc_state.trashed_ids:
-        try:
-            try:
-                from followup_compaction import compact_assistant_xml
-            except ImportError:
-                compact_assistant_xml = None  # followup_compaction not available yet
-            _compact_selective = compact_assistant_xml_selective
-        except ImportError:
-            pass
 
-    result = []
-    for idx, msg in enumerate(messages):
-        role = msg.get("role")
-        if role == "assistant" and msg.get("tool_calls"):
-            if _compact_all and idx != last_asst_idx:
-                stubbed = dict(msg)
-                stubbed["content"] = _compact_all(msg["content"], msg["tool_calls"])
-                result.append(stubbed)
-                continue
-            if _compact_selective:
-                tc_ids = {tc.get("id") for tc in msg["tool_calls"]}
-                targeted = tc_ids & gc_state.trashed_ids
-                if targeted:
-                    stubbed = dict(msg)
-                    stubbed["content"] = _compact_selective(
-                        msg["content"], msg["tool_calls"], targeted,
-                    )
-                    result.append(stubbed)
-                    continue
-            result.append(msg)
-            continue
-        if role != "tool":
-            result.append(msg)
-            continue
-        tc_id = msg.get("tool_call_id", "")
-        if tc_id in gc_state.trashed_ids:
-            stubbed = dict(msg)
-            name = msg.get("name", "tool")
-            stubbed["content"] = f"[{name} result -- trashed by model]"
-            result.append(stubbed)
-        elif tc_id in gc_state.snippets:
-            transformed = dict(msg)
-            transformed["content"] = _apply_snippet(msg["content"], gc_state.snippets[tc_id])
-            result.append(transformed)
-        else:
-            result.append(msg)
-    return result
+def _stub_trashed_tool_result(msg: dict) -> dict:
+    """Replace a tool_result's content with a short stub the model can recognise."""
+    stubbed = dict(msg)
+    name = msg.get("name", "tool")
+    stubbed["content"] = f"[{name} result -- trashed by model]"
+    return stubbed
+
+
+def _apply_snippet_to_message(msg: dict, snippet: dict) -> dict:
+    """Apply a keep_{after,before,between} snippet rule to a tool_result message."""
+    transformed = dict(msg)
+    transformed["content"] = _apply_snippet(msg.get("content", ""), snippet)
+    return transformed
 
 
 def _apply_snippet(content: str, snippet: dict) -> str:
