@@ -95,9 +95,10 @@ class TestExecuteToolStripsScheduling:
         ))
 
     def test_scheduling_params_stripped(self):
-        result = execute_tool(
+        execute_tool(
             "test_sched_tool",
             {"msg": "hi", "tool_call_alias": "t1", "depends_on": ["w1"]},
+            config={},
         )
         assert "tool_call_alias" not in self._received
         assert "depends_on" not in self._received

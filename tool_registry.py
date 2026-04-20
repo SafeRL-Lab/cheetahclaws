@@ -162,26 +162,60 @@ _SCHEDULING_PROPS = {
 
 
 def _coerce_params(params: dict, schema: dict) -> dict:
-    """Coerce string parameter values to their schema-declared types."""
+    """Coerce string parameter values to their schema-declared types.
+
+    Coercion failure is not a hard error: the original string is kept and
+    passed to the tool handler, which will surface a clear type error to
+    the model (e.g. `expected int, got 'abc'`) far more usefully than a
+    ValueError from the registry wrapper.
+    """
     props = schema.get("properties", {})
-    result = {}
-    for key, value in params.items():
-        prop_schema = props.get(key)
-        if prop_schema and isinstance(value, str):
-            ptype = prop_schema.get("type")
-            try:
-                if ptype == "integer":
-                    value = int(value)
-                elif ptype == "number":
-                    value = float(value)
-                elif ptype == "boolean":
-                    value = value.lower() in ("true", "1", "yes")
-                elif ptype in ("array", "object"):
-                    value = _json.loads(value)
-            except (ValueError, _json.JSONDecodeError):
-                pass
-        result[key] = value
-    return result
+    return {k: _coerce_value_for(k, v, props) for k, v in params.items()}
+
+
+def _coerce_value_for(key: str, value, props: dict):
+    """Coerce a single value according to its declared type, else return as-is."""
+    prop_schema = props.get(key)
+    if not prop_schema or not isinstance(value, str):
+        return value
+    coercer = _COERCERS.get(prop_schema.get("type"))
+    if coercer is None:
+        return value
+    return coercer(value)
+
+
+def _coerce_int(value):
+    try:
+        return int(value)
+    except ValueError:
+        return value  # intentional: tool handler reports the real type mismatch
+
+
+def _coerce_float(value):
+    try:
+        return float(value)
+    except ValueError:
+        return value
+
+
+def _coerce_bool(value):
+    return value.lower() in ("true", "1", "yes")
+
+
+def _coerce_json(value):
+    try:
+        return _json.loads(value)
+    except (ValueError, _json.JSONDecodeError):
+        return value
+
+
+_COERCERS = {
+    "integer": _coerce_int,
+    "number":  _coerce_float,
+    "boolean": _coerce_bool,
+    "array":   _coerce_json,
+    "object":  _coerce_json,
+}
 
 
 # Wrap get_tool_schemas to inject scheduling properties
