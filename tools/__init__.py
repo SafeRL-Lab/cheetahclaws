@@ -334,19 +334,98 @@ TOOL_SCHEMAS = [
         },
     },
     {
-        "name": "ContextGC",
+        "name": "NoteSave",
         "description": (
-            "Garbage-collect your context to free space. Trash tool results you no longer "
-            "need, keep only relevant snippets from large results, and save key information "
-            "in notes that persist across turns."
+            "Save or update a working-memory note. Notes persist across turns and are "
+            "injected into your context automatically. Use for plans, key findings, "
+            "extracted facts, and methodology tracking."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "trash":         {"type": "array", "items": {"type": "string"}, "description": "tool_call_ids to fully discard"},
-                "keep_snippets": {"type": "array", "description": "Partial keeps with text anchors"},
-                "notes":         {"type": "array", "description": "Named scratchpad entries: {name, content}"},
-                "trash_notes":   {"type": "array", "items": {"type": "string"}, "description": "Note names to discard"},
+                "name": {"type": "string", "description": "Unique note name (overwrites if exists)"},
+                "content": {"type": "string", "description": "Note content (markdown supported)"},
+            },
+            "required": ["name", "content"],
+        },
+    },
+    {
+        "name": "NoteRead",
+        "description": (
+            "Read one or all working-memory notes. "
+            "Omit 'name' to list all active notes with their content."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Note name to read. Omit to read all."},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "ContextGC",
+        "description": (
+            "Garbage-collect your context to free space. MANDATORY: call this at the end of "
+            "every turn with tool calls. Trash tool results you no longer need, keep only "
+            "relevant snippets from large results, and save key information in notes that "
+            "persist across turns. Use compact_xml=true to strip verbose XML from your own "
+            "old assistant outputs."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "trash": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "tool_call_ids to fully discard. Works on ANY tool result: "
+                        "Read, Grep, Bash, Skill, GetFolderDescription, WebFetch, etc."
+                    ),
+                },
+                "keep_snippets": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string", "description": "tool_call_id of the result to trim"},
+                            "keep_after": {"type": "string", "description": "Keep from line containing this text to end"},
+                            "keep_before": {"type": "string", "description": "Keep from start to line before this text"},
+                            "keep_between": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Keep between two text anchors [start_text, end_text]",
+                            },
+                        },
+                        "required": ["id"],
+                    },
+                    "description": "Partial keeps: trim results using text anchors",
+                },
+                "notes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "description": "Unique note name"},
+                            "content": {"type": "string", "description": "Note content"},
+                        },
+                        "required": ["name", "content"],
+                    },
+                    "description": "Named scratchpad entries that persist across turns",
+                },
+                "trash_notes": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Note names to discard",
+                },
+                "compact_xml": {
+                    "type": "boolean",
+                    "description": (
+                        "Strip verbose XML tool_use blocks from old assistant messages, "
+                        "replacing each with a one-line summary. Keeps prose intact. "
+                        "Once enabled, stays on for the rest of the session."
+                    ),
+                },
             },
             "required": [],
         },
@@ -498,13 +577,28 @@ def _register_builtins() -> None:
         ),
     ]
 
+    # NoteSave / NoteRead tools
+    from context_gc import note_save, note_read
+    _tool_defs.append(ToolDef(
+        name="NoteSave",
+        schema=_schemas["NoteSave"],
+        func=lambda p, c: note_save(p, c),
+        read_only=False, concurrent_safe=True,
+    ))
+    _tool_defs.append(ToolDef(
+        name="NoteRead",
+        schema=_schemas["NoteRead"],
+        func=lambda p, c: note_read(p, c),
+        read_only=True, concurrent_safe=True,
+    ))
+
     # ContextGC tool
     from context_gc import process_gc_call
     _tool_defs.append(ToolDef(
         name="ContextGC",
         schema=_schemas["ContextGC"],
         func=lambda p, c: process_gc_call(p, c),
-        read_only=False, concurrent_safe=False,
+        read_only=True, concurrent_safe=True,
     ))
 
     for td in _tool_defs:

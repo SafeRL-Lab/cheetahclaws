@@ -36,6 +36,8 @@ class AgentState:
     # Persisted so trashed_ids, snippets and notes survive /save and /load.
     # Without this, restoring a session leaks back tool_results the model had trashed.
     gc_state: GCState = field(default_factory=GCState)
+    # Timeline of note changes (for debugging / replay)
+    notes_timeline: list = field(default_factory=list)
 
 
 @dataclass
@@ -93,7 +95,7 @@ def run(
     # ContextGC reads and mutates config["_gc_state"]; without this binding, every call
     # returns "Error: no GC state available" and no trashed_id is ever recorded.
     config = {**config, "_depth": depth, "_system_prompt": system_prompt,
-              "_gc_state": state.gc_state}
+              "_gc_state": state.gc_state, "_state": state}
     session_id = config.get("_session_id", "default")
 
     # Wire up structured logging from config (idempotent, cheap)
