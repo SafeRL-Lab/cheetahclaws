@@ -31,6 +31,8 @@ class AgentState:
     messages: list = field(default_factory=list)
     total_input_tokens:  int = 0
     total_output_tokens: int = 0
+    total_cache_read_tokens:  int = 0
+    total_cache_write_tokens: int = 0
     turn_count: int = 0
 
 
@@ -192,6 +194,8 @@ def run(
 
         state.total_input_tokens  += assistant_turn.in_tokens
         state.total_output_tokens += assistant_turn.out_tokens
+        state.total_cache_read_tokens  += getattr(assistant_turn, 'cache_read_tokens', 0)
+        state.total_cache_write_tokens += getattr(assistant_turn, 'cache_write_tokens', 0)
         yield TurnDone(assistant_turn.in_tokens, assistant_turn.out_tokens)
 
         if not assistant_turn.tool_calls:

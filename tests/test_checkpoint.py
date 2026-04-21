@@ -456,3 +456,7 @@ class TestIntegration:
         state.turn_count = snap1.turn_count
         assert len(state.messages) == 0
         assert state.turn_count == 0
+
+
+# Cache-token coverage lives in tests/test_cache_tokens.py so this module
+# stays focused on snapshot / restore / file-backup behaviour.
