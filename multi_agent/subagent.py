@@ -1,4 +1,3 @@
-# [desc] Defines sub-agent types, parses agent definitions from .md files, and manages threaded nested agent loops. [/desc]
 """Threaded sub-agent system for spawning nested agent loops."""
 from __future__ import annotations
 

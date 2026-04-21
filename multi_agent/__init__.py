@@ -1,4 +1,3 @@
-# [desc] Multi-agent package init: exports AgentDefinition, SubAgentTask, SubAgentManager and registry utils [/desc]
 """Multi-agent package for cheetahclaws.
 
 Provides:
