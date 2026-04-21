@@ -1,162 +1,278 @@
-"""Follow-up compaction: stub past-turn tool_results before each API call.
+"""Follow-up compaction: destroy past-turn tool content before each API call.
 
-Non-destructive: produces a new message list, leaves `state.messages` intact
-so persistence and resume keep the full history.
+At each user turn boundary, ALL tool messages and assistant tool_calls from
+prior turns are completely removed (no stubs).  The current turn is always
+kept intact.
+
+Non-destructive to state.messages -- produces a new list so persistence and
+resume keep the full history.
 """
 from __future__ import annotations
 
 import html
-import json
+import re
 import time
-from typing import Iterable
-
-DEFAULT_EXEMPT_TOOLS = frozenset({"Edit", "Write", "TodoWrite"})
 
 
-def compact_tool_history(
-    messages: list,
-    keep_last_n_turns: int = 0,
-    exempt_tools: Iterable[str] = DEFAULT_EXEMPT_TOOLS,
-) -> list:
-    """Return a NEW list where past-turn tool_result contents are replaced by stubs.
-
-    A "turn" begins at a role='user' message. The current turn (from the last
-    user message onward) is always kept intact.
-    """
-    exempt = frozenset(exempt_tools)
-    user_indices = [i for i, m in enumerate(messages) if m.get("role") == "user"]
-    if len(user_indices) <= keep_last_n_turns + 1:
-        return list(messages)
-
-    cutoff = user_indices[-(keep_last_n_turns + 1)]
-    tool_call_lookup = _build_tool_call_lookup(messages)
-
-    compacted = []
-    for index, message in enumerate(messages):
-        if index >= cutoff:
-            compacted.append(message)
-            continue
-        role = message.get("role")
-        if role != "tool" or message.get("name") in exempt:
-            compacted.append(message)
-            continue
-        tool_call_id = message.get("tool_call_id", "")
-        name, inp = tool_call_lookup.get(
-            tool_call_id, (message.get("name", "tool"), {})
-        )
-        stubbed = dict(message)
-        stubbed["content"] = _build_stub(name, inp)
-        compacted.append(stubbed)
-    return compacted
+_THINKING_BLOCK_RE = re.compile(r'<thinking>.*?</thinking>\s*', re.DOTALL)
 
 
-def _build_tool_call_lookup(messages: list) -> dict:
+_ARGS_PREFERRED_KEY = {
+    "Read": "file_path", "Edit": "file_path", "Write": "file_path",
+    "NotebookEdit": "notebook_path",
+    "Glob": "pattern", "Grep": "pattern",
+    "Bash": "command",
+    "WebFetch": "url", "WebSearch": "query",
+}
+
+
+def _escape_xml_attr(s: str) -> str:
+    return html.escape(str(s), quote=True)
+
+
+def _input_brief(tool_name: str, input_dict: dict, max_len: int = 60) -> str:
+    if not input_dict:
+        return ""
+    val = input_dict.get(_ARGS_PREFERRED_KEY.get(tool_name, ""))
+    if val is None:
+        for v in input_dict.values():
+            if isinstance(v, str) and v:
+                val = v
+                break
+    if val is None:
+        return ""
+    val = str(val).replace("\n", " ")
+    if len(val) > max_len:
+        val = val[: max_len - 3] + "..."
+    return val
+
+
+def _build_tc_lookup(tool_calls: list | None) -> dict:
     lookup: dict = {}
-    for message in messages:
-        if message.get("role") != "assistant":
-            continue
-        for tool_call in message.get("tool_calls") or []:
-            lookup[tool_call.get("id", "")] = (
-                tool_call.get("name", ""),
-                tool_call.get("input") or {},
-            )
+    for tc in tool_calls or []:
+        tid = tc.get("id", "")
+        if tid:
+            lookup[tid] = (tc.get("name", "tool"), tc.get("input") or {})
     return lookup
 
 
-def _escape_xml_attr(value: str) -> str:
-    return html.escape(value, quote=False).replace('"', '&quot;')
+def _xml_replacer(tc_lookup: dict, target_ids: set | None = None):
+    def _replacer(match):
+        name, tid = match.group(1), match.group(2)
+        if target_ids is not None and tid not in target_ids:
+            return match.group(0)
+        tc_name, tc_input = tc_lookup.get(tid, (name, {}))
+        brief = _input_brief(tc_name, tc_input)
+        return f'<tool_use_elided name="{_escape_xml_attr(tc_name)}" brief="{_escape_xml_attr(brief)}"/>'
+    return _replacer
 
 
-def _build_stub(name: str, input_dict: dict) -> str:
-    brief = _input_brief(name, input_dict)
-    return f'<tool_use_elided name="{_escape_xml_attr(name)}" brief="{_escape_xml_attr(brief)}"/>'
+_TOOL_USE_RE = re.compile(
+    r'<tool_use\s+name="([^"]+)"\s+id="([^"]+)"[^>]*>.*?</tool_use>',
+    re.DOTALL,
+)
 
 
-def _input_brief(name: str, inp: dict) -> str:
-    if name == "Read":
-        path = inp.get("file_path", "?")
-        parts = [f"file_path={path}"]
-        if "offset" in inp:
-            parts.append(f"offset={inp['offset']}")
-        if "limit" in inp:
-            parts.append(f"limit={inp['limit']}")
-        return ", ".join(parts)
-    if name == "Bash":
-        cmd = (inp.get("command") or "").replace("\n", " ")
-        if len(cmd) > 100:
-            cmd = cmd[:97] + "..."
-        return f"command={cmd!r}"
-    if name == "Grep":
-        parts = [f"pattern={inp.get('pattern', '?')!r}"]
-        if "path" in inp:
-            parts.append(f"path={inp['path']}")
-        return ", ".join(parts)
-    if name == "Glob":
-        return f"pattern={inp.get('pattern', '?')!r}"
-    try:
-        rendered = json.dumps(inp, ensure_ascii=False)
-    except (TypeError, ValueError):
-        rendered = str(inp)
-    if len(rendered) > 120:
-        rendered = rendered[:117] + "..."
-    return rendered
+def compact_assistant_xml(content: str, tool_calls: list | None = None) -> str:
+    """Replace ALL inline XML tool_use blocks with one-line summaries."""
+    if not content or "<tool_use" not in content:
+        return content
+    return _TOOL_USE_RE.sub(
+        _xml_replacer(_build_tc_lookup(tool_calls)), content,
+    )
+
+
+def compact_assistant_xml_selective(
+    content: str, tool_calls: list | None, target_ids: set,
+) -> str:
+    """Replace only XML blocks whose id is in target_ids, leaving others intact."""
+    if not content or "<tool_use" not in content or not target_ids:
+        return content
+    return _TOOL_USE_RE.sub(
+        _xml_replacer(_build_tc_lookup(tool_calls), target_ids), content,
+    )
+
+
+def _is_completed_boundary(messages: list, user_idx: int) -> bool:
+    if user_idx == 0:
+        return True
+    prev = messages[user_idx - 1]
+    return prev.get("role") == "assistant" and not prev.get("tool_calls")
+
+
+def compact_tool_history(messages: list, keep_last_n_turns: int = 0) -> list:
+    """Completely remove prior-turn tool content.
+
+    At user turn boundaries, ALL tool messages and assistant tool_calls from
+    prior turns are destroyed (no stubs).  Assistant messages that become empty
+    after stripping are also removed.
+
+    The current turn (last ``keep_last_n_turns + 1`` user messages onward) is
+    kept intact.
+    """
+    user_indices = [i for i, m in enumerate(messages) if m.get("role") == "user"]
+    if not user_indices:
+        return list(messages)
+
+    valid_boundaries = [i for i in user_indices
+                        if _is_completed_boundary(messages, i)]
+
+    total_keep = keep_last_n_turns + 1
+    if total_keep >= len(valid_boundaries):
+        return list(messages)
+
+    current_turn_start = valid_boundaries[-total_keep]
+
+    result = []
+    for i, msg in enumerate(messages):
+        if i >= current_turn_start:
+            result.append(msg)
+            continue
+
+        role = msg.get("role")
+
+        if role == "tool":
+            continue
+
+        if role == "user":
+            result.append(msg)
+            continue
+
+        if role == "assistant":
+            tool_calls = msg.get("tool_calls")
+            content = msg.get("content", "") or ""
+
+            if tool_calls:
+                content = compact_assistant_xml(content, tool_calls)
+                cleaned = dict(msg)
+                cleaned.pop("tool_calls", None)
+                cleaned["content"] = content
+                if not content.strip():
+                    continue
+                result.append(cleaned)
+            else:
+                if content.strip():
+                    result.append(msg)
+            continue
+
+        result.append(msg)
+
+    return result
+
+
+def _mark_compaction_boundary(messages: list) -> None:
+    """Mark the last message before the current user turn with _cache_breakpoint.
+
+    This tells messages_to_anthropic where to place cache_control so the
+    compacted prefix is cached and current-loop messages stay fresh.
+    """
+    user_indices = [i for i, m in enumerate(messages) if m.get("role") == "user"]
+    if len(user_indices) < 2:
+        return
+    valid_boundaries = []
+    for idx in user_indices:
+        if idx == 0:
+            valid_boundaries.append(idx)
+        else:
+            prev = messages[idx - 1]
+            role = prev.get("role")
+            if role == "assistant" and not prev.get("tool_calls"):
+                valid_boundaries.append(idx)
+            elif role == "user":
+                valid_boundaries.append(idx)
+    if len(valid_boundaries) < 2:
+        return
+    current_start = valid_boundaries[-1]
+    if current_start > 0:
+        messages[current_start - 1]["_cache_breakpoint"] = True
+
+
+def _strip_thinking_from_messages(messages: list) -> list:
+    """Remove <thinking>...</thinking> blocks from assistant message content.
+
+    Non-destructive: returns a new list with new dicts where needed.
+    Handles both string and list-of-blocks content formats.
+    """
+    result = []
+    for msg in messages:
+        if msg.get("role") != "assistant":
+            result.append(msg)
+            continue
+        content = msg.get("content", "")
+        if isinstance(content, str) and "<thinking>" in content:
+            cleaned = _THINKING_BLOCK_RE.sub("", content)
+            result.append({**msg, "content": cleaned or "."})
+        elif isinstance(content, list):
+            new_blocks = []
+            changed = False
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text" and "<thinking>" in block.get("text", ""):
+                    cleaned = _THINKING_BLOCK_RE.sub("", block["text"])
+                    new_blocks.append({**block, "text": cleaned or "."})
+                    changed = True
+                else:
+                    new_blocks.append(block)
+            result.append({**msg, "content": new_blocks} if changed else msg)
+        else:
+            result.append(msg)
+    return result
 
 
 def build_messages_for_api(state, config: dict) -> list:
-    """Apply follow-up compaction + model-driven GC, then inject working memory notes."""
-    if not config.get("followup_compaction_enabled", True):
-        compacted = list(state.messages)
-    else:
-        keep = config.get("followup_keep_last_n_turns", 0)
-        exempt = config.get("followup_exempt_tools", DEFAULT_EXEMPT_TOOLS)
-        compacted = compact_tool_history(state.messages, keep_last_n_turns=keep, exempt_tools=exempt)
+    """Compact prior-turn tool content at user boundaries, then apply ContextGC.
 
-        from compaction import estimate_tokens
-        tokens_before = estimate_tokens(state.messages)
-        tokens_after = estimate_tokens(compacted)
-        if tokens_before != tokens_after:
-            state.compaction_log.append({
-                "event": "followup_compact",
-                "timestamp": time.time(),
-                "turn": getattr(state, "turn_count", 0),
-                "tokens_est_before": tokens_before,
-                "tokens_est_after": tokens_after,
-                "tokens_est_saved": tokens_before - tokens_after,
-            })
-
-    return _apply_context_gc(compacted, state)
+    compact_tool_history runs on every build so the post-compaction prefix is
+    byte-stable across every call in a turn, not just the one that immediately
+    follows a user message. The function is idempotent: it always leaves the
+    last user turn intact and only touches prior-turn tool content.
+    """
+    compacted = compact_tool_history(list(state.messages))
+    result = _apply_context_gc(compacted, state)
+    try:
+        from context_gc import strip_trashed_stubs
+        result = strip_trashed_stubs(result)
+    except ImportError:
+        pass
+    result = _strip_thinking_from_messages(result)
+    _mark_compaction_boundary(result)
+    return result
 
 
 def _apply_context_gc(messages: list, state) -> list:
-    """Apply model-driven GC decisions and inject working memory notes.
-
-    Falls back to returning messages unchanged when the context_gc module is
-    absent (this PR can ship independently of PR #55). The import is narrow:
-    only ImportError is swallowed; any other error propagates.
-    """
+    """Apply model-driven GC decisions.  Notes and audit info are injected
+    into the last user message in dispatch.py, keeping them out of system
+    blocks for Anthropic cache stability."""
     try:
-        from context_gc import apply_gc, inject_notes, prepend_verbatim_audit
+        from context_gc import apply_gc
     except ImportError:
         return messages
     gc_state = getattr(state, 'gc_state', None)
     if not gc_state:
-        return prepend_verbatim_audit(messages)
-    if not gc_state.trashed_ids and not gc_state.snippets and not gc_state.notes:
-        return prepend_verbatim_audit(messages)
+        return messages
+    if not gc_state.trashed_ids and not gc_state.snippets:
+        return messages
 
-    from compaction import estimate_tokens
-    tokens_before = estimate_tokens(messages)
+    try:
+        from compaction import estimate_tokens
+        tokens_before = estimate_tokens(messages)
+    except ImportError:
+        tokens_before = None
+
     result = apply_gc(messages, gc_state)
-    result = inject_notes(result, gc_state.notes)
-    tokens_after = estimate_tokens(result)
-    if tokens_before != tokens_after:
-        state.compaction_log.append({
-            "event": "context_gc",
-            "timestamp": time.time(),
-            "turn": getattr(state, "turn_count", 0),
-            "trashed_count": len(gc_state.trashed_ids),
-            "snippet_count": len(gc_state.snippets),
-            "notes_count": len(gc_state.notes),
-            "tokens_est_saved": tokens_before - tokens_after,
-        })
-    return prepend_verbatim_audit(result)
+
+    if tokens_before is not None:
+        try:
+            tokens_after = estimate_tokens(result)
+            if tokens_before != tokens_after and hasattr(state, 'compaction_log'):
+                state.compaction_log.append({
+                    "event": "context_gc",
+                    "timestamp": time.time(),
+                    "turn": getattr(state, "turn_count", 0),
+                    "trashed_count": len(gc_state.trashed_ids),
+                    "snippet_count": len(gc_state.snippets),
+                    "notes_count": len(gc_state.notes),
+                    "tokens_est_saved": tokens_before - tokens_after,
+                })
+        except ImportError:
+            pass
+    return result
