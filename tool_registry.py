@@ -136,3 +136,62 @@ def execute_tool(
 def clear_registry() -> None:
     """Remove all registered tools. Intended for testing."""
     _registry.clear()
+
+
+# ── Tool scheduling support ────────────────────────────────────────────────
+
+import copy as _copy
+
+_SCHEDULING_PROPS = {
+    "tool_call_alias": {
+        "type": "string",
+        "description": (
+            "Optional alias for this tool call. "
+            "Other tools can reference it in depends_on."
+        ),
+    },
+    "depends_on": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": (
+            "List of tool_call IDs or aliases that must complete before this tool runs."
+        ),
+    },
+}
+
+
+# Wrap get_tool_schemas to inject scheduling properties
+_orig_get_tool_schemas = get_tool_schemas
+
+
+def get_tool_schemas():
+    """Return tool schemas with scheduling properties injected.
+
+    Handles both schema styles:
+    - Top-level ``properties`` (rare, e.g. test fixtures)
+    - Anthropic-style ``input_schema.properties`` (all built-in tools)
+    """
+    schemas = _orig_get_tool_schemas()
+    result = []
+    for s in schemas:
+        s = _copy.deepcopy(s)
+        # Detect where properties live
+        if "input_schema" in s:
+            props = s["input_schema"].setdefault("properties", {})
+        else:
+            props = s.setdefault("properties", {})
+        for k, v in _SCHEDULING_PROPS.items():
+            props.setdefault(k, _copy.deepcopy(v))
+        result.append(s)
+    return result
+
+
+# Wrap execute_tool to strip scheduling params and coerce types
+_orig_execute_tool = execute_tool
+
+
+def execute_tool(name, params, *args, **kwargs):
+    """Execute a tool after stripping scheduling params."""
+    clean = {k: v for k, v in params.items() if k not in _SCHEDULING_PROPS}
+
+    return _orig_execute_tool(name, clean, *args, **kwargs)

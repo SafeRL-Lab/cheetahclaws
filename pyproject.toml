@@ -44,6 +44,8 @@ py-modules = [
     "cc_config",
     "context",
     "error_classifier",
+    "id_uniquify",
+    "coercion",
     "health",
     "jobs",
     "logging_utils",

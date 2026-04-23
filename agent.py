@@ -185,13 +185,6 @@ def run(
         if assistant_turn is None:
             break
 
-        # Record assistant turn in neutral format
-        state.messages.append({
-            "role":       "assistant",
-            "content":    assistant_turn.text,
-            "tool_calls": assistant_turn.tool_calls,
-        })
-
         state.total_input_tokens  += assistant_turn.in_tokens
         state.total_output_tokens += assistant_turn.out_tokens
         state.total_cache_read_tokens  += getattr(assistant_turn, 'cache_read_tokens', 0)
@@ -199,10 +192,28 @@ def run(
         yield TurnDone(assistant_turn.in_tokens, assistant_turn.out_tokens)
 
         if not assistant_turn.tool_calls:
+            # Record assistant turn and stop
+            state.messages.append({
+                "role":       "assistant",
+                "content":    assistant_turn.text,
+                "tool_calls": assistant_turn.tool_calls,
+            })
             break   # No tools → conversation turn complete
 
         # ── Execute tools (parallel when safe) ────────────────────────────
         tool_calls = assistant_turn.tool_calls
+
+        # Rewrite colliding tool_call ids BEFORE appending to state
+        # (so _collect_used_ids doesn't see this turn's own ids as taken)
+        from id_uniquify import uniquify_tool_call_ids
+        uniquify_tool_call_ids(tool_calls, state)
+
+        # Record assistant turn in neutral format (after uniquify so ids match)
+        state.messages.append({
+            "role":       "assistant",
+            "content":    assistant_turn.text,
+            "tool_calls": assistant_turn.tool_calls,
+        })
 
         # Check permissions first (must be sequential — may prompt user)
         permissions: dict[str, bool] = {}
