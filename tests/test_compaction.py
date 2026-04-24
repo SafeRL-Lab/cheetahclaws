@@ -104,7 +104,11 @@ class TestGetContextLimit:
         assert get_context_limit("gemini-2.0-flash") == 1000000
 
     def test_deepseek(self):
-        assert get_context_limit("deepseek-chat") == 64000
+        # Raised to 128K on the v4 update — DeepSeek's real context window
+        # has been 128K since v3, and v4 keeps that.
+        assert get_context_limit("deepseek-chat") == 128000
+        assert get_context_limit("deepseek-v4-pro") == 128000
+        assert get_context_limit("deepseek-v4-flash") == 128000
 
     def test_openai(self):
         assert get_context_limit("gpt-4o") == 128000

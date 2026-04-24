@@ -186,11 +186,18 @@ def run(
             break
 
         # Record assistant turn in neutral format
-        state.messages.append({
+        _assistant_msg = {
             "role":       "assistant",
             "content":    assistant_turn.text,
             "tool_calls": assistant_turn.tool_calls,
-        })
+        }
+        # DeepSeek v4 requires reasoning_content to be echoed back on
+        # subsequent requests when the turn contains tool_calls.  Storing it
+        # on the neutral history lets messages_to_openai pass it through.
+        _rc = getattr(assistant_turn, "reasoning_content", "")
+        if _rc and assistant_turn.tool_calls:
+            _assistant_msg["reasoning_content"] = _rc
+        state.messages.append(_assistant_msg)
 
         state.total_input_tokens  += assistant_turn.in_tokens
         state.total_output_tokens += assistant_turn.out_tokens
