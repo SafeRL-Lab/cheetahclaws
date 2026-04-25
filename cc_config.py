@@ -27,8 +27,8 @@ DEFAULTS = {
     "max_tool_output":  32000,
     "max_agent_depth":  3,
     "max_concurrent_agents": 3,
-    "session_daily_limit":   10,    # max sessions kept per day in daily/
-    "session_history_limit": 200,  # max sessions kept in history.json
+    "session_daily_limit":   10000,    # max sessions kept per day in daily/
+    "session_history_limit": 100000,  # max sessions kept in history.json
     # ── Security settings ──────────────────────────────────────────────────
     # allowed_root: restrict file operations (Read/Write/Edit/Glob/Grep) to this
     # directory tree.  null = unrestricted (CLI default).  Set to the project
