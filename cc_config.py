@@ -23,6 +23,7 @@ DEFAULTS = {
     # is ON; providers.py only injects the disable toggle when value is False.
     "thinking":         None,
     "thinking_budget":  10000,
+    "thinking_mode":    "loud",    # "loud" = think-out-loud with <thinking> tags
     "custom_base_url":  "",       # for "custom" provider
     "max_tool_output":  32000,
     "max_agent_depth":  3,

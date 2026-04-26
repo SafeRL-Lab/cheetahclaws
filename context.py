@@ -30,6 +30,18 @@ from datetime import datetime
 from memory import get_memory_context
 from prompts import pick_base_prompt, load_fragment
 
+_THINK_OUT_LOUD_PROMPT = """
+# Think-Out-Loud Mode
+
+Wrap your internal reasoning in `<""" + """thinking>...</""" + """thinking>` XML tags.
+These are displayed to the user in italic but stripped from your context in future turns.
+
+Use thinking for: planning, analyzing code, debugging, weighing options.
+Keep it focused -- commit to an approach, avoid loops.
+You can interleave thinking blocks with visible text freely.
+Do NOT wrap simple responses in thinking.
+"""
+
 # ── Prompt injection detection ───────────────────────────────────────────
 _THREAT_PATTERNS = [
     re.compile(r'ignore\s+(previous|all|above|prior)(\s+\w+)*\s+(instructions?|prompts?|rules?)', re.I),
