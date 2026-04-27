@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -97,7 +98,7 @@ def track_file_edit(session_id: str, file_path: str) -> str | None:
     except OSError:
         return None
     if size > _MAX_FILE_SIZE:
-        print(f"[checkpoint] skipping large file ({size} bytes): {file_path}")
+        print(f"[checkpoint] skipping large file ({size} bytes): {file_path}", file=sys.stderr)
         return None
 
     # Copy file to backups/
@@ -107,7 +108,7 @@ def track_file_edit(session_id: str, file_path: str) -> str | None:
     try:
         shutil.copy2(str(p), str(backup_path))
     except Exception as e:
-        print(f"[checkpoint] backup failed for {file_path}: {e}")
+        print(f"[checkpoint] backup failed for {file_path}: {e}", file=sys.stderr)
         return None
 
     return backup_name
