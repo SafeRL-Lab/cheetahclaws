@@ -16,6 +16,7 @@ class ErrorCategory(Enum):
     OVERLOADED = "overloaded"
     CONNECTION = "connection"
     TIMEOUT = "timeout"
+    INVALID_REQUEST = "invalid_request"
     UNKNOWN = "unknown"
 
 
@@ -57,6 +58,13 @@ _PATTERNS: list[tuple[ErrorCategory, re.Pattern]] = [
     (ErrorCategory.CONNECTION, re.compile(
         r"connect|refused|unreachable|dns|network|ECONNR|broken.?pipe|reset.?by.?peer",
         re.IGNORECASE)),
+    # 400 / BadRequest: the request body itself is malformed. Retrying the
+    # exact same payload will fail again and just burns circuit-breaker
+    # budget — classify as non-retryable. Keep this AFTER more specific
+    # patterns (rate-limit / context-overflow) so they win when they apply.
+    (ErrorCategory.INVALID_REQUEST, re.compile(
+        r"bad.?request|400|invalid.?message.?content|malformed.?request",
+        re.IGNORECASE)),
 ]
 
 _HINTS = {
@@ -77,6 +85,9 @@ _HINTS = {
         "Request timed out. Will retry.",
     ErrorCategory.CONNECTION:
         "Network error — check your internet connection or the API endpoint URL.",
+    ErrorCategory.INVALID_REQUEST:
+        "The request was rejected as malformed. Try /clear to drop the bad turn, "
+        "or switch model with /model.",
     ErrorCategory.UNKNOWN:
         "An unexpected error occurred.",
 }
@@ -112,7 +123,9 @@ def classify(exc: Exception) -> ClassifiedError:
             cat = ErrorCategory.CONNECTION
         elif isinstance(exc, urllib.error.HTTPError):
             code = exc.code
-            if code == 401 or code == 403:
+            if code == 400:
+                cat = ErrorCategory.INVALID_REQUEST
+            elif code == 401 or code == 403:
                 cat = ErrorCategory.AUTH
             elif code == 402:
                 cat = ErrorCategory.BILLING
@@ -127,7 +140,8 @@ def classify(exc: Exception) -> ClassifiedError:
 
     # Build recovery hints per category
     retryable = cat not in (ErrorCategory.AUTH, ErrorCategory.BILLING,
-                            ErrorCategory.MODEL_NOT_FOUND)
+                            ErrorCategory.MODEL_NOT_FOUND,
+                            ErrorCategory.INVALID_REQUEST)
     should_compress = cat == ErrorCategory.CONTEXT_OVERFLOW
     backoff_multiplier = 3.0 if cat in (ErrorCategory.RATE_LIMIT,
                                          ErrorCategory.OVERLOADED) else 1.0
@@ -136,6 +150,10 @@ def classify(exc: Exception) -> ClassifiedError:
     if cat == ErrorCategory.CONNECTION and ("ollama" in err_str.lower()
             or "localhost" in err_str.lower() or "11434" in err_str):
         hint = "Cannot connect to Ollama. Is it running? Start with: ollama serve"
+    elif cat == ErrorCategory.INVALID_REQUEST and \
+            "invalid message content type" in err_str.lower():
+        hint = ("Ollama rejected an assistant turn with null content. "
+                "Update CheetahClaws (issue #71) or run /clear to drop the bad turn.")
 
     return ClassifiedError(
         category=cat,

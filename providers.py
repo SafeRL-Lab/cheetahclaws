@@ -434,7 +434,11 @@ def messages_to_openai(messages: list, ollama_native_images: bool = False) -> li
             result.append(msg_out)
 
         elif role == "assistant":
-            msg: dict = {"role": "assistant", "content": m.get("content") or None}
+            # Use "" rather than None for the all-tool-calls case: Ollama's
+            # OpenAI-compat endpoint rejects content: null with
+            # `invalid message content type: <nil>` (issue #71). Empty string
+            # is accepted by every OpenAI-compat backend we target.
+            msg: dict = {"role": "assistant", "content": m.get("content") or ""}
             tcs = m.get("tool_calls", [])
             if tcs:
                 msg["tool_calls"] = []
