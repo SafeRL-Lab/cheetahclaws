@@ -40,12 +40,16 @@ class AgentState:
 class ToolStart:
     name:   str
     inputs: dict
+    tool_id: str = ""
 
 @dataclass
 class ToolEnd:
     name:      str
     result:    str
     permitted: bool = True
+    duration:  float = 0.0
+    tool_id:   str = ""
+    inputs:    dict = field(default_factory=dict)
 
 @dataclass
 class TurnDone:
@@ -208,12 +212,21 @@ def run(
         if not assistant_turn.tool_calls:
             break   # No tools → conversation turn complete
 
-        # ── Execute tools (parallel when safe) ────────────────────────────
-        tool_calls = assistant_turn.tool_calls
+        # ── Uniquify ids to prevent GC collisions ─────────────────────────
+        from id_uniquify import uniquify_tool_call_ids
+        uniquify_tool_call_ids(assistant_turn.tool_calls, state)
 
-        # Check permissions first (must be sequential — may prompt user)
+        # Deduplicate tool calls by ID (model may echo duplicates)
+        _seen_ids: set[str] = set()
+        tool_calls = [tc for tc in assistant_turn.tool_calls
+                      if tc["id"] not in _seen_ids and not _seen_ids.add(tc["id"])]
+        state.messages[-1]["tool_calls"] = tool_calls
+
+        # ── Check permissions (sequential — may prompt user) ──────────────
         permissions: dict[str, bool] = {}
+        denied_results: dict[str, str] = {}
         for tc in tool_calls:
+            yield ToolStart(tc["name"], tc["input"], tool_id=tc["id"])
             permitted = _check_permission(tc, config)
             if not permitted:
                 if config.get("permission_mode") == "plan":
@@ -223,79 +236,46 @@ def run(
                     yield req
                     permitted = req.granted
             permissions[tc["id"]] = permitted
-
-        # Determine which tools can run in parallel
-        from tool_registry import get_tool as _get_tool
-        parallel_batch = []
-        sequential_batch = []
-        for tc in tool_calls:
-            if not permissions[tc["id"]]:
-                sequential_batch.append(tc)
-                continue
-            tdef = _get_tool(tc["name"])
-            if tdef and tdef.concurrent_safe and len(tool_calls) > 1:
-                parallel_batch.append(tc)
-            else:
-                sequential_batch.append(tc)
-
-        def _exec_one(tc):
-            """Execute a single tool call, return (tc, result, permitted)."""
-            tid = tc["id"]
-            permitted = permissions[tid]
             if not permitted:
                 if config.get("permission_mode") == "plan":
                     plan_file = runtime.get_ctx(config).plan_file or ""
-                    result = (
+                    denied_results[tc["id"]] = (
                         f"[Plan mode] Write operations are blocked except to the plan file: {plan_file}\n"
                         "Finish your analysis and write the plan to the plan file. "
                         "The user will run /plan done to exit plan mode and begin implementation."
                     )
                 else:
-                    result = "Denied: user rejected this operation"
-            else:
-                result = execute_tool(
-                    tc["name"], tc["input"],
-                    permission_mode="accept-all",
-                    config=config,
-                )
-            return tc, result, permitted
+                    denied_results[tc["id"]] = "Denied: user rejected this operation"
 
-        results_ordered = []
+        # ── Execute tools via DAG (parallel when safe) ────────────────────
+        from dag import _build_dag_levels, _execute_level
 
-        # Run parallel batch concurrently
-        if parallel_batch:
-            from concurrent.futures import ThreadPoolExecutor
-            for tc in parallel_batch:
-                yield ToolStart(tc["name"], tc["input"])
-            with ThreadPoolExecutor(max_workers=min(len(parallel_batch), 8)) as pool:
-                futures = {pool.submit(_exec_one, tc): tc for tc in parallel_batch}
-                for future in futures:
-                    tc, result, permitted = future.result()
-                    _log.debug("tool_end", session_id=session_id,
-                               tool=tc["name"], permitted=permitted,
-                               result_len=len(result))
-                    results_ordered.append((tc, result, permitted))
+        permitted_tcs = [tc for tc in tool_calls if permissions[tc["id"]]]
+        results: dict[str, str] = dict(denied_results)
+        durations: dict[str, float] = {tc["id"]: 0.0 for tc in tool_calls}
 
-        # Run sequential batch one by one
-        for tc in sequential_batch:
-            yield ToolStart(tc["name"], tc["input"])
-            _log.debug("tool_start", session_id=session_id,
-                       tool=tc["name"], input_keys=list(tc["input"].keys()))
-            tc, result, permitted = _exec_one(tc)
-            _log.debug("tool_end", session_id=session_id,
-                       tool=tc["name"], permitted=permitted,
-                       result_len=len(result))
-            results_ordered.append((tc, result, permitted))
+        levels, deps = _build_dag_levels(permitted_tcs)
+        for level in levels:
+            _execute_level(level, results, durations, config)
 
         # Yield results and append to state in original order
-        for tc, result, permitted in results_ordered:
-            yield ToolEnd(tc["name"], result, permitted)
+        for tc in tool_calls:
+            if tc["id"] not in results:
+                continue
+            result = results[tc["id"]]
+            yield ToolEnd(tc["name"], result, permissions[tc["id"]],
+                          durations[tc["id"]], tool_id=tc["id"], inputs=tc["input"])
             state.messages.append({
                 "role":         "tool",
                 "tool_call_id": tc["id"],
                 "name":         tc["name"],
                 "content":      result,
             })
+
+        # ContextGC is terminal — if it's the only thing called,
+        # don't loop back to the LLM or it re-calls GC forever.
+        if tool_calls and all(tc["name"] == "ContextGC" for tc in tool_calls):
+            break
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────

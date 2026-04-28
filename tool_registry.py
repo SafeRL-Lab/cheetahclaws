@@ -64,6 +64,12 @@ def get_tool(name: str) -> Optional[ToolDef]:
     return _registry.get(name)
 
 
+def is_concurrent_safe(name: str) -> bool:
+    """Return True if the named tool is safe to run in parallel."""
+    tool = _registry.get(name)
+    return tool.concurrent_safe if tool else False
+
+
 def get_all_tools() -> List[ToolDef]:
     """Return all registered tools (insertion order)."""
     return list(_registry.values())
