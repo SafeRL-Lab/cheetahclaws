@@ -107,12 +107,14 @@ def cmd_cost(_args: str, state, config) -> bool:
 def cmd_compact(args: str, state, config) -> bool:
     """Manually compact conversation history."""
     from compaction import manual_compact
+    from ui.render import _start_tool_spinner, _stop_tool_spinner, set_spinner_phrase
     focus = args.strip()
-    if focus:
-        info(f"Compacting with focus: {focus}")
-    else:
-        info("Compacting conversation...")
-    success, msg = manual_compact(state, config, focus=focus)
+    set_spinner_phrase(f"compacting conversation{'  [' + focus + ']' if focus else ''}…")
+    _start_tool_spinner()
+    try:
+        success, msg = manual_compact(state, config, focus=focus)
+    finally:
+        _stop_tool_spinner()
     if success:
         info(msg)
     else:

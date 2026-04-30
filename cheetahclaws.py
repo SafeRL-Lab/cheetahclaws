@@ -113,6 +113,20 @@ from __future__ import annotations
 
 # ── Standard library ───────────────────────────────────────────────────────
 import os
+
+# Load .env from the cheetahclaws directory if present (before any other imports read os.environ)
+def _load_env() -> None:
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.exists(env_path):
+        return
+    with open(env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if not _line or _line.startswith("#") or "=" not in _line:
+                continue
+            _k, _, _v = _line.partition("=")
+            os.environ.setdefault(_k.strip(), _v.strip())
+_load_env()
 import re
 import sys
 import uuid
@@ -521,6 +535,7 @@ _CMD_META: dict[str, tuple[str, list[str]]] = {
     "circuit":     ("Show / reset per-provider circuit breakers", ["status", "reset"]),
     "web":         ("Start the web terminal / chat UI in background", ["status", "--no-auth", "--host"]),
     "setup":       ("Run interactive setup wizard",         []),
+    "btw":         ("Ask a quick question while agent runs (side-session overlay)", []),
     "exit":        ("Exit cheetahclaws",              []),
     "quit":        ("Exit (alias for /exit)",             []),
     "resume":      ("Resume last session",                []),
@@ -722,6 +737,9 @@ def repl(config: dict, initial_prompt: str = None):
 
     query_lock = threading.RLock()
 
+    # ── Concurrency primitives for interactive ESC / queue / /btw ─────────
+    from ui.agent_state import _cancel_event, _input_queue, _agent_running
+
     # Apply rich_live config: disable in-place Live streaming if terminal has issues.
     # Auto-detect environments where ANSI cursor-up / live-rewrite doesn't work:
     #   - SSH sessions (cursor-up fails across network PTY)
@@ -733,7 +751,11 @@ def repl(config: dict, initial_prompt: str = None):
     _is_dumb = (console is not None and getattr(console, "is_dumb_terminal", False))
     _is_macos_terminal = (_plat.system() == "Darwin"
                           and _os.environ.get("TERM_PROGRAM", "") in ("Apple_Terminal", ""))
-    _rich_live_default = not _in_ssh and not _is_dumb and not _is_macos_terminal
+    # Disable Rich Live when prompt_toolkit is active: patch_stdout + Rich Live
+    # conflict in a background-thread setup, causing every streaming update to
+    # re-print the full accumulated text (visible duplication on scroll-up).
+    from ui.input import HAS_PROMPT_TOOLKIT as _HAS_PT
+    _rich_live_default = (not _in_ssh and not _is_dumb and not _is_macos_terminal)
     set_rich_live(config.get("rich_live", _rich_live_default))
 
     # Initialize proactive polling state via RuntimeContext (defaults already set)
@@ -744,6 +766,15 @@ def repl(config: dict, initial_prompt: str = None):
         t.start()
 
     def run_query(user_input: str, is_background: bool = False):
+        # Clear any leftover cancel signal from a previous turn
+        _cancel_event.clear()
+        _agent_running.set()
+        try:
+            _run_query_inner(user_input, is_background)
+        finally:
+            _agent_running.clear()
+
+    def _run_query_inner(user_input: str, is_background: bool = False):
         nonlocal verbose
 
         with query_lock:
@@ -768,7 +799,8 @@ def repl(config: dict, initial_prompt: str = None):
             _duplicate_suppressed = False
 
             try:
-                for event in run(user_input, state, config, system_prompt):
+                for event in run(user_input, state, config, system_prompt,
+                                 cancel_check=lambda: _cancel_event.is_set()):
                     # Stop spinner only when visible output arrives
                     if spinner_shown:
                         show_thinking = isinstance(event, ThinkingChunk) and verbose
@@ -1131,6 +1163,27 @@ def repl(config: dict, initial_prompt: str = None):
 
         return first
 
+    def _run_query_in_thread(user_input: str) -> None:
+        """Start the agent on a background thread and return immediately.
+
+        The main thread stays in _read_input / _SESSION.prompt() so the »
+        prompt bar is visible at the bottom (via patch_stdout) while the
+        agent prints output above it — exactly as Claude Code behaves.
+
+        Queued messages are drained by the agent thread itself, not the main
+        thread, so the main loop keeps re-entering the prompt each time.
+        """
+        def _run_and_drain(msg: str) -> None:
+            run_query(msg)
+            while _input_queue:
+                next_msg = _input_queue.popleft()
+                run_query(next_msg)
+
+        t = threading.Thread(target=_run_and_drain, args=(user_input,), daemon=True)
+        t.start()
+        # Return immediately — do NOT join. The main loop will call _read_input
+        # right away, showing the prompt bar while the agent thread runs.
+
     while True:
         # Show notifications for background agents that finished
         _print_background_notifications()
@@ -1152,6 +1205,12 @@ def repl(config: dict, initial_prompt: str = None):
             except Exception:
                 pass
             prompt = clr(f"\n[{cwd_short}]", "dim") + ctx_hint + clr(" ", "dim") + clr("» ", "cyan", "bold")
+            try:
+                import shutil as _shutil
+                _w = _shutil.get_terminal_size((80, 24)).columns
+                print(clr("─" * _w, "dim"), flush=True)
+            except Exception:
+                pass
             user_input = _read_input(prompt)
         except (EOFError, KeyboardInterrupt):
             print()
@@ -1422,12 +1481,17 @@ def repl(config: dict, initial_prompt: str = None):
         if result:
             continue
 
-        try:
-            run_query(user_input)
-        except KeyboardInterrupt:
-            _track_ctrl_c()
-            print(clr("\n  (interrupted)", "yellow"))
-            # Keep conversation history up to the interruption
+        # ── /btw overlay: quick side-session while agent runs ──────────────
+        if user_input.startswith("/btw ") or user_input == "/btw":
+            question = user_input[5:].strip() if user_input.startswith("/btw ") else ""
+            if not question:
+                warn("/btw requires a question, e.g. /btw what does this function do?")
+                continue
+            from ui.btw_overlay import run_btw_overlay
+            run_btw_overlay(question, config.get("model", "claude-sonnet-4-6"), config)
+            continue
+
+        _run_query_in_thread(user_input)
 
 
 # ── Entry point ────────────────────────────────────────────────────────────
@@ -1447,6 +1511,8 @@ def main():
                         help="Never ask permission (accept all operations)")
     parser.add_argument("--verbose", action="store_true",
                         help="Show thinking + token counts")
+    parser.add_argument("--no-live", action="store_true",
+                        help="Disable Rich Live streaming (plain text output, no duplication on scroll)")
     parser.add_argument("--thinking", action="store_true",
                         help="Enable extended thinking")
     parser.add_argument("--version", action="store_true", help="Print version")
@@ -1501,6 +1567,8 @@ def main():
         config["permission_mode"] = "accept-all"
     if args.verbose:
         config["verbose"] = True
+    if args.no_live:
+        config["rich_live"] = False
     if args.thinking:
         config["thinking"] = True
 

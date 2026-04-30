@@ -512,7 +512,13 @@ def stream_anthropic(
 ) -> Generator:
     """Stream from Anthropic API. Yields TextChunk/ThinkingChunk, then AssistantTurn."""
     import anthropic as _ant
-    client = _ant.Anthropic(api_key=api_key)
+    import os as _os
+    _base_url = (config.get("anthropic_base_url")
+                 or _os.environ.get("ANTHROPIC_BASE_URL", ""))
+    _client_kwargs = {"api_key": api_key}
+    if _base_url:
+        _client_kwargs["base_url"] = _base_url
+    client = _ant.Anthropic(**_client_kwargs)
 
     _mt = resolve_max_tokens(config, "anthropic", model) or 8192
     kwargs = {

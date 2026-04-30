@@ -897,7 +897,7 @@ def cmd_mcp(args: str, _state, config) -> bool:
         }.get(client.state.value, "dim")
         print(f"  {clr(client.status_line(), status_color)}")
         for tool in client._tools:
-            print(f"      {clr(tool.qualified_name, 'cyan')}  {tool.description[:60]}")
+            print(f"      {clr(tool.qualified_name, 'cyan')}  {tool.description}")
             total_tools += 1
 
     if total_tools:

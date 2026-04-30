@@ -39,7 +39,12 @@ def bootstrap(config: dict) -> None:
     import tools as _tools  # noqa: F401
     _log.debug("bootstrap_tools_ready")
 
-    # ── 3. Health-check HTTP server ────────────────────────────────────────
+    # ── 3. MCP servers ─────────────────────────────────────────────────────
+    # Importing mcp.tools triggers background connection + tool registration.
+    import cc_mcp.tools as _mcp_tools  # noqa: F401
+    _log.debug("bootstrap_mcp_connecting")
+
+    # ── 5. Health-check HTTP server ────────────────────────────────────────
     port = config.get("health_check_port")
     if port:
         try:

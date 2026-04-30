@@ -8,6 +8,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
+from .oauth import acquire_token, get_cached_token
 from .types import (
     MCPServerConfig, MCPServerState, MCPTool, MCPTransport,
     INIT_PARAMS, make_notification, make_request,
@@ -148,21 +149,48 @@ class HttpTransport:
         self._sse_pending: Dict[int, dict] = {}
         self._running = False
 
-    def _get_client(self):
-        if self._client is None:
-            try:
-                import httpx
-                self._client = httpx.Client(
-                    headers=self._config.headers,
-                    timeout=self._config.timeout,
-                    follow_redirects=True,
-                )
-            except ImportError:
-                raise RuntimeError("httpx is required for HTTP/SSE MCP transport: pip install httpx")
+    def _get_client(self, oauth_token: Optional[str] = None):
+        try:
+            import httpx
+        except ImportError:
+            raise RuntimeError("httpx is required for HTTP/SSE MCP transport: pip install httpx")
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            **self._config.headers,
+        }
+        # Inject cached OAuth token if no Authorization header already configured
+        if oauth_token and "Authorization" not in self._config.headers:
+            headers["Authorization"] = f"Bearer {oauth_token}"
+        if self._client is None or oauth_token:
+            if self._client:
+                try:
+                    self._client.close()
+                except Exception:
+                    pass
+            self._client = httpx.Client(
+                headers=headers,
+                timeout=self._config.timeout,
+                follow_redirects=True,
+            )
         return self._client
+
+    def _needs_oauth(self) -> bool:
+        """True if this server has no static auth header configured."""
+        return "Authorization" not in self._config.headers
+
+    def _try_oauth(self, www_auth_header: str) -> None:
+        """Run OAuth flow and rebuild the HTTP client with the new token."""
+        token = acquire_token(self._config.url, www_auth_header)
+        self._get_client(oauth_token=token)
 
     def start(self) -> None:
         """For SSE transport: connect to the /sse endpoint and get session URL."""
+        # Inject a cached OAuth token before first connection if available
+        if self._needs_oauth():
+            cached = get_cached_token(self._config.url)
+            if cached:
+                self._get_client(oauth_token=cached)
         if self._config.transport == MCPTransport.SSE:
             self._start_sse()
         else:
@@ -241,8 +269,24 @@ class HttpTransport:
         else:
             # For HTTP: POST and get response directly
             resp = client.post(self._session_url or self._config.url, json=msg, timeout=wait_secs)
+
+            # OAuth: on 401 with no static auth, run browser flow and retry once
+            if resp.status_code == 401 and self._needs_oauth():
+                www_auth = resp.headers.get("www-authenticate", "")
+                self._try_oauth(www_auth)
+                resp = self._client.post(self._session_url or self._config.url, json=msg, timeout=wait_secs)
+
             resp.raise_for_status()
-            result = resp.json()
+            ct = resp.headers.get("content-type", "")
+            if "text/event-stream" in ct:
+                # Server returned SSE envelope — extract the data: line
+                result = None
+                for line in resp.text.splitlines():
+                    if line.startswith("data:"):
+                        result = json.loads(line[5:].strip())
+                        break
+            else:
+                result = resp.json()
 
         if result is None:
             raise TimeoutError(f"MCP server '{self._config.name}' timed out on '{method}'")
@@ -307,6 +351,21 @@ class MCPClient:
             self._transport.start()
             self._handshake()
             self.state = MCPServerState.CONNECTED
+        except RuntimeError as e:
+            # If handshake failed due to OAuth being triggered mid-connect, retry once
+            if "401" in str(e) or "Unauthorized" in str(e):
+                try:
+                    self._transport.stop()
+                    self._transport = self._make_transport()
+                    self._transport.start()
+                    self._handshake()
+                    self.state = MCPServerState.CONNECTED
+                    return
+                except Exception:
+                    pass
+            self.state = MCPServerState.ERROR
+            self._error = str(e)
+            raise
         except Exception as e:
             self.state = MCPServerState.ERROR
             self._error = str(e)
@@ -492,16 +551,19 @@ class MCPManager:
 
     def call_tool(self, qualified_name: str, arguments: dict) -> str:
         """Dispatch a tool call by qualified name (mcp__server__tool)."""
-        # Parse server and tool name from qualified name
         parts = qualified_name.split("__", 2)
         if len(parts) != 3 or parts[0] != "mcp":
             raise ValueError(f"Invalid MCP tool name: {qualified_name}")
-        server_name = parts[1]
+        server_name_sanitized = parts[1]
         tool_name = parts[2]
 
-        client = self._clients.get(server_name)
+        client = next(
+            (c for c in self._clients.values()
+             if "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in c.config.name) == server_name_sanitized),
+            None,
+        )
         if client is None:
-            raise RuntimeError(f"MCP server '{server_name}' not configured")
+            raise RuntimeError(f"MCP server '{server_name_sanitized}' not configured")
 
         # Auto-reconnect if dropped
         if not client.alive:

@@ -180,12 +180,40 @@ def ask_input_interactive(prompt: str, config: dict,
         return text
 
     # ── Terminal ────────────────────────────────────────────────────────────
+    # The agent runs in a background thread; prompt_toolkit owns stdin on the
+    # main thread. Signal the question via shared state so the main thread's
+    # Enter binding collects the answer and unblocks us — no stdin fighting.
     try:
-        rl_prompt = _re.sub(r'(\x1b\[[0-9;]*m)', r'\001\1\002', prompt)
-        return input(rl_prompt)
-    except (KeyboardInterrupt, EOFError):
-        print()
-        return ""
+        from ui.agent_state import (
+            _pending_question as _pq_mod,  # noqa — we mutate the module
+            _answer_event,
+            _answer_value,
+        )
+        import ui.agent_state as _st
+
+        clean_prompt = _re.sub(r'(\x1b\[[0-9;]*m)', '', prompt).strip()
+
+        # Print the question above the prompt bar (goes via patch_stdout proxy)
+        import sys as _sys
+        _sys.stdout.write(f"\n\033[1;35m❯ {clean_prompt}\033[0m\n")
+        _sys.stdout.flush()
+
+        # Signal the Enter binding
+        _st._answer_event.clear()
+        _st._answer_value = ""
+        _st._pending_question = clean_prompt
+
+        if not _st._answer_event.wait(timeout=_INPUT_WAIT_TIMEOUT):
+            _st._pending_question = ""
+            return "(timeout)"
+
+        return _st._answer_value
+
+    except Exception:
+        try:
+            return input(_re.sub(r'(\x1b\[[0-9;]*m)', r'\001\1\002', prompt))
+        except (KeyboardInterrupt, EOFError):
+            return ""
 
 
 # ── SleepTimer ────────────────────────────────────────────────────────────

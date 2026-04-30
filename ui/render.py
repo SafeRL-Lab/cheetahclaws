@@ -105,11 +105,10 @@ _LIVE_LINE_LIMIT = 80  # auto-switch to plain streaming beyond this many lines
 
 
 def stream_text(chunk: str) -> None:
-    """Buffer chunk; update Live in-place when Rich available, else print directly.
+    """Buffer chunk; render formatted output at flush_response() time.
 
-    Safety: if accumulated text exceeds _LIVE_LINE_LIMIT lines, auto-switch
-    from Rich Live to plain streaming to prevent terminal re-render duplication
-    on terminals that can't handle large Live areas (macOS Terminal, etc.).
+    When Rich Live is enabled: update in-place on each chunk.
+    When disabled (patch_stdout active): buffer silently, render once at flush.
     """
     global _current_live
     _accumulated_text.append(chunk)
@@ -122,8 +121,6 @@ def stream_text(chunk: str) -> None:
         if _current_live is not None and line_count > _LIVE_LINE_LIMIT:
             _current_live.stop()
             _current_live = None
-            # Print the full text once (Live already displayed partial content,
-            # but stopping Live clears it — so we re-print cleanly)
             console.print(_make_renderable(full))
             return
 
@@ -132,10 +129,8 @@ def stream_text(chunk: str) -> None:
                 _start_live()
             _current_live.update(_make_renderable(full), refresh=True)
         else:
-            # Already past limit, no Live — just append new chunk
             print(chunk, end="", flush=True)
-    else:
-        print(chunk, end="", flush=True)
+    # Non-Live: buffer only — flush_response() renders the complete text once
 
 def stream_thinking(chunk: str, verbose: bool):
     if verbose:
@@ -144,17 +139,18 @@ def stream_thinking(chunk: str, verbose: bool):
             print(f"{C['dim']}{clean_chunk}", end="", flush=True)
 
 def flush_response() -> None:
-    """Commit buffered text to screen: stop Live (freezes rendered Markdown in place)."""
+    """Commit buffered text to screen with Rich Markdown formatting."""
     global _current_live
     full = "".join(_accumulated_text)
     _accumulated_text.clear()
     if _current_live is not None:
         _current_live.stop()
         _current_live = None
-    elif _RICH and _RICH_LIVE and full.strip():
+    elif _RICH and full.strip():
         console.print(_make_renderable(full))
-    else:
-        print()  # ensure newline after plain-text stream
+    elif full:
+        print(full, end="", flush=True)
+        print()
 
 
 # ── Spinner ────────────────────────────────────────────────────────────────
@@ -276,25 +272,43 @@ def _tool_desc(name: str, inputs: dict) -> str:
 
 
 def print_tool_start(name: str, inputs: dict, verbose: bool):
-    """Show tool invocation."""
-    desc = _tool_desc(name, inputs)
-    print(clr(f"  ⚙  {desc}", "dim", "cyan"), flush=True)
     if verbose:
+        desc = _tool_desc(name, inputs)
+        print(clr(f"  ⚙  {desc}", "dim", "cyan"), flush=True)
         print(clr(f"     inputs: {json.dumps(inputs, ensure_ascii=False)[:200]}", "dim"))
+        return
+    # Non-verbose: overwrite the spinner line with the tool name, no newline
+    desc = _tool_desc(name, inputs)
+    sys.stdout.write(f"\r  \033[2m⚙  {desc[:80]}\033[0m" + " " * 10 + "\r")
+    sys.stdout.flush()
 
 def print_tool_end(name: str, result: str, verbose: bool):
-    lines = result.count("\n") + 1
-    size = len(result)
-    summary = f"→ {lines} lines ({size} chars)"
-    if not result.startswith("Error") and not result.startswith("Denied"):
-        print(clr(f"  ✓ {summary}", "dim", "green"), flush=True)
-        if name in ("Edit", "Write") and _has_diff(result):
-            parts = result.split("\n\n", 1)
-            if len(parts) == 2:
-                print(clr(f"  {parts[0]}", "dim"))
-                render_diff(parts[1])
-    else:
+    if verbose:
+        lines = result.count("\n") + 1
+        size = len(result)
+        summary = f"→ {lines} lines ({size} chars)"
+        if not result.startswith("Error") and not result.startswith("Denied"):
+            print(clr(f"  ✓ {summary}", "dim", "green"), flush=True)
+            if name in ("Edit", "Write") and _has_diff(result):
+                parts = result.split("\n\n", 1)
+                if len(parts) == 2:
+                    print(clr(f"  {parts[0]}", "dim"))
+                    render_diff(parts[1])
+            preview = result[:500] + ("…" if len(result) > 500 else "")
+            print(clr(f"     {preview.replace(chr(10), chr(10)+'     ')}", "dim"))
+        else:
+            print(clr(f"  ✗ {result[:120]}", "dim", "red"), flush=True)
+        return
+    # Non-verbose: show diffs for Edit/Write (permanent output), errors; erase all else
+    if name in ("Edit", "Write") and _has_diff(result):
+        sys.stdout.write("\r" + " " * 60 + "\r")
+        sys.stdout.flush()
+        parts = result.split("\n\n", 1)
+        if len(parts) == 2:
+            print(clr(f"  {parts[0]}", "dim"))
+            render_diff(parts[1])
+    elif result.startswith("Error") or result.startswith("Denied"):
+        sys.stdout.write("\r" + " " * 60 + "\r")
+        sys.stdout.flush()
         print(clr(f"  ✗ {result[:120]}", "dim", "red"), flush=True)
-    if verbose and not result.startswith("Denied"):
-        preview = result[:500] + ("…" if len(result) > 500 else "")
-        print(clr(f"     {preview.replace(chr(10), chr(10)+'     ')}", "dim"))
+    # Otherwise: just erase the tool-start line; spinner will overwrite next

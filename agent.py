@@ -102,7 +102,13 @@ def run(
 
         # Compact context if approaching window limit
         try:
-            maybe_compact(state, config)
+            from ui.render import _start_tool_spinner, _stop_tool_spinner, set_spinner_phrase
+            set_spinner_phrase("compacting context…")
+            _start_tool_spinner()
+            try:
+                maybe_compact(state, config)
+            finally:
+                _stop_tool_spinner()
         except Exception as _compact_err:
             _log.warn("compact_failed", error=str(_compact_err))
 
@@ -136,6 +142,8 @@ def run(
                     tool_schemas=get_tool_schemas(),
                     config=config,
                 ):
+                    if cancel_check and cancel_check():
+                        return
                     if isinstance(event, (TextChunk, ThinkingChunk)):
                         yield event
                     elif isinstance(event, AssistantTurn):
@@ -242,6 +250,8 @@ def run(
             """Execute a single tool call, return (tc, result, permitted)."""
             tid = tc["id"]
             permitted = permissions[tid]
+            if cancel_check and cancel_check():
+                return tc, "[Interrupted by user]", False
             if not permitted:
                 if config.get("permission_mode") == "plan":
                     plan_file = runtime.get_ctx(config).plan_file or ""

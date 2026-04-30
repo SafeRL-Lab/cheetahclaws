@@ -153,10 +153,12 @@ if HAS_PROMPT_TOOLKIT:
         return True
 
     def _build_key_bindings() -> "KeyBindings":
-        """Tab accepts the gray history ghost-text when one is shown.
+        """Key bindings for the REPL input line.
 
-        Falls through to the default Tab binding (slash-menu cycling) when the
-        filter doesn't match, so `/cmd` completion behavior is unchanged.
+        Tab — accept gray history ghost-text (falls through to slash-menu cycling).
+        Escape — hard-stop the running agent turn (sets _cancel_event).
+        Enter — if agent is running, queue the typed message instead of submitting.
+                /btw <question> submits immediately as an overlay request.
         """
         kb = KeyBindings()
 
@@ -164,6 +166,48 @@ if HAS_PROMPT_TOOLKIT:
         def _(event):
             buf = event.current_buffer
             buf.insert_text(buf.suggestion.text)
+
+        @kb.add("escape")
+        def _esc(event):
+            from ui.agent_state import _cancel_event, _agent_running
+            if _agent_running.is_set():
+                _cancel_event.set()
+                import sys
+                sys.stdout.write("\n\033[33m  (interrupted — finishing current operation…)\033[0m\n")
+                sys.stdout.flush()
+            event.current_buffer.reset()
+
+        @kb.add("enter")
+        def _enter(event):
+            import ui.agent_state as _st
+            buf = event.current_buffer
+            text = buf.text.strip()
+
+            # ── Answer mode: agent is waiting for a reply ──────────────────
+            if _st._pending_question:
+                _st._answer_value = text
+                _st._pending_question = ""
+                _st._answer_event.set()
+                buf.reset()
+                return
+
+            if not text:
+                event.current_buffer.validate_and_handle()
+                return
+            # /btw goes straight to overlay (handled by read_line caller)
+            if text.startswith("/btw ") or text == "/btw":
+                event.app.exit(result=text)
+                return
+            if _st._agent_running.is_set():
+                # Queue the message for after the current turn finishes
+                _st._input_queue.append(text)
+                buf.reset()
+                import sys
+                short = text[:60] + ("…" if len(text) > 60 else "")
+                sys.stdout.write(f"\n\033[2m  queued: {short}\033[0m\n")
+                sys.stdout.flush()
+            else:
+                event.app.exit(result=text)
 
         return kb
 
@@ -192,6 +236,33 @@ def _build_session(history_path: Optional[Path]):
         "completion-menu.meta.completion.current": "bg:#005f87 #eeeeee",
         "auto-suggestion":                         "#606060 italic",
     })
+    # Disable CPR (Cursor Position Report): prompt_toolkit sends ESC[6n to
+    # detect cursor position, and the terminal's response leaks back into stdin
+    # as garbage characters (e.g. "7;1R"). Disabling CPR prevents this entirely.
+    try:
+        import sys as _sys
+        import io as _io
+        from prompt_toolkit.output.vt100 import Vt100_Output
+        from prompt_toolkit.output.color_depth import ColorDepth
+
+        def _get_size():
+            from prompt_toolkit.utils import get_cwidth as _  # noqa
+            try:
+                from prompt_toolkit.output.vt100 import _get_size as _gs
+                rows, cols = _gs(_sys.stdout.fileno())
+            except Exception:
+                rows, cols = 24, 80
+            from prompt_toolkit.data_structures import Size
+            return Size(rows=rows or 24, columns=cols or 80)
+
+        _output = Vt100_Output(
+            _sys.stdout,
+            _get_size,
+            enable_cpr=False,
+        )
+    except Exception:
+        _output = None
+
     return PromptSession(
         history=history,
         completer=completer,
@@ -201,6 +272,7 @@ def _build_session(history_path: Optional[Path]):
         mouse_support=False,
         style=style,
         key_bindings=_build_key_bindings(),
+        output=_output,
     )
 
 
@@ -217,5 +289,6 @@ def read_line(prompt_ansi: str, history_path: Optional[Path] = None) -> str:
     if _SESSION is None:
         _SESSION = _build_session(history_path)
         _SESSION_HISTORY_PATH = history_path
+
     with patch_stdout(raw=True):
         return _SESSION.prompt(ANSI(prompt_ansi))
