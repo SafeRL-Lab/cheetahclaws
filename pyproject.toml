@@ -63,7 +63,7 @@ packages = [
     "cc_mcp", "memory", "monitor", "multi_agent", "plugin", "skill", "task",
     "voice", "video", "checkpoint",
     "ui", "web", "bridges", "commands",
-    "research", "research.sources",
+    "research", "research.sources", "research.lab",
     "prompts",
     "modular", "modular.video", "modular.voice", "modular.trading",
     "modular.trading.data", "modular.trading.engines", "modular.trading.agents",

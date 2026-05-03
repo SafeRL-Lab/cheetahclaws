@@ -1331,6 +1331,41 @@ def _handle_connection(sock: socket.socket, addr: tuple) -> None:
             sock.close()
             return
 
+        # ── Research lab UI page ────────────────────────────────────
+        if path == "/lab" and method == "GET":
+            lab_path = _WEB_DIR / "lab.html"
+            if lab_path.exists():
+                _send_http(sock, "200 OK", "text/html; charset=utf-8",
+                           lab_path.read_bytes(), request_origin=origin)
+            else:
+                _send_http(sock, "404 Not Found", "text/plain",
+                           b"lab.html not found", request_origin=origin)
+            sock.close()
+            return
+
+        # ── /api/lab/* routes (research lab) ────────────────────────
+        if path.startswith("/api/lab"):
+            try:
+                from web.lab_api import dispatch as _lab_dispatch
+                from cc_config import load_config as _load_cfg
+                from urllib.parse import parse_qs
+                q_dict = {k: v[0] for k, v in parse_qs(query).items()}
+                status, ctype, raw = _lab_dispatch(
+                    path, method, q_dict, body_json, _load_cfg())
+                http_status = (
+                    "200 OK" if status == 200 else
+                    "400 Bad Request" if status == 400 else
+                    "404 Not Found" if status == 404 else
+                    "405 Method Not Allowed" if status == 405 else
+                    f"{status} Server Error"
+                )
+                _send_http(sock, http_status, ctype, raw,
+                           request_origin=origin)
+            except Exception as exc:  # noqa: BLE001
+                _send_json(sock, {"error": str(exc)}, request_origin=origin)
+            sock.close()
+            return
+
         # ── POST /api/prompt — submit prompt to chat session ────────
         if path == "/api/prompt" and method == "POST":
             uid = _require_user(sock, cookie, origin)

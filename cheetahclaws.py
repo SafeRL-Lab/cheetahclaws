@@ -241,6 +241,7 @@ from commands.agent_cmd import cmd_agent
 from commands.monitor_cmd import cmd_subscribe, cmd_subscriptions, cmd_unsubscribe, cmd_monitor
 
 from commands.research_cmd import cmd_research, cmd_reports
+from commands.lab_cmd import cmd_lab
 
 # ── Tools / thread-local bridge state ─────────────────────────────────────
 from tools import (
@@ -409,6 +410,7 @@ COMMANDS = {
     "monitor":     cmd_monitor,
     "research":    cmd_research,
     "reports":     cmd_reports,
+    "lab":         cmd_lab,
     "compact":     cmd_compact,
     "init":        cmd_init,
     "export":      cmd_export,
@@ -554,6 +556,7 @@ _CMD_META: dict[str, tuple[str, list[str]]] = {
     "doctor":      ("Diagnose installation health",         []),
     "circuit":     ("Show / reset per-provider circuit breakers", ["status", "reset"]),
     "web":         ("Start the web terminal / chat UI in background", ["status", "--no-auth", "--host"]),
+    "lab":         ("Autonomous research lab — multi-agent paper drafting + reviewer iteration", ["start", "status", "abort", "logs", "resume"]),
     "setup":       ("Run interactive setup wizard",         []),
     "exit":        ("Exit cheetahclaws",              []),
     "quit":        ("Exit (alias for /exit)",             []),

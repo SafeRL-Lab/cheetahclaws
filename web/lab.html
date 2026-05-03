@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>cheetahclaws · research lab</title>
+<style>
+  :root {
+    --bg: #0d1117; --fg: #e6edf3; --muted: #7d8590;
+    --panel: #151b23; --border: #30363d; --accent: #2f81f7;
+    --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #ffffff; --fg: #1f2328; --muted: #59636e;
+      --panel: #f6f8fa; --border: #d0d7de; --accent: #0969da;
+      --ok: #1a7f37; --warn: #9a6700; --bad: #cf222e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font: 14px/1.55 -apple-system, BlinkMacSystemFont,
+      "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--fg);
+  }
+  header {
+    padding: 14px 24px; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 12px;
+    background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px; }
+  section { margin-bottom: 24px; }
+  h2 { font-size: 15px; margin: 0 0 12px; color: var(--muted); font-weight: 600;
+    text-transform: uppercase; letter-spacing: .05em; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px;
+  }
+  textarea, input[type=text], input[type=number] {
+    width: 100%; background: var(--bg); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px; font: inherit; font-family: ui-monospace, monospace;
+  }
+  textarea { min-height: 60px; resize: vertical; }
+  label { display: block; margin-bottom: 4px; font-size: 12px; color: var(--muted); }
+  .row { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .row > * { flex: 1; min-width: 120px; }
+  button {
+    background: var(--accent); color: white; border: 0;
+    border-radius: 6px; padding: 8px 16px; font: inherit;
+    cursor: pointer; font-weight: 500;
+  }
+  button:hover { filter: brightness(1.1); }
+  button.secondary {
+    background: var(--panel); color: var(--fg);
+    border: 1px solid var(--border);
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  table { width: 100%; border-collapse: collapse; font-family: ui-monospace, monospace; font-size: 12px; }
+  th, td {
+    text-align: left; padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  th { color: var(--muted); font-weight: 500; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover { background: var(--bg); }
+  .pill {
+    display: inline-block; padding: 1px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 500;
+  }
+  .pill.running  { background: rgba(47, 129, 247, .15); color: var(--accent); }
+  .pill.done     { background: rgba(63, 185, 80, .15); color: var(--ok); }
+  .pill.failed   { background: rgba(248, 81, 73, .15); color: var(--bad); }
+  .pill.aborted  { background: rgba(210, 153, 34, .15); color: var(--warn); }
+  .pill.pending  { background: var(--bg); color: var(--muted); }
+  .stages { display: flex; gap: 4px; margin-top: 12px; flex-wrap: wrap; }
+  .stage {
+    font-size: 11px; padding: 4px 10px; border-radius: 12px;
+    background: var(--bg); color: var(--muted); border: 1px solid var(--border);
+  }
+  .stage.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .stage.done { background: rgba(63, 185, 80, .15); color: var(--ok); border-color: var(--ok); }
+  .messages {
+    max-height: 60vh; overflow-y: auto; font-family: ui-monospace, monospace;
+    font-size: 12px;
+  }
+  .msg { padding: 8px; border-bottom: 1px solid var(--border); }
+  .msg .meta { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+  .msg pre { white-space: pre-wrap; word-break: break-word;
+    margin: 0; font-family: inherit; font-size: 12px; }
+  .report {
+    max-height: 70vh; overflow-y: auto; padding: 16px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  .report pre {
+    white-space: pre-wrap; font-family: ui-monospace, monospace;
+    font-size: 12px; background: var(--panel); padding: 8px;
+    border-radius: 4px; overflow-x: auto;
+  }
+  .hidden { display: none; }
+  .muted { color: var(--muted); }
+  .err { color: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>cheetahclaws · research lab</h1>
+  <span class="badge">v0 · single-user</span>
+</header>
+
+<main>
+
+<section>
+  <h2>start a new run</h2>
+  <div class="card">
+    <label for="topic">research topic / prompt</label>
+    <textarea id="topic" placeholder="e.g. Compare LLM agents debate vs single-shot generation: a comparative study on factual QA"></textarea>
+    <div class="row" style="margin-top: 12px;">
+      <div>
+        <label for="budget_tokens">budget (tokens)</label>
+        <input id="budget_tokens" type="number" value="5000000" />
+      </div>
+      <div>
+        <label for="budget_cost_cents">budget (USD cents)</label>
+        <input id="budget_cost_cents" type="number" value="5000" />
+      </div>
+      <div>
+        <label for="max_rounds">max reviewer rounds / stage</label>
+        <input id="max_rounds" type="number" value="5" />
+      </div>
+    </div>
+    <button id="btn-start">start run</button>
+    <span id="start-msg" class="muted" style="margin-left: 12px;"></span>
+  </div>
+</section>
+
+<section>
+  <h2>recent runs <button id="btn-refresh" class="secondary" style="float: right;">refresh</button></h2>
+  <div class="card">
+    <table id="runs-table">
+      <thead><tr>
+        <th>run_id</th><th>topic</th><th>status</th><th>stage</th>
+        <th>tokens</th><th>cost</th><th></th>
+      </tr></thead>
+      <tbody id="runs-tbody">
+        <tr><td colspan="7" class="muted">loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="run-detail" class="hidden">
+  <h2>run detail · <span id="rd-id" style="font-family: monospace;"></span>
+    <button class="secondary" id="btn-abort" style="float: right;">abort</button>
+  </h2>
+  <div class="card">
+    <div id="rd-summary"></div>
+    <div class="stages" id="rd-stages"></div>
+  </div>
+</section>
+
+<section id="run-msgs" class="hidden">
+  <h2>agent messages
+    <button class="secondary" id="btn-msg-refresh" style="float: right;">refresh</button>
+  </h2>
+  <div class="card">
+    <div class="messages" id="msgs-body">loading…</div>
+  </div>
+</section>
+
+<section id="run-report" class="hidden">
+  <h2>final report</h2>
+  <div class="card">
+    <div class="report" id="report-body">no report yet — run still in progress.</div>
+  </div>
+</section>
+
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let activeRunId = null;
+let pollTimer = null;
+
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body) {
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(body);
+  }
+  const r = await fetch(path, opts);
+  const ct = r.headers.get("content-type") || "";
+  if (ct.includes("application/json")) {
+    return { ok: r.ok, status: r.status, body: await r.json() };
+  }
+  return { ok: r.ok, status: r.status, body: await r.text() };
+}
+
+function fmtTokens(n) {
+  if (!n) return "0";
+  if (n < 1000) return n.toString();
+  if (n < 1e6) return (n / 1000).toFixed(1) + "k";
+  return (n / 1e6).toFixed(2) + "M";
+}
+function fmtCents(c) { return "$" + ((c || 0) / 100).toFixed(2); }
+function fmtTopic(t) { return t.length > 60 ? t.slice(0, 58) + "…" : t; }
+function fmtTime(ts) {
+  if (!ts) return "—";
+  const d = new Date(ts * 1000);
+  return d.toLocaleString();
+}
+
+async function loadRuns() {
+  const r = await api("GET", "/api/lab/runs?limit=50");
+  if (!r.ok) {
+    $("#runs-tbody").innerHTML = `<tr><td colspan="7" class="err">error: ${r.body.error || r.status}</td></tr>`;
+    return;
+  }
+  const rows = r.body.runs || [];
+  if (!rows.length) {
+    $("#runs-tbody").innerHTML = `<tr><td colspan="7" class="muted">no runs yet — start one above.</td></tr>`;
+    return;
+  }
+  $("#runs-tbody").innerHTML = rows.map(r => `
+    <tr class="clickable" data-id="${r.run_id}">
+      <td><code>${r.run_id}</code></td>
+      <td>${fmtTopic(r.topic)}</td>
+      <td><span class="pill ${r.status}">${r.status}</span></td>
+      <td>${r.current_stage || "—"}</td>
+      <td>${fmtTokens(r.tokens_used)}${r.tokens_budget ? " / " + fmtTokens(r.tokens_budget) : ""}</td>
+      <td>${fmtCents(r.cost_cents)}${r.cost_cents_budget ? " / " + fmtCents(r.cost_cents_budget) : ""}</td>
+      <td>${r.error ? `<span class="err" title="${r.error}">err</span>` : ""}</td>
+    </tr>
+  `).join("");
+  document.querySelectorAll("#runs-tbody tr.clickable").forEach(tr => {
+    tr.onclick = () => selectRun(tr.dataset.id);
+  });
+}
+
+const STAGES = [
+  "questioning","survey","outline","implementation",
+  "experiment","analysis","drafting","verification","finalization"
+];
+
+async function selectRun(runId) {
+  activeRunId = runId;
+  $("#rd-id").textContent = runId;
+  $("#run-detail").classList.remove("hidden");
+  $("#run-msgs").classList.remove("hidden");
+  $("#run-report").classList.remove("hidden");
+  await refreshDetail();
+  await refreshMessages();
+  await refreshReport();
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    if (!activeRunId) return;
+    await refreshDetail();
+    await refreshMessages();
+  }, 5000);
+}
+
+async function refreshDetail() {
+  const r = await api("GET", "/api/lab/runs/" + activeRunId);
+  if (!r.ok) {
+    $("#rd-summary").innerHTML = `<span class="err">${r.body.error || r.status}</span>`;
+    return;
+  }
+  const d = r.body;
+  $("#rd-summary").innerHTML = `
+    <div><b>topic:</b> ${d.topic}</div>
+    <div><b>status:</b> <span class="pill ${d.status}">${d.status}</span> · stage <code>${d.current_stage || "—"}</code></div>
+    <div><b>tokens:</b> ${fmtTokens(d.tokens_used)} / ${d.tokens_budget ? fmtTokens(d.tokens_budget) : "∞"}
+       · <b>cost:</b> ${fmtCents(d.cost_cents)} / ${d.cost_cents_budget ? fmtCents(d.cost_cents_budget) : "∞"}</div>
+    <div><b>started:</b> ${fmtTime(d.created_at)}${d.completed_at ? " · <b>completed:</b> " + fmtTime(d.completed_at) : ""}</div>
+    ${d.error ? `<div class="err"><b>error:</b> ${d.error}</div>` : ""}
+  `;
+  const completedStages = new Set();
+  let activeStage = d.current_stage;
+  for (const s of d.stages || []) {
+    if (s.outcome === "advance") completedStages.add(s.stage);
+  }
+  $("#rd-stages").innerHTML = STAGES.map(s => {
+    const cls = completedStages.has(s) ? "done"
+      : (s === activeStage && d.status === "running" ? "active" : "");
+    return `<span class="stage ${cls}">${s}</span>`;
+  }).join("");
+  $("#btn-abort").disabled = !(d.status === "running" && d.in_process_cancellable);
+}
+
+async function refreshMessages() {
+  const r = await api("GET", "/api/lab/runs/" + activeRunId + "/messages?limit=80");
+  if (!r.ok) {
+    $("#msgs-body").innerHTML = `<span class="err">${r.body.error || r.status}</span>`;
+    return;
+  }
+  const msgs = (r.body.messages || []).slice().reverse();
+  if (!msgs.length) {
+    $("#msgs-body").innerHTML = `<div class="muted">no messages yet.</div>`;
+    return;
+  }
+  $("#msgs-body").innerHTML = msgs.map(m => `
+    <div class="msg">
+      <div class="meta">
+        ${new Date(m.ts * 1000).toLocaleTimeString()}
+        · <code>${m.stage}/r${m.round}</code>
+        · <b>${m.role}</b>
+        · ${m.kind}
+        ${m.meta && m.meta.model ? "· " + m.meta.model : ""}
+        ${m.meta && m.meta.tokens_in ? "· " + (m.meta.tokens_in + m.meta.tokens_out) + " tokens" : ""}
+      </div>
+      <pre>${escapeHtml(m.content)}</pre>
+    </div>
+  `).join("");
+}
+
+async function refreshReport() {
+  const r = await fetch("/api/lab/runs/" + activeRunId + "/report");
+  if (!r.ok) {
+    $("#report-body").innerHTML = `<div class="muted">no report yet — run still in progress.</div>`;
+    return;
+  }
+  const md = await r.text();
+  $("#report-body").innerHTML = renderMarkdown(md);
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Tiny markdown renderer — good enough for paper drafts.
+// Falls back to <pre> if something looks wrong.
+function renderMarkdown(md) {
+  if (!md) return "<div class=muted>empty</div>";
+  let html = escapeHtml(md);
+  html = html.replace(/```python\n([\s\S]+?)```/g, (_, c) => `<pre>${c}</pre>`);
+  html = html.replace(/```\n?([\s\S]+?)```/g, (_, c) => `<pre>${c}</pre>`);
+  html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+  html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+  html = html.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+  html = html.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+  html = html.replace(/\*(.+?)\*/g, "<i>$1</i>");
+  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+  html = html.replace(/^- (.+)$/gm, "<li>$1</li>");
+  html = html.replace(/(<li>[\s\S]+?<\/li>(\n<li>[\s\S]+?<\/li>)*)/g, "<ul>$1</ul>");
+  html = html.replace(/\n{2,}/g, "</p><p>");
+  return "<p>" + html + "</p>";
+}
+
+$("#btn-start").addEventListener("click", async () => {
+  const topic = $("#topic").value.trim();
+  if (!topic) { $("#start-msg").textContent = "topic is required"; return; }
+  const body = {
+    topic,
+    budget_tokens: parseInt($("#budget_tokens").value),
+    budget_cost_cents: parseInt($("#budget_cost_cents").value),
+    max_rounds: parseInt($("#max_rounds").value),
+  };
+  $("#start-msg").textContent = "starting…";
+  const r = await api("POST", "/api/lab/runs", body);
+  if (r.ok) {
+    $("#start-msg").textContent = "started: " + r.body.run_id;
+    $("#topic").value = "";
+    await loadRuns();
+    selectRun(r.body.run_id);
+  } else {
+    $("#start-msg").innerHTML = `<span class="err">${r.body.error || r.status}</span>`;
+  }
+});
+
+$("#btn-refresh").addEventListener("click", loadRuns);
+$("#btn-msg-refresh").addEventListener("click", refreshMessages);
+
+$("#btn-abort").addEventListener("click", async () => {
+  if (!activeRunId) return;
+  if (!confirm("abort run " + activeRunId + "?")) return;
+  const r = await api("POST", "/api/lab/runs/" + activeRunId + "/abort");
+  if (r.ok) {
+    refreshDetail();
+  } else {
+    alert("abort failed: " + (r.body.error || r.status));
+  }
+});
+
+loadRuns();
+setInterval(loadRuns, 10000);
+</script>
+</body>
+</html>
