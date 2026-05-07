@@ -1,25 +1,15 @@
-English | [中文](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/README.CN.MD) | [한국어](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/README.KO.MD) | [日本語](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/README.JP.MD) | [Français](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/README.FR.MD) | [Deutsch](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/README.DE.MD) | [Español](https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/README.ES.MD) | [Português](https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/README.PT.MD)
+
 
 <br> 
 
 <div align="center">
-  <a href="[https://github.com/SafeRL-Lab/Robust-Gymnasium](https://github.com/SafeRL-Lab/clawspring)">
+  <a href="[]()">
     <img src="docs/logo-5.png" alt="Logo" width="280"> 
   </a>
 
   
 <h2 align="center" style="font-size: 30px;"><strong><em>CheetahClaws (Nano Claude Code) </em></strong>: A Fast, Easy-to-Use, Production-Ready, Python-Native Personal AI Assistant for Any Model, Inspired by OpenClaw and Claude Code, Built to Work for You Autonomously 24/7</h2>
-<p align="center">
-    <a href="https://cheetahclaws.github.io/">Website</a>
-    ·
-    <a href="https://deepwiki.com/SafeRL-Lab/cheetahclaws">Brief Intro</a>
-    ·
-    <a href="https://github.com/SafeRL-Lab/clawspring/issues">Issue</a>
-    ·
-    <a href="https://github.com/chauncygu/collection-claude-code-source-code">The newest source of Claude Code</a>
-    
-  
-  </p>
+
 </div>
 
 
@@ -169,7 +159,7 @@ CheetahClaws: **A Lightweight** and **Easy-to-Use** Python Reimplementation of C
 
 Claude Code is a powerful, production-grade AI coding assistant — but its source code is a compiled, 12 MB TypeScript/Node.js bundle (~1,300 files, ~283K lines). It is tightly coupled to the Anthropic API, hard to modify, and impossible to run against a local or alternative model.
 
-**CheetahClaws** reimplements the same core loop in ~40K lines of readable Python, keeping everything you need and dropping what you don't. See here for more detailed analysis (CheetahClaws v3.03), [English version](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/comparison_claude_code_vs_nano_v3.03_en.md) and [Chinese version](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/comparison_claude_code_vs_nano_v3.03_cn.md)
+**CheetahClaws** reimplements the same core loop in ~40K lines of readable Python, keeping everything you need and dropping what you don't. 
 
 ### At a glance
 
