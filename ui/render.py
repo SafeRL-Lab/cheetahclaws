@@ -28,6 +28,38 @@ except ImportError:
     Markdown = None
 
 # ── ANSI helpers ───────────────────────────────────────────────────────────
+
+def _rgb(hex_str: str) -> str:
+    """Convert '#rrggbb' -> ANSI 24-bit foreground escape."""
+    h = hex_str.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"\033[38;2;{r};{g};{b}m"
+
+
+# Curated palettes (hex per semantic role). cyan/green/blue collapse to the
+# theme's accent color since CheetahClaws uses them all for primary chrome.
+# Add new entries here and they show up in `/theme` automatically.
+THEMES: dict = {
+    "default":     {"accent": "#00D7FF", "warn": "#FFAF00", "code": "monokai"},
+    "dracula":     {"accent": "#BD93F9", "warn": "#FFB86C", "code": "dracula"},
+    "nord":        {"accent": "#88C0D0", "warn": "#EBCB8B", "code": "nord"},
+    "gruvbox":     {"accent": "#FABD2F", "warn": "#FE8019", "code": "gruvbox-dark"},
+    "solarized":   {"accent": "#268BD2", "warn": "#B58900", "code": "solarized-dark"},
+    "tokyo-night": {"accent": "#7AA2F7", "warn": "#E0AF68", "code": "one-dark"},
+    "catppuccin":  {"accent": "#F5C2E7", "warn": "#FAB387", "code": "one-dark"},
+    "matrix":      {"accent": "#00FF41", "warn": "#CCFF00", "code": "monokai"},
+    "synthwave":   {"accent": "#FF00FF", "warn": "#FFCC00", "code": "fruity"},
+    "midnight":    {"accent": "#00BCD4", "warn": "#FFC107", "code": "dracula"},
+    "ocean":       {"accent": "#38BDF8", "warn": "#FBBF24", "code": "nord"},
+    "monokai":     {"accent": "#A6E22E", "warn": "#E6DB74", "code": "monokai"},
+    "cheetah":     {"accent": "#FFB000", "warn": "#FF6F00", "code": "monokai"},
+    "mono":        {"accent": "#E0E0E0", "warn": "#A0A0A0", "code": "bw"},
+    "none":        {"accent": "#FFFFFF", "warn": "#FFFFFF", "code": "default"},
+}
+
+# Active code-block style for Rich Markdown rendering.
+CODE_THEME: str = "monokai"
+
 C = {
     "cyan":    "\033[36m",
     "green":   "\033[32m",
@@ -40,6 +72,22 @@ C = {
     "dim":     "\033[2m",
     "reset":   "\033[0m",
 }
+
+
+def apply_theme(name: str) -> bool:
+    """Mutate the global ANSI color map in-place to a named theme."""
+    global CODE_THEME
+    p = THEMES.get(name)
+    if not p:
+        return False
+    accent = _rgb(p["accent"])
+    warn   = _rgb(p["warn"])
+    C["cyan"] = C["green"] = C["blue"] = accent
+    C["yellow"] = C["magenta"] = warn
+    C["red"]    = "\033[38;5;196m"
+    C["white"]  = "\033[97m"
+    CODE_THEME  = p["code"]
+    return True
 
 def clr(text: str, *keys: str) -> str:
     return "".join(C[k] for k in keys) + str(text) + C["reset"]
