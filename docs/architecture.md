@@ -802,8 +802,86 @@ flow but aren't yet wired into `agent.run`).  Migrating
 `monitor/scheduler`, `agent_runner` (as subprocess-per-agent),
 `proactive`, the three messaging bridges, and replacing
 `cc_daemon/methods.py` and `cc_daemon/permission.py` with
-`agent.run`-driven equivalents is the F-2 through F-8 work in the
+`agent.run`-driven equivalents is the F-3 through F-8 work in the
 foundation roadmap.
+
+#### Persistence (F-2)
+
+`cheetahclaws serve` now initialises a daemon-owned schema in the
+existing ``~/.cheetahclaws/sessions.db`` (shared with `session_store`).
+Seven additive tables — the `sessions` table from `session_store` is
+left untouched:
+
+- `daemon_events` — append-only event log (replaces F-1's in-memory ring).
+  ID is `AUTOINCREMENT` so it stays monotonic across restarts and across
+  retention pruning.  Default retention is 24 h / 100 K rows; pruning
+  runs opportunistically every 100 publishes.  When `replay_since(N)`
+  finds the requested cursor older than `MIN(id)` it yields a synthetic
+  `gap` event so SSE clients (Web UI / future bridges) know to resync.
+- `agent_runs` / `agent_iterations` — placeholder tables awaiting F-4
+  (`agent_runner` subprocess-per-agent).
+- `jobs` — replaces `~/.cheetahclaws/jobs.json`.  `jobs.py` migrates
+  the legacy file once on first call (tracked via `schema_meta`); the
+  JSON file is **left readable** for one release as fallback.
+- `monitor_subscriptions` / `monitor_reports` — placeholder for F-3.
+- `bridges` — placeholder for F-6/7/8.
+- `schema_meta` — schema version + per-feature migration markers.
+
+`cc_daemon/schema.py:init_schema()` is idempotent (CREATE IF NOT
+EXISTS only) and serialised by an internal lock, so concurrent serve
+attempts can't trip on each other.  Schema version is recorded as
+`schema_meta.schema_version`; future bumps go through
+`_apply_migrations()` which is currently a no-op for v1.
+
+The headline F-2 user-visible win: an SSE client that disconnects,
+the daemon restarts, and the client reconnects with `?since=<id>` —
+events published while the client was away (and still inside the
+retention window) are replayed from SQLite, so observers don't lose
+their event timeline across daemon restarts.
+
+#### Monitor in daemon (F-3)
+
+`monitor/scheduler.py` is now daemon-owned.  When `cheetahclaws serve`
+starts, it kicks the scheduler loop in-process; subscriptions and
+generated reports live in the SQLite `monitor_subscriptions` and
+`monitor_reports` tables (migrated from
+`~/.cheetahclaws/monitor_subscriptions.json` on first daemon run, with
+the JSON file kept readable for one release as fallback).
+
+Behaviour:
+
+- **REPL detects daemon → skips local scheduler.**  When the user types
+  `/monitor start` in REPL while a daemon is running,
+  `commands/monitor_cmd.py` calls `cc_daemon.discovery.locate()`, sees
+  a live daemon, prints "scheduler is owned by the running daemon", and
+  no-ops.  Avoids the race of two schedulers fighting over
+  `last_run_at` and double-firing subscriptions.  `/monitor stop`
+  behaves the same way.
+- **`/monitor subscribe` / `unsubscribe` / `list` always work in REPL.**
+  These hit SQLite directly through `monitor.store`; the daemon picks
+  up the new state on its next 60 s poll.  No RPC round-trip needed.
+- **External clients use RPC.**  `cc_daemon/monitor_methods.py`
+  registers `monitor.subscribe`, `monitor.unsubscribe`, `monitor.list`,
+  `monitor.run` for Web UI / third-party tools that don't share the
+  process tree.
+- **Reports become events.**  `scheduler.run_one()` persists the full
+  report body to `monitor_reports` and publishes a `monitor_report`
+  event on the SSE channel (`{topic, report_id, body, sent_to,
+  errors}`).  SSE subscribers see digests as they land; the
+  `report_id` ties the event back to the row in `monitor_reports` for
+  later retrieval.
+- **Telegram / Slack / WeChat delivery from daemon waits for F-6/7/8.**
+  Until the bridges themselves move into daemon, a subscription
+  configured with `--telegram` will land its report in
+  `monitor_reports` and emit the SSE event when the daemon fires it,
+  but won't actually push to Telegram unless REPL is also running with
+  the bridge connected.
+
+The headline F-3 user-visible win: `/monitor subscribe arxiv
+--schedule daily --console`, then exit REPL — the daemon scheduler
+keeps firing on schedule, reports persist to SQLite, SSE clients see
+each digest as it lands, history is `monitor.list_reports("arxiv")`
+away when the user reconnects.
 
 ### Research Lab (`research/lab/` + `commands/lab_cmd.py` + `web/lab_*`)
 

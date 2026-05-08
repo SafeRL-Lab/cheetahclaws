@@ -65,8 +65,9 @@ class DaemonState:
         self.permissions.start_janitor()
         self.rpc = RpcRegistry()
         register_methods(self.rpc, self.permissions)
-        from . import system_methods
+        from . import system_methods, monitor_methods
         system_methods.register(self.rpc, self)
+        monitor_methods.register(self.rpc, self)
         self.shutdown_event = threading.Event()
 
     def shutdown(self) -> None:

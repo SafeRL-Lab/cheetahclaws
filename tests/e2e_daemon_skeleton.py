@@ -302,3 +302,164 @@ def test_daemon_rotate_token_changes_file(daemon_proc):
     assert rc == 0
     assert "rotated" in stdout.lower()
     assert token_path.read_text().strip() != token
+
+
+# ── F-2: SQLite persistence + cross-restart replay ────────────────────────
+
+def _start_daemon(home: Path, *, wait_s: float = 10.0) -> tuple[subprocess.Popen, str, str]:
+    """Boot a daemon under *home*; return (proc, address, token)."""
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["USERPROFILE"] = str(home)
+    env["XDG_RUNTIME_DIR"] = str(home / "xdg")
+    proc = subprocess.Popen(
+        [sys.executable, "cheetahclaws.py", "serve",
+         "--listen", "tcp://127.0.0.1:0"],
+        cwd=str(REPO_ROOT), env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    discovery_file = home / ".cheetahclaws" / "daemon.json"
+    token_file = home / ".cheetahclaws" / "daemon_token"
+    deadline = time.monotonic() + wait_s
+    info = None
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            stdout, stderr = proc.communicate()
+            pytest.fail(
+                "daemon exited before binding\n"
+                f"stdout: {stdout.decode('utf-8', 'replace')}\n"
+                f"stderr: {stderr.decode('utf-8', 'replace')}"
+            )
+        if discovery_file.exists() and token_file.exists():
+            try:
+                info = json.loads(discovery_file.read_text(encoding="utf-8"))
+                break
+            except (json.JSONDecodeError, OSError):
+                pass
+        time.sleep(0.1)
+    if info is None:
+        proc.terminate()
+        proc.wait(timeout=5)
+        pytest.fail("daemon did not write discovery file in time")
+    return proc, info["address"], token_file.read_text(encoding="utf-8").strip()
+
+
+def _stop_daemon(proc: subprocess.Popen, address: str, token: str) -> None:
+    if proc.poll() is None:
+        try:
+            _post_rpc(address, token, "system.shutdown")
+        except Exception:
+            pass
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            proc.wait(timeout=5)
+
+
+def test_sessions_db_initialised_on_first_serve(tmp_path):
+    """F-2 schema: cheetahclaws serve initialises ~/.cheetahclaws/sessions.db
+    with the daemon tables before accepting any RPC."""
+    proc, address, token = _start_daemon(tmp_path)
+    try:
+        # Hit ping so we know the daemon is fully up.
+        status, _ = _post_rpc(address, token, "system.ping")
+        assert status == 200
+    finally:
+        _stop_daemon(proc, address, token)
+
+    db_path = tmp_path / ".cheetahclaws" / "sessions.db"
+    assert db_path.exists()
+    import sqlite3
+    conn = sqlite3.connect(str(db_path))
+    try:
+        names = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
+    finally:
+        conn.close()
+    for t in ("daemon_events", "agent_runs", "agent_iterations", "jobs",
+              "monitor_subscriptions", "monitor_reports", "bridges",
+              "schema_meta"):
+        assert t in names, f"missing table after serve: {t}"
+
+
+def test_monitor_subscribe_via_rpc_survives_daemon_restart(tmp_path):
+    """F-3 headline:  /monitor subscribe via RPC persists into SQLite,
+    daemon stops, daemon starts again, subscription is still listed."""
+    proc1, addr1, token1 = _start_daemon(tmp_path)
+    try:
+        status, body = _post_rpc(addr1, token1, "monitor.subscribe",
+                                  params={"topic": "arxiv",
+                                          "schedule": "daily",
+                                          "channels": ["console"]})
+        assert status == 200
+        assert body["result"]["topic"] == "arxiv"
+
+        status, body = _post_rpc(addr1, token1, "monitor.list")
+        assert status == 200
+        topics = {s["topic"] for s in body["result"]["subscriptions"]}
+        assert "arxiv" in topics
+    finally:
+        _stop_daemon(proc1, addr1, token1)
+
+    proc2, addr2, token2 = _start_daemon(tmp_path)
+    try:
+        status, body = _post_rpc(addr2, token2, "monitor.list")
+        assert status == 200
+        topics = {s["topic"] for s in body["result"]["subscriptions"]}
+        assert "arxiv" in topics, \
+            f"subscription did not survive restart: {topics}"
+    finally:
+        _stop_daemon(proc2, addr2, token2)
+
+
+def test_events_persist_in_sqlite_across_daemon_restart(tmp_path):
+    """Publish events on daemon A (echo.ping fires `ping_received`),
+    stop daemon A, start daemon B against the same data dir, and
+    verify GET /events?since=0 replays the events from SQLite.
+    This is the headline F-2 user-visible win for SSE clients
+    (Web UI / future bridges) that survive daemon restarts.
+    """
+    from cc_daemon import API_VERSION, API_VERSION_HEADER
+
+    # Boot A, publish a few events via echo.ping.
+    proc1, addr1, token1 = _start_daemon(tmp_path)
+    try:
+        for i in range(3):
+            status, body = _post_rpc(addr1, token1, "echo.ping",
+                                     params={"i": i})
+            assert status == 200
+            assert body["result"]["pong"] is True
+    finally:
+        _stop_daemon(proc1, addr1, token1)
+
+    # Boot B against the same HOME → same sessions.db.
+    proc2, addr2, token2 = _start_daemon(tmp_path)
+    try:
+        host, port_s = addr2.rsplit(":", 1)
+        conn = http.client.HTTPConnection(host, int(port_s), timeout=10.0)
+        conn.request("GET", "/events?since=0",
+                     headers={"Authorization": f"Bearer {token2}",
+                              API_VERSION_HEADER: API_VERSION})
+        resp = conn.getresponse()
+        assert resp.status == 200
+        # Read enough to capture all replayed events; daemon may also
+        # emit a heartbeat — bail when we've seen all 3 pings or 5 s pass.
+        deadline = time.monotonic() + 5.0
+        buf = b""
+        while time.monotonic() < deadline:
+            chunk = resp.read(1)
+            if not chunk:
+                break
+            buf += chunk
+            if buf.count(b"event: ping_received") >= 3:
+                break
+        conn.close()
+    finally:
+        _stop_daemon(proc2, addr2, token2)
+
+    text = buf.decode("utf-8", errors="replace")
+    assert text.count("event: ping_received") >= 3, \
+        f"missing replayed events:\n{text[:500]}"
+

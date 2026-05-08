@@ -11,8 +11,8 @@ The "foundation PR" described at the end of [RFC 0001](./0001-daemon-design-note
 | ID  | Scope                                               | Depends on | Est LoC | Status |
 |-----|-----------------------------------------------------|------------|---------|--------|
 | F-1 | `daemon/` package skeleton; `serve` + `daemon` CLI  | —          | ~1500   | MERGED #80 |
-| F-2 | SQLite schema + originator-tracked permission flow  | F-1        | ~600    | TODO   |
-| F-3 | `monitor/scheduler` runs in daemon                  | F-2        | ~500    | TODO   |
+| F-2 | SQLite schema + events persistence + jobs migration | F-1        | ~700    | OPEN   |
+| F-3 | `monitor/scheduler` runs in daemon                  | F-2        | ~700    | OPEN   |
 | F-4 | `agent_runner` becomes subprocess-per-agent         | F-2        | ~1000   | TODO   |
 | F-5 | `proactive` watcher runs in daemon                  | F-2        | ~200    | TODO   |
 | F-6 | Telegram bridge in daemon                           | F-2        | ~500    | TODO   |
@@ -81,35 +81,113 @@ PR #74.  Layer the foundation glue on top:
 - pytest green on Linux, macOS, Windows (TCP-only on Windows; Unix
   socket tests skip on Windows).
 
-## F-2 — SQLite schema + originator-tracked permission flow
+## F-2 — SQLite schema + events persistence + jobs migration
 
-**Scope.** Seven additive tables in `~/.cheetahclaws/sessions.db`; `permission.answer` RPC with originator validation.
+**Scope.** Seven additive tables in `~/.cheetahclaws/sessions.db`; swap
+the F-1 in-memory event ring for a SQLite-backed channel; migrate
+`jobs.py` JSON storage to SQLite.  **Originator-tracked permission flow
+is already provided by spike's `cc_daemon/originator.py` +
+`cc_daemon/permission.py`** (see PR #80) — this PR doesn't re-do it.
 
-**Tables (additive — `sessions` schema untouched).** `agent_runs`, `agent_iterations`, `jobs`, `monitor_subscriptions`, `monitor_reports`, `bridges`, `daemon_events`.
+**Tables (additive — `sessions` from `session_store.py` untouched).**
+`schema_meta`, `daemon_events`, `agent_runs`, `agent_iterations`,
+`jobs`, `monitor_subscriptions`, `monitor_reports`, `bridges`.
 
 **Deliverables.**
-- `daemon/schema.py` — table DDL + version table; idempotent `init_schema()`.
-- `daemon/events.py` — replay backed by `daemon_events` (replaces F-1's in-memory ring).
-- `daemon/permissions.py` — originator record on every `PermissionRequest`; `permission.answer` checks caller's auth identity against originator; non-originators get `403 not_originator`.
-- `jobs.py` — one-shot migrate `~/.cheetahclaws/jobs.json` into the `jobs` table; JSON file kept readable for one release.
+- `cc_daemon/schema.py` — DDL + `init_schema(db_path)` (idempotent,
+  internally locked) + `get_conn()` (thread-local, mirrors
+  `session_store` pattern) + `get_schema_version()` accessor; future
+  migrations land in `_apply_migrations()`.
+- `cc_daemon/cli.py:cmd_serve` calls `init_schema()` right after
+  `bootstrap()` so tables exist before the first publish.
+- `cc_daemon/events.py` — rewritten: `EventBus.publish` does an INSERT
+  into `daemon_events` (id from `AUTOINCREMENT`, monotonic across
+  restarts and prunes), still fans out to in-process subscribers for
+  live tail; `replay_since(N)` reads from SQLite and emits a synthetic
+  `gap` event when `N` is older than the oldest surviving row.
+  Default retention: 24 h / 100 K rows; opportunistic prune every 100
+  publishes.
+- `jobs.py` — `_persist`/`_row_to_job` hit SQLite; `_ensure_migrated()`
+  imports legacy `~/.cheetahclaws/jobs.json` once (tracked via
+  `schema_meta.jobs_migrated_from_json`).  JSON file is **left readable
+  in place** for one release as fallback.  Public API unchanged.
 
 **Acceptance.**
-- Schema migrations run idempotently across daemon restarts.
-- `permission.answer` from the originator succeeds; from any other client returns `403 not_originator`.
-- Originator disconnect + reconnect within timeout window: pending request replays via SSE scoped to that originator.
-- `daemon_events` table caps at configured retention (default 1M rows / 7 days); oldest rows expired.
-- Existing `jobs.json` users see a one-time import message; subsequent runs read from SQLite.
+- `init_schema()` is idempotent across daemon restarts and concurrent
+  callers (verified by 12 unit tests in `tests/test_cc_daemon_schema.py`).
+- Spike's 13 contract tests in `tests/test_daemon_spike.py` keep
+  passing on the SQLite-backed bus (only the two ring-buffer tests
+  needed an in-place rewrite to test retention-based eviction instead
+  of the deleted in-memory cap).
+- New `tests/test_cc_daemon_events_sqlite.py` (15 tests) covers
+  persistence, retention by row count + age, gap-on-old-since,
+  cross-instance replay (simulated daemon restart), and the
+  `reset_bus_for_tests()` truncate path.
+- New `tests/test_jobs_sqlite.py` (14 tests) covers create / start /
+  add_step / lifecycle / list_recent / list_running / `_MAX_JOBS`
+  pruning + JSON-file migration (idempotency, corrupt-file tolerance,
+  legacy-file kept readable).
+- New e2e `tests/e2e_daemon_skeleton.py::test_events_persist_in_sqlite_across_daemon_restart`
+  publishes events on daemon A via `echo.ping`, stops A, starts B
+  against the same data dir, and verifies `GET /events?since=0`
+  replays the events from SQLite.
 
 ## F-3 — monitor in daemon
 
-**Scope.** `monitor/scheduler.py` runs daemon-side; REPL skips its local thread when a daemon is detected.
+**Scope.** `monitor/scheduler.py` runs daemon-side; subscription store
+moves from JSON to the F-2 `monitor_subscriptions` table; reports
+persist + emit SSE events; REPL skips its local scheduler when a
+daemon is detected.
 
-**RPC methods.** `monitor.subscribe`, `monitor.unsubscribe`, `monitor.list`, `monitor.run`.
+**Deliverables.**
+
+- `monitor/store.py` — SQLite-backed (`monitor_subscriptions` and
+  `monitor_reports` tables).  One-shot import of legacy
+  `~/.cheetahclaws/monitor_subscriptions.json` on first call (tracked
+  in `schema_meta.monitor_migrated_from_json`); JSON kept readable for
+  one release.  New helpers: `save_report`, `list_reports`.  Public
+  API of the legacy store unchanged.
+- `monitor/scheduler.py` — `run_one()` persists the full report body
+  via `save_report` and publishes a `monitor_report` event on
+  `cc_daemon.events.get_bus()` with `{topic, report_id, body, sent_to,
+  errors}`.  Loop's idle wait switched from `time.sleep(30)` ×60 to a
+  single `Event.wait(60)` so daemon shutdown isn't stalled by the
+  scheduler thread napping.
+- `cc_daemon/monitor_methods.py` — registers `monitor.subscribe`,
+  `monitor.unsubscribe`, `monitor.list`, `monitor.run` for external
+  clients (Web UI / third-party tools).  `DaemonState.__init__` calls
+  `monitor_methods.register` next to `system_methods`.
+- `cc_daemon/cli.py:cmd_serve` — starts the scheduler with
+  `monitor.scheduler.start(config)` after schema init; the existing
+  shutdown watcher calls `monitor.scheduler.stop()` before triggering
+  HTTP-server shutdown.
+- `commands/monitor_cmd.py` — `/monitor start` and `/monitor stop`
+  detect a live daemon via `cc_daemon.discovery.locate()` and no-op
+  with a friendly message.  `/monitor subscribe` / `unsubscribe` /
+  `list` continue to work in REPL because they hit SQLite directly.
 
 **Acceptance.**
-- `cheetahclaws serve` running → `/monitor subscribe arxiv --schedule daily --telegram` persists to `monitor_subscriptions`; daemon scheduler fires on cadence even after REPL exit.
-- Without daemon: today's behavior unchanged (in-process scheduler thread).
-- Reports persist to `monitor_reports` and emit `monitor_report` SSE events.
+
+- `cheetahclaws serve` running → `monitor.subscribe` over RPC persists
+  to SQLite; daemon scheduler fires on cadence; reports show up in
+  `monitor_reports` and on the SSE channel as `monitor_report` events.
+- Daemon stop → start with same data dir → `monitor.list` over RPC
+  returns the previously-subscribed topics.  (Verified by
+  `tests/e2e_daemon_skeleton.py::test_monitor_subscribe_via_rpc_survives_daemon_restart`.)
+- REPL `/monitor subscribe` while daemon is running: subscription
+  visible via `monitor.list` from outside.  Daemon picks up the new
+  row on its next 60 s poll.
+- Without daemon: today's REPL-only behaviour unchanged
+  (in-process scheduler thread).
+- Telegram / Slack / WeChat delivery from daemon: out of scope for F-3
+  (waits for F-6/F-7/F-8).  Reports + `monitor_report` events still
+  fire so the digest isn't lost; bridges deliver only when REPL is
+  running with the channel connected.
+
+**Tests.** `tests/test_monitor_store_sqlite.py` (18), 
+`tests/test_monitor_scheduler_events.py` (7),
+`tests/test_cc_daemon_monitor_methods.py` (12), plus 1 new e2e in
+`tests/e2e_daemon_skeleton.py` for the survive-restart case.
 
 ## F-4 — agent_runner subprocess
 

@@ -20,7 +20,9 @@ import time
 from datetime import datetime, timedelta
 from typing import Callable
 
-from monitor.store import list_subscriptions, update_last_run
+from monitor.store import (
+    list_subscriptions, update_last_run, save_report,
+)
 from monitor.fetchers import fetch
 from monitor.summarizer import summarize
 from monitor.notifier import deliver, auto_channels
@@ -99,6 +101,34 @@ def run_one(topic: str, config: dict, force: bool = False) -> str:
         report += "\n\n[Delivery errors: " + "; ".join(failed) + "]"
 
     update_last_run(topic, report)
+    # F-3: persist the full report into monitor_reports + emit a
+    # monitor_report event so SSE clients (Web UI / future bridges) see
+    # the new digest as it lands.  Both calls are best-effort — a
+    # failure in either path must not lose the in-process return value
+    # that REPL `/monitor run` is showing the user right now.
+    sent_to = [ch for ch, err in results.items() if not err]
+    report_id = ""
+    try:
+        report_id = save_report(topic, report, sent_to=sent_to)
+    except Exception:
+        pass
+    try:
+        from cc_daemon import events as _events
+        _events.get_bus().publish(
+            "monitor_report",
+            {
+                "topic":     topic,
+                "report_id": report_id,
+                "body":      report,
+                "sent_to":   sent_to,
+                "errors":    failed,
+            },
+        )
+    except Exception:
+        # If the daemon isn't running (REPL-only mode), no bus is set up
+        # — we already saved the report to monitor_reports above so the
+        # next daemon-bound subscriber will see it via list_reports.
+        pass
     return report
 
 
@@ -115,11 +145,11 @@ def _scheduler_loop(config: dict, on_report: Callable | None) -> None:
                         on_report(sub["topic"], report)
         except Exception:
             pass
-        # Sleep in 30s increments to be responsive to stop signal
-        for _ in range(60):
-            if _scheduler_stop.is_set():
-                return
-            time.sleep(30)
+        # Interruptible 60 s wait — Event.wait returns immediately when
+        # _scheduler_stop is set, so daemon shutdown doesn't have to
+        # stall up to 30 s for the scheduler thread to wake up.
+        if _scheduler_stop.wait(timeout=60):
+            return
 
 
 def start(config: dict, on_report: Callable | None = None) -> bool:

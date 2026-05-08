@@ -191,7 +191,21 @@ def cmd_monitor(args: str, state, config) -> bool:
         _cmd_monitor_run(rest, config)
 
     elif sub == "start":
-        if _sched.is_running():
+        # F-3: when a daemon is running, the scheduler is *its* job.
+        # Spinning up another loop in REPL would race the daemon's
+        # writes to monitor_subscriptions.last_run_at and double-fire
+        # subscriptions.  Detect-and-skip; subscriptions added/removed
+        # in REPL are still picked up by the daemon scheduler on its
+        # next 60 s poll because both processes read the same SQLite.
+        try:
+            from cc_daemon import discovery as _disc
+            _live = _disc.locate()
+        except Exception:
+            _live = None
+        if _live is not None:
+            info(f"Scheduler is owned by the running daemon "
+                 f"(pid={_live.get('pid', '?')}); /monitor start is a no-op.")
+        elif _sched.is_running():
             ok("Scheduler is already running.")
         else:
             _sched.start(config, on_report=None)
@@ -200,7 +214,16 @@ def cmd_monitor(args: str, state, config) -> bool:
             info("Use /monitor stop to stop, /monitor status to check.")
 
     elif sub == "stop":
-        if _sched.stop():
+        try:
+            from cc_daemon import discovery as _disc
+            _live = _disc.locate()
+        except Exception:
+            _live = None
+        if _live is not None:
+            info(f"Scheduler is owned by the running daemon "
+                 f"(pid={_live.get('pid', '?')}); /monitor stop is a no-op. "
+                 f"Run `cheetahclaws daemon stop` to stop the daemon itself.")
+        elif _sched.stop():
             ok("Monitor scheduler stopped.")
         else:
             info("Scheduler was not running.")

@@ -104,21 +104,30 @@ def _rpc(host, port, token, method, params, *, version=API_VERSION,
 
 
 def test_ring_buffer_overflow_emits_gap():
-    bus = EventBus(ring_cap=5)
+    """F-2: ring → SQLite swap.  Original spike test exercised the bounded
+    in-memory ring (``ring_cap=5``); the F-2 SQLite-backed bus uses
+    age + row retention instead.  Same intent: when the bus has evicted
+    events the caller wants, ``replay_since`` yields a synthetic ``gap``
+    so SSE clients can resync.  ``ring_cap`` is still accepted on the
+    constructor for backward compat but ignored — retention drives
+    eviction now.
+    """
+    events.reset_bus_for_tests()
+    bus = EventBus(retention_rows=5, prune_every_n=1)
     for i in range(10):
         bus.publish("t", {"i": i})
-    # Asking for events after id=1 should report a gap because ring kept ids 6..10.
     out = list(bus.replay_since(1))
     assert out[0]["type"] == "gap"
     assert out[0]["data"]["missed_from"] == 2
-    # The remaining replayed events all have id > since
     assert all(e["id"] > 1 for e in out[1:])
-    # And include the most recent
     assert out[-1]["data"]["i"] == 9
 
 
 def test_ring_buffer_no_gap_within_window():
-    bus = EventBus(ring_cap=10)
+    """F-2: SQLite-backed bus, retention high enough that nothing's evicted.
+    Replay should be exact and gap-free."""
+    events.reset_bus_for_tests()
+    bus = EventBus(retention_rows=10, prune_every_n=1)
     for i in range(5):
         bus.publish("t", {"i": i})
     out = list(bus.replay_since(2))

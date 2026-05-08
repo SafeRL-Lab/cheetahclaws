@@ -146,41 +146,139 @@ class Job:
 
 
 # ── Storage ──────────────────────────────────────────────────────────────────
+#
+# F-2 swapped the JSON-file backend for the SQLite ``jobs`` table.  The
+# legacy ``~/.cheetahclaws/jobs.json`` is migrated on first access and
+# kept readable for one release as a fallback.  Public API
+# (``create``, ``start``, ``get``, ``list_recent`` …) is unchanged.
+
+_MIGRATION_KEY = "jobs_migrated_from_json"
+_migration_done_in_process = False  # process-wide guard, avoids re-checking
+
 
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
-def _load() -> list[dict]:
-    if not _JOBS_PATH.exists():
-        return []
-    try:
-        return json.loads(_JOBS_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return []
+def _ensure_migrated() -> None:
+    """Idempotent one-shot import of the legacy JSON file.
+
+    Tracked by a row in ``schema_meta`` so it survives across processes.
+    A process-wide bool short-circuits subsequent calls.  The original
+    JSON file is left in place so users on the prior release can still
+    read it; we do not delete it after migration.
+    """
+    global _migration_done_in_process
+    if _migration_done_in_process:
+        return
+    from cc_daemon.schema import get_conn
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT value FROM schema_meta WHERE key=?", (_MIGRATION_KEY,)
+    ).fetchone()
+    if row is None and _JOBS_PATH.exists():
+        try:
+            legacy = json.loads(_JOBS_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            legacy = []
+        for d in legacy if isinstance(legacy, list) else []:
+            try:
+                _persist(Job.from_dict(d), conn=conn)
+            except Exception:
+                continue
+    if row is None:
+        from datetime import timezone
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        conn.execute(
+            "INSERT INTO schema_meta (key, value, updated_at) "
+            "VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET "
+            "value=excluded.value, updated_at=excluded.updated_at",
+            (_MIGRATION_KEY, "1", now),
+        )
+        conn.commit()
+    _migration_done_in_process = True
 
 
-def _save(jobs: list[dict]) -> None:
-    _JOBS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    # Keep last _MAX_JOBS entries
-    jobs = jobs[-_MAX_JOBS:]
-    _JOBS_PATH.write_text(json.dumps(jobs, ensure_ascii=False, indent=2), encoding="utf-8")
+def _row_to_job(row) -> Job:
+    return Job(
+        id=row["id"],
+        title=row["title"] or "",
+        prompt=row["prompt"] or "",
+        status=row["status"],
+        source=row["source"] or "",
+        steps=json.loads(row["steps_json"]) if row["steps_json"] else [],
+        step_count=row["step_count"] or 0,
+        current_step=row["current_step"] or "",
+        result=row["result"] or "",
+        error=row["error"] or "",
+        created_at=row["created_at"] or "",
+        started_at=row["started_at"] or "",
+        done_at=row["done_at"] or "",
+        duration_s=row["duration_s"] or 0.0,
+        retry_of=row["retry_of"] or "",
+    )
+
+
+def _persist(job: Job, conn=None) -> None:
+    """INSERT or UPDATE the row for *job*.  Caller passes *conn* during
+    migration to avoid re-entering ``get_conn`` from inside a transaction."""
+    from cc_daemon.schema import get_conn
+    c = conn if conn is not None else get_conn()
+    c.execute(
+        "INSERT INTO jobs (id, title, prompt, source, status, created_at, "
+        "  started_at, done_at, duration_s, steps_json, step_count, "
+        "  current_step, result, error, retry_of) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(id) DO UPDATE SET "
+        "  title=excluded.title, prompt=excluded.prompt, "
+        "  source=excluded.source, status=excluded.status, "
+        "  started_at=excluded.started_at, done_at=excluded.done_at, "
+        "  duration_s=excluded.duration_s, steps_json=excluded.steps_json, "
+        "  step_count=excluded.step_count, current_step=excluded.current_step,"
+        "  result=excluded.result, error=excluded.error, "
+        "  retry_of=excluded.retry_of",
+        (job.id, job.title, job.prompt, job.source, job.status,
+         job.created_at, job.started_at, job.done_at, job.duration_s,
+         json.dumps(job.steps, ensure_ascii=False),
+         job.step_count, job.current_step, job.result,
+         job.error, job.retry_of),
+    )
+    if conn is None:
+        c.commit()
+
+
+def _prune_to_max(conn=None) -> None:
+    """Keep only the most-recent ``_MAX_JOBS`` rows."""
+    from cc_daemon.schema import get_conn
+    c = conn if conn is not None else get_conn()
+    excess = c.execute(
+        "SELECT COUNT(*) FROM jobs"
+    ).fetchone()[0] - _MAX_JOBS
+    if excess > 0:
+        c.execute(
+            "DELETE FROM jobs WHERE id IN ("
+            "  SELECT id FROM jobs ORDER BY created_at LIMIT ?"
+            ")",
+            (excess,),
+        )
+        if conn is None:
+            c.commit()
 
 
 def _get_all() -> list[Job]:
-    return [Job.from_dict(d) for d in _load()]
+    _ensure_migrated()
+    from cc_daemon.schema import get_conn
+    rows = get_conn().execute(
+        "SELECT * FROM jobs ORDER BY created_at"
+    ).fetchall()
+    return [_row_to_job(r) for r in rows]
 
 
 def _update(job: Job) -> None:
+    _ensure_migrated()
     with _lock:
-        all_jobs = _load()
-        for i, d in enumerate(all_jobs):
-            if d.get("id") == job.id:
-                all_jobs[i] = job.to_dict()
-                _save(all_jobs)
-                return
-        all_jobs.append(job.to_dict())
-        _save(all_jobs)
+        _persist(job)
+        _prune_to_max()
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
@@ -315,19 +413,31 @@ def cancel(job_id: str) -> None:
 # ── Query ────────────────────────────────────────────────────────────────────
 
 def get(job_id: str) -> Optional[Job]:
-    for d in _load():
-        if d.get("id") == job_id:
-            return Job.from_dict(d)
-    return None
+    _ensure_migrated()
+    from cc_daemon.schema import get_conn
+    row = get_conn().execute(
+        "SELECT * FROM jobs WHERE id=?", (job_id,)
+    ).fetchone()
+    return _row_to_job(row) if row is not None else None
 
 
 def list_recent(n: int = 10) -> list[Job]:
     """Return last N jobs, newest first."""
-    return [Job.from_dict(d) for d in reversed(_load())][:n]
+    _ensure_migrated()
+    from cc_daemon.schema import get_conn
+    rows = get_conn().execute(
+        "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (n,)
+    ).fetchall()
+    return [_row_to_job(r) for r in rows]
 
 
 def list_running() -> list[Job]:
-    return [Job.from_dict(d) for d in _load() if d.get("status") == "running"]
+    _ensure_migrated()
+    from cc_daemon.schema import get_conn
+    rows = get_conn().execute(
+        "SELECT * FROM jobs WHERE status='running' ORDER BY started_at"
+    ).fetchall()
+    return [_row_to_job(r) for r in rows]
 
 
 # ── Dashboard formatting ──────────────────────────────────────────────────────
