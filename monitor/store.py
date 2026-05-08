@@ -41,9 +41,15 @@ def _ensure_migrated() -> None:
     """Idempotent import of the legacy JSON file into SQLite.
 
     Tracked by ``schema_meta.monitor_migrated_from_json`` so subsequent
-    processes don't redo the import.  The JSON file itself is **left in
-    place** post-migration so users on the prior release can still read
-    it as fallback.
+    processes don't redo the import.
+
+    Note: this migration is **one-way**.  After the marker is set the
+    JSON file is never read again; subsequent edits to
+    ``~/.cheetahclaws/monitor_subscriptions.json`` are ignored.  The
+    file is left on disk so prior-release users can still read it, but
+    SQLite is now the source of truth.  To redo the migration, delete
+    the ``monitor_migrated_from_json`` row from ``schema_meta`` AND the
+    rows in ``monitor_subscriptions`` you want re-imported.
     """
     global _migration_done_in_process
     if _migration_done_in_process:

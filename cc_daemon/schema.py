@@ -179,6 +179,13 @@ def init_schema(db_path: Optional[Path] = None) -> None:
         conn = sqlite3.connect(str(target), timeout=10)
         try:
             conn.execute("PRAGMA journal_mode=WAL")
+            # synchronous=NORMAL is safe under WAL: durability across a power
+            # loss is preserved at checkpoint boundaries, with the only risk
+            # being loss of the *most recent* transactions on hard kernel
+            # crash.  For an event log that is already retention-pruned in
+            # 24 h windows that's an acceptable trade for ~5-10× throughput
+            # — see #74 review §7 follow-up benchmark.
+            conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("PRAGMA busy_timeout=5000")
             conn.executescript(_TABLES_DDL)
             _record_schema_version(conn, CURRENT_SCHEMA_VERSION)
@@ -221,6 +228,7 @@ def get_conn() -> sqlite3.Connection:
     init_schema(target)
     conn = sqlite3.connect(str(target), timeout=10)
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA busy_timeout=5000")
     conn.row_factory = sqlite3.Row
     _local.conn = conn

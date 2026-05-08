@@ -164,9 +164,16 @@ def _ensure_migrated() -> None:
     """Idempotent one-shot import of the legacy JSON file.
 
     Tracked by a row in ``schema_meta`` so it survives across processes.
-    A process-wide bool short-circuits subsequent calls.  The original
-    JSON file is left in place so users on the prior release can still
-    read it; we do not delete it after migration.
+    A process-wide bool short-circuits subsequent calls.
+
+    Note: this migration is **one-way**.  Once the schema_meta marker is
+    set, the JSON file is never read again — subsequent edits to
+    ``~/.cheetahclaws/jobs.json`` are ignored.  The file is left on disk
+    so that users still on the prior release (or anyone holding a
+    backup-style script that scrapes it) can read it, but it is no
+    longer the source of truth.  To redo the migration, delete the
+    ``jobs_migrated_from_json`` row from ``schema_meta`` AND the rows in
+    the ``jobs`` table you want re-imported.
     """
     global _migration_done_in_process
     if _migration_done_in_process:

@@ -821,8 +821,12 @@ left untouched:
 - `agent_runs` / `agent_iterations` — placeholder tables awaiting F-4
   (`agent_runner` subprocess-per-agent).
 - `jobs` — replaces `~/.cheetahclaws/jobs.json`.  `jobs.py` migrates
-  the legacy file once on first call (tracked via `schema_meta`); the
-  JSON file is **left readable** for one release as fallback.
+  the legacy file once on first call (tracked via
+  `schema_meta.jobs_migrated_from_json`).  Migration is **one-way**:
+  after the marker is set, edits to the JSON file are no longer read
+  by `jobs.py`.  The file is left on disk for backward viewing only
+  (e.g. users still on the prior release, or backup-style tooling);
+  SQLite is the source of truth from then on.
 - `monitor_subscriptions` / `monitor_reports` — placeholder for F-3.
 - `bridges` — placeholder for F-6/7/8.
 - `schema_meta` — schema version + per-feature migration markers.
@@ -842,11 +846,16 @@ their event timeline across daemon restarts.
 #### Monitor in daemon (F-3)
 
 `monitor/scheduler.py` is now daemon-owned.  When `cheetahclaws serve`
-starts, it kicks the scheduler loop in-process; subscriptions and
-generated reports live in the SQLite `monitor_subscriptions` and
-`monitor_reports` tables (migrated from
-`~/.cheetahclaws/monitor_subscriptions.json` on first daemon run, with
-the JSON file kept readable for one release as fallback).
+starts, it kicks the scheduler loop **after the listener has bound and
+the discovery file is on disk** — so a misconfigured fetch/summarize
+chain cannot fail before external clients can see the daemon.
+Subscriptions and generated reports live in the SQLite
+`monitor_subscriptions` and `monitor_reports` tables (migrated once
+from `~/.cheetahclaws/monitor_subscriptions.json` on first daemon run,
+tracked via `schema_meta.monitor_migrated_from_json`).  Migration is
+**one-way**: edits to the JSON file are not picked up after the
+marker is set; SQLite is the source of truth.  The JSON file is left
+on disk for backward viewing only.
 
 Behaviour:
 

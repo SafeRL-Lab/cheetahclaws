@@ -147,17 +147,6 @@ def cmd_serve(args: argparse.Namespace) -> int:
     import health as _health
     _health.install_config(config)
 
-    # F-3: take ownership of the monitor scheduler.  Subscriptions live in
-    # the SQLite store both daemon and REPL share, so /monitor subscribe
-    # from REPL is visible here on the next 60 s poll.  REPL detects this
-    # daemon and skips its own scheduler thread (see commands/monitor_cmd.py).
-    try:
-        from monitor.scheduler import start as _monitor_start
-        _monitor_start(config, on_report=None)
-    except Exception as exc:
-        print(f"warning: monitor scheduler did not start: {exc}",
-              file=sys.stderr, flush=True)
-
     audit_enabled = not args.no_audit
     token_path_for_discovery: Optional[str] = None
     if transport == "unix":
@@ -206,6 +195,22 @@ def cmd_serve(args: argparse.Namespace) -> int:
     print(f"cheetahclaws daemon listening on {listen_repr} (pid={os.getpid()})", flush=True)
     if audit_enabled:
         print(f"audit log: {data_dir / 'logs' / 'auth.jsonl'}", flush=True)
+
+    # F-3: take ownership of the monitor scheduler — only after the listener
+    # has bound, the pid/discovery files are on disk, and we've printed the
+    # ready banner.  Order matters: if a due subscription fires before the
+    # daemon is reachable, an LLM/network error in fetch/summarize/deliver
+    # would surface in the log before the user sees the listening line, and
+    # external clients couldn't yet act on the resulting `monitor_report`
+    # SSE event.  ``owned_by_daemon=True`` opts the loop out of the
+    # REPL-side step-aside check (otherwise the daemon would defer to its
+    # own discovery entry and never run a subscription).
+    try:
+        from monitor.scheduler import start as _monitor_start
+        _monitor_start(config, on_report=None, owned_by_daemon=True)
+    except Exception as exc:
+        print(f"warning: monitor scheduler did not start: {exc}",
+              file=sys.stderr, flush=True)
 
     # Graceful-shutdown watcher: when DaemonState.shutdown_event fires
     # (set by system.shutdown RPC or the signal handler below), stop
