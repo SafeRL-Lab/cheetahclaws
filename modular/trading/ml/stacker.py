@@ -22,7 +22,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import numpy as np
+# numpy / sklearn / lightgbm are deferred to call sites so that
+# `pip install .` (no [trading] extra) ships a wheel where
+# `import modular.trading.ml.stacker` doesn't blow up — see
+# tests/test_packaging.py::test_required_module_imports (issue #97).
 
 from . import features as feat_mod
 from .features import FeatureRow
@@ -76,6 +79,11 @@ def train(
                      "model not trained.")
         return TrainResult(len(rows), 0.0, 0.0, 0.0, {}, notes,
                            str(model_path or _DEFAULT_MODEL_PATH))
+
+    # Heavy deps land here, *after* the diagnostic-only early returns.
+    # Lets `train(too_few_rows)` work even on installs without [trading]
+    # extras — useful for the "what would the stacker say?" UX path.
+    import numpy as np
 
     X = np.array([r.features for r in rows], dtype=float)
     y = np.array([r.label for r in rows], dtype=int)
@@ -170,6 +178,11 @@ def predict_proba(features: list[float],
     path = Path(model_path or _DEFAULT_MODEL_PATH)
     if not path.exists():
         return {}
+    # Heavy deps land *after* the no-model early return, so the
+    # `predict_proba(features, model_path=missing)` UX path still works
+    # on a lean install (the agent simply doesn't get the ML override).
+    import numpy as np
+
     with open(path, "rb") as f:
         bundle = pickle.load(f)
     model = bundle["model"]

@@ -5,10 +5,37 @@ it simulates the user's "$100, check in a week" scenario end-to-end.
 """
 from __future__ import annotations
 
+import importlib.util
 import math
 from pathlib import Path
 
 import pytest
+
+
+def _have(*mods: str) -> bool:
+    """True iff every module in *mods* is importable on the current install.
+
+    Several tests below exercise the optimizer / ML stacker / managed
+    portfolio paths, all of which depend on numpy + scipy + sklearn from
+    the ``[trading]`` extra.  CI's lean ``[web,autosuggest]`` install
+    deliberately does not pull these in, so the tests skip cleanly
+    instead of failing — a missing optional dep is not a regression.
+    """
+    return all(importlib.util.find_spec(m) is not None for m in mods)
+
+
+_skip_if_no_numpy = pytest.mark.skipif(
+    not _have("numpy"),
+    reason="numpy not installed (needs [trading] extra)",
+)
+_skip_if_no_scipy = pytest.mark.skipif(
+    not _have("numpy", "scipy"),
+    reason="numpy/scipy not installed (needs [trading] extra)",
+)
+_skip_if_no_sklearn = pytest.mark.skipif(
+    not _have("numpy", "sklearn"),
+    reason="numpy/sklearn not installed (needs [trading] extra)",
+)
 
 
 # ── Alt-data: SEC EDGAR insider ───────────────────────────────────────────
@@ -111,6 +138,7 @@ def _make_uptrend(n=120, start=100.0, drift=0.001, noise_seed: int = 0) -> list[
     return out
 
 
+@_skip_if_no_scipy
 def test_optimizer_returns_long_only_caps_weight():
     from modular.trading.portfolio import Candidate, optimize
     cands = [
@@ -123,6 +151,7 @@ def test_optimizer_returns_long_only_caps_weight():
     assert sum(r.weights.values()) <= 1.0 + 1e-6
 
 
+@_skip_if_no_scipy
 def test_optimizer_handles_too_short_history():
     from modular.trading.portfolio import Candidate, optimize
     cands = [Candidate("A", [100.0] * 10)]
@@ -130,6 +159,7 @@ def test_optimizer_handles_too_short_history():
     assert "insufficient history" in r.diagnostics.get("reason", "")
 
 
+@_skip_if_no_scipy
 def test_optimizer_respects_sector_caps():
     from modular.trading.portfolio import Candidate, optimize
     cands = [
@@ -142,6 +172,7 @@ def test_optimizer_respects_sector_caps():
     assert tech_total <= 0.30 + 0.01  # small SLSQP slack
 
 
+@_skip_if_no_scipy
 def test_optimization_report_renders():
     from modular.trading.portfolio import Candidate, optimize, render_optimization_report
     cands = [Candidate("A", _make_uptrend(120))]
@@ -220,10 +251,13 @@ def test_ibkr_stub_reports_setup_required():
 
 # ── Managed portfolio mode ───────────────────────────────────────────────
 
+@_skip_if_no_scipy
 def test_managed_portfolio_lifecycle_with_mocked_quotes(tmp_path, monkeypatch):
     """End-to-end: $100 → step → check status → simulate price move → step again.
 
     Uses a deterministic quote function so the test doesn't hit the network.
+    Skipped when [trading] extras aren't installed — managed.step calls
+    into portfolio.optimize which requires numpy + scipy.
     """
     from modular.trading import managed
     from modular.trading.broker.paper_backend import PaperBroker
@@ -282,6 +316,7 @@ def test_managed_portfolio_lifecycle_with_mocked_quotes(tmp_path, monkeypatch):
     assert any(p["name"] == "hundred" for p in ports)
 
 
+@_skip_if_no_scipy
 def test_managed_portfolio_dry_run_places_no_orders(tmp_path, monkeypatch):
     from modular.trading import managed
 
@@ -346,7 +381,10 @@ def test_ml_train_returns_diagnostic_when_too_few_samples():
     assert any("≥ 30" in n for n in r.notes)
 
 
+@_skip_if_no_sklearn
 def test_ml_train_with_mixed_labels(tmp_path):
+    # Real model fit — needs the heavy ML stack from the [trading] extra.
+    # CI's lean `[web,autosuggest]` install skips this cleanly.
     from modular.trading.ml.stacker import train, predict_proba
     from modular.trading.ml.features import build_dataset
 

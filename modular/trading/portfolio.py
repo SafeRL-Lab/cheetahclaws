@@ -17,9 +17,20 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-import numpy as np
+# numpy is part of the [trading] extra; gate the eager import so that
+# `pip install .` (no extras) still ships an importable wheel — the
+# tests/test_packaging.py contract asserts every package in the wheel
+# imports cleanly without optional deps.  Callers like ``optimize()``
+# raise the original ImportError on first use if numpy is missing.
+try:
+    import numpy as np  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover — exercised only on lean installs
+    np = None  # type: ignore[assignment]
+
+if TYPE_CHECKING:
+    import numpy as np  # noqa: F811 — annotation-only, real binding above
 
 
 @dataclass

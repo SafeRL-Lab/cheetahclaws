@@ -5,10 +5,20 @@ don't depend on network or API rate limits.
 """
 from __future__ import annotations
 
+import importlib.util
 import math
 from pathlib import Path
 
 import pytest
+
+
+# Same skip pattern as test_trading_advanced.py — the stub_yfinance
+# fixture instantiates a FakeHist that imports pandas, so any test
+# that triggers `Ticker(sym).history()` needs pandas installed.
+_skip_if_no_pandas = pytest.mark.skipif(
+    importlib.util.find_spec("pandas") is None,
+    reason="pandas not installed (needs [trading] extra)",
+)
 
 
 # ── Universe helpers ─────────────────────────────────────────────────────
@@ -99,6 +109,7 @@ def stub_yfinance(monkeypatch):
     return fake
 
 
+@_skip_if_no_pandas
 def test_factor_scan_and_score(stub_yfinance, tmp_path, monkeypatch):
     from modular.trading import factors
     monkeypatch.setattr(factors, "_CACHE_PATH", tmp_path / "factors.json")
@@ -116,6 +127,7 @@ def test_factor_scan_and_score(stub_yfinance, tmp_path, monkeypatch):
     assert by_sym["AAPL"].momentum_score >= by_sym["GOOG"].momentum_score
 
 
+@_skip_if_no_pandas
 def test_factor_render_table(stub_yfinance, tmp_path, monkeypatch):
     from modular.trading import factors
     monkeypatch.setattr(factors, "_CACHE_PATH", tmp_path / "factors.json")
@@ -157,6 +169,7 @@ def test_insider_cluster_flags_clusters(monkeypatch):
 
 # ── Discovery: momentum-quality ──────────────────────────────────────────
 
+@_skip_if_no_pandas
 def test_momentum_quality_filters_below_threshold(stub_yfinance, tmp_path, monkeypatch):
     from modular.trading import factors
     from modular.trading.discover import momentum_quality
@@ -294,6 +307,7 @@ def test_anomaly_returns_empty_for_short_history(monkeypatch):
 
 # ── Ranker ─────────────────────────────────────────────────────────────
 
+@_skip_if_no_pandas
 def test_ranker_combines_factor_and_discovery(stub_yfinance, tmp_path, monkeypatch):
     from modular.trading import ranker, factors
     from modular.trading.discover import orchestrator

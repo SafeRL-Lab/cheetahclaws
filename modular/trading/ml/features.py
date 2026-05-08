@@ -23,8 +23,6 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
-
 
 _SIGNAL_ORDER = ["SELL", "UNDERWEIGHT", "HOLD", "OVERWEIGHT", "BUY"]
 _CONF_TO_INT = {"Low": 0, "Medium": 1, "High": 2}
