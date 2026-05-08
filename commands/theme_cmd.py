@@ -7,7 +7,26 @@ Usage:
 """
 from __future__ import annotations
 
-from ui.render import THEMES, apply_theme, clr, info, ok, warn, err
+from ui.render import THEMES, apply_theme, clr, info, ok, warn, err, _rgb
+
+
+_RESET = "\033[0m"
+
+
+def _render_swatch(palette: dict) -> str:
+    """Render a per-palette preview using the palette's own colors."""
+    if palette.get("disable_color"):
+        return "  (no color)  "
+    parts = []
+    for label, key, fallback in [
+        ("info", "accent", "#FFFFFF"),
+        ("ok",   "ok",     palette.get("accent", "#FFFFFF")),
+        ("warn", "warn",   "#FFFFFF"),
+        ("err",  "err",    "#FF5555"),
+    ]:
+        hex_val = palette.get(key, fallback)
+        parts.append(f"{_rgb(hex_val)} {label} {_RESET}")
+    return "".join(parts)
 
 
 def cmd_theme(args: str, _state, config) -> bool:
@@ -18,8 +37,7 @@ def cmd_theme(args: str, _state, config) -> bool:
         info("Available themes:")
         for t, palette in THEMES.items():
             marker = "*" if t == current else " "
-            swatch = clr("  accent  ", "cyan") + clr("  warn  ", "yellow")
-            line = f"  {marker} {t:<14} {swatch} ({palette['code']})"
+            line = f"  {marker} {t:<14} {_render_swatch(palette)}  ({palette['code']})"
             print(line)
         info("\nUsage: /theme <name>")
         return True

@@ -36,28 +36,33 @@ def _rgb(hex_str: str) -> str:
     return f"\033[38;2;{r};{g};{b}m"
 
 
-# Curated palettes (hex per semantic role). cyan/green/blue collapse to the
-# theme's accent color since CheetahClaws uses them all for primary chrome.
+# Curated palettes — each theme defines four semantic roles:
+#   accent : info / primary chrome (cyan, blue)
+#   ok     : success / diff additions (green) — kept distinct from accent so
+#            info() and ok() are visually distinguishable
+#   warn   : warnings (yellow, magenta)
+#   err    : errors / diff removals (red)
+#   code   : Rich Markdown code-block style
 # Add new entries here and they show up in `/theme` automatically.
 THEMES: dict = {
-    "default":     {"accent": "#00D7FF", "warn": "#FFAF00", "code": "monokai"},
-    "dracula":     {"accent": "#BD93F9", "warn": "#FFB86C", "code": "dracula"},
-    "nord":        {"accent": "#88C0D0", "warn": "#EBCB8B", "code": "nord"},
-    "gruvbox":     {"accent": "#FABD2F", "warn": "#FE8019", "code": "gruvbox-dark"},
-    "solarized":   {"accent": "#268BD2", "warn": "#B58900", "code": "solarized-dark"},
-    "tokyo-night": {"accent": "#7AA2F7", "warn": "#E0AF68", "code": "one-dark"},
-    "catppuccin":  {"accent": "#F5C2E7", "warn": "#FAB387", "code": "one-dark"},
-    "matrix":      {"accent": "#00FF41", "warn": "#CCFF00", "code": "monokai"},
-    "synthwave":   {"accent": "#FF00FF", "warn": "#FFCC00", "code": "fruity"},
-    "midnight":    {"accent": "#00BCD4", "warn": "#FFC107", "code": "dracula"},
-    "ocean":       {"accent": "#38BDF8", "warn": "#FBBF24", "code": "nord"},
-    "monokai":     {"accent": "#A6E22E", "warn": "#E6DB74", "code": "monokai"},
-    "cheetah":     {"accent": "#FFB000", "warn": "#FF6F00", "code": "monokai"},
-    "mono":        {"accent": "#E0E0E0", "warn": "#A0A0A0", "code": "bw"},
-    "none":        {"accent": "#FFFFFF", "warn": "#FFFFFF", "code": "default"},
+    "default":     {"accent": "#00D7FF", "ok": "#00FF87", "warn": "#FFAF00", "err": "#FF5F5F", "code": "monokai"},
+    "dracula":     {"accent": "#BD93F9", "ok": "#50FA7B", "warn": "#FFB86C", "err": "#FF5555", "code": "dracula"},
+    "nord":        {"accent": "#88C0D0", "ok": "#A3BE8C", "warn": "#EBCB8B", "err": "#BF616A", "code": "nord"},
+    "gruvbox":     {"accent": "#FABD2F", "ok": "#B8BB26", "warn": "#FE8019", "err": "#FB4934", "code": "gruvbox-dark"},
+    "solarized":   {"accent": "#268BD2", "ok": "#859900", "warn": "#B58900", "err": "#DC322F", "code": "solarized-dark"},
+    "tokyo-night": {"accent": "#7AA2F7", "ok": "#9ECE6A", "warn": "#E0AF68", "err": "#F7768E", "code": "one-dark"},
+    "catppuccin":  {"accent": "#F5C2E7", "ok": "#A6E3A1", "warn": "#FAB387", "err": "#F38BA8", "code": "one-dark"},
+    "matrix":      {"accent": "#00FF41", "ok": "#7FFF00", "warn": "#CCFF00", "err": "#FF0000", "code": "monokai"},
+    "synthwave":   {"accent": "#FF00FF", "ok": "#39FF14", "warn": "#FFCC00", "err": "#FF3864", "code": "fruity"},
+    "midnight":    {"accent": "#00BCD4", "ok": "#76FF03", "warn": "#FFC107", "err": "#FF1744", "code": "dracula"},
+    "ocean":       {"accent": "#38BDF8", "ok": "#34D399", "warn": "#FBBF24", "err": "#F87171", "code": "nord"},
+    "monokai":     {"accent": "#66D9EF", "ok": "#A6E22E", "warn": "#E6DB74", "err": "#F92672", "code": "monokai"},
+    "cheetah":     {"accent": "#FFB000", "ok": "#76FF03", "warn": "#FF6F00", "err": "#D50000", "code": "monokai"},
+    "mono":        {"accent": "#E0E0E0", "ok": "#C0C0C0", "warn": "#A0A0A0", "err": "#FFFFFF", "code": "bw"},
+    "none":        {"disable_color": True, "code": "default"},
 }
 
-# Active code-block style for Rich Markdown rendering.
+# Active code-block style for Rich Markdown rendering. Read by _make_renderable.
 CODE_THEME: str = "monokai"
 
 C = {
@@ -80,13 +85,30 @@ def apply_theme(name: str) -> bool:
     p = THEMES.get(name)
     if not p:
         return False
+
+    # The "none" theme: strip every escape so output is plain text.
+    if p.get("disable_color"):
+        for k in list(C.keys()):
+            C[k] = ""
+        CODE_THEME = p.get("code", "default")
+        return True
+
     accent = _rgb(p["accent"])
-    warn   = _rgb(p["warn"])
-    C["cyan"] = C["green"] = C["blue"] = accent
-    C["yellow"] = C["magenta"] = warn
-    C["red"]    = "\033[38;5;196m"
-    C["white"]  = "\033[97m"
-    CODE_THEME  = p["code"]
+    ok_col = _rgb(p.get("ok", p["accent"]))
+    warn_c = _rgb(p["warn"])
+    err_c  = _rgb(p.get("err", "#FF5555"))
+
+    C["cyan"]    = accent
+    C["blue"]    = accent
+    C["green"]   = ok_col
+    C["yellow"]  = warn_c
+    C["magenta"] = warn_c
+    C["red"]     = err_c
+    C["white"]   = "\033[97m"
+    C["bold"]    = "\033[1m"
+    C["dim"]     = "\033[2m"
+    C["reset"]   = "\033[0m"
+    CODE_THEME   = p["code"]
     return True
 
 def clr(text: str, *keys: str) -> str:
@@ -138,7 +160,7 @@ def set_rich_live(enabled: bool) -> None:
 def _make_renderable(text: str):
     """Return a Rich renderable: Markdown if text contains markup, else plain."""
     if any(c in text for c in ("#", "*", "`", "_", "[")):
-        return Markdown(text)
+        return Markdown(text, code_theme=CODE_THEME)
     return text
 
 def _start_live() -> None:

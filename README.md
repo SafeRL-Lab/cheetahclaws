@@ -339,7 +339,8 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Permission system | `auto` / `accept-all` / `manual` / `plan` modes |
 | Checkpoints | Auto-snapshot conversation + file state after each turn; `/checkpoint` to list, `/checkpoint <id>` to rewind; `/rewind` alias; 100-snapshot sliding window |
 | Plan mode | `/plan <desc>` enters read-only analysis mode; Claude writes only to the plan file; `EnterPlanMode` / `ExitPlanMode` agent tools for autonomous planning |
-| 36 slash commands | `/model` · `/config` · `/save` · `/cost` · `/memory` · `/skills` · `/agents` · `/voice` · `/proactive` · `/checkpoint` · `/plan` · `/compact` · `/status` · `/doctor` · … |
+| 37 slash commands | `/model` · `/config` · `/save` · `/cost` · `/memory` · `/skills` · `/agents` · `/voice` · `/proactive` · `/checkpoint` · `/plan` · `/compact` · `/status` · `/doctor` · `/theme` · … |
+| Console themes | `/theme` lists 15 curated palettes (default · dracula · nord · gruvbox · solarized · tokyo-night · catppuccin · matrix · synthwave · midnight · ocean · monokai · cheetah · mono · none); each row shows a live `info / ok / warn / err` swatch in the theme's own colors. `/theme <name>` applies and persists the choice — also drives Rich's Markdown code-block style. |
 | Voice input | Record → transcribe → auto-submit. Backends: `sounddevice` / `arecord` / SoX + `faster-whisper` / `openai-whisper` / OpenAI API. Works fully offline. |
 | Brainstorm | `/brainstorm [topic]` generates N expert personas suited to the topic (2–100, default 5, chosen interactively), runs an iterative debate, saves results to `brainstorm_outputs/`, and synthesizes a Master Plan + auto-generates `brainstorm_outputs/todo_list.txt`. |
 | SSJ Developer Mode | `/ssj` opens a persistent interactive power menu with **15 shortcuts**: Brainstorm, TODO viewer, Worker, Expert Debate, Propose, Review, Readme, Commit, Scan, Promote, Video factory, TTS factory, Monitor, **Trading**, Agent. Stays open between actions; `/command` passthrough supported. |
@@ -1056,7 +1057,7 @@ cheetahclaws --web
 cheetahclaws --web --port 8008 --no-auth
 ```
 
-See [Reference Guide](docs/guides/reference.md) for the full list of 36+ slash commands, tool descriptions, and configuration options.
+See [Reference Guide](docs/guides/reference.md) for the full list of 37+ slash commands, tool descriptions, and configuration options.
 
 ---
 

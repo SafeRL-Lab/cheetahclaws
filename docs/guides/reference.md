@@ -153,6 +153,8 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/copy` | Copy the last assistant response to the clipboard |
 | `/status` | Show version, model, provider, permissions, session ID, token usage, and context % |
 | `/doctor` | Diagnose installation health: Python, git, API key, optional deps, CLAUDE.md, checkpoint disk usage |
+| `/theme` | List 15 console color presets with a live `info / ok / warn / err` swatch per row (current marked `*`) |
+| `/theme <name>` | Apply and persist a theme (e.g. `dracula`, `nord`, `gruvbox`, `none`); also drives Rich Markdown code-block style |
 | `/exit` / `/quit` | Exit |
 
 **Switching models inside a session:**
@@ -179,6 +181,79 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 
 [myproject] ❯ /model ollama/qwen2.5-coder
   Model set to ollama/qwen2.5-coder  (provider: ollama)
+```
+
+---
+
+## Console Themes
+
+`/theme` switches the entire CLI palette in-place — every existing `info / ok / warn / err` call site picks up the new colors without any code change. The choice persists to `~/.cheetahclaws/config.json` under `"theme"` and is re-applied on the next launch before any output renders.
+
+### Available themes
+
+| Theme         | Notes                                                  |
+|---------------|--------------------------------------------------------|
+| `default`     | Cyan accent, amber warn — the original CheetahClaws look |
+| `dracula`     | The Dracula palette (purple accent, soft green ok)     |
+| `nord`        | Frost blue accent, aurora green ok                     |
+| `gruvbox`     | Gruvbox Dark hard-contrast yellows / reds              |
+| `solarized`   | Solarized Dark blue accent, olive ok                   |
+| `tokyo-night` | Tokyo Night blues + soft pinks                         |
+| `catppuccin`  | Catppuccin Mocha pastels                               |
+| `matrix`      | Pure-green hacker aesthetic                            |
+| `synthwave`   | Magenta accent, neon green ok — vaporwave              |
+| `midnight`    | Cyan/lime/red high-contrast dark                       |
+| `ocean`       | Sky-blue + emerald, easy on the eyes                   |
+| `monokai`     | Monokai cyan / green / yellow / pink semantics         |
+| `cheetah`     | Amber accent — matches the CheetahClaws logo           |
+| `mono`        | Truly grayscale (no chromatic colors)                  |
+| `none`        | Strips every ANSI escape — output is plain text        |
+
+### Color roles
+
+Each palette declares four semantic colors plus a code style:
+
+| Role     | Used for                                          |
+|----------|---------------------------------------------------|
+| `accent` | `info()`, primary chrome, `clr(text, "cyan"\|"blue")` |
+| `ok`     | `ok()`, diff additions (`+`), `clr(text, "green")`  |
+| `warn`   | `warn()`, `clr(text, "yellow"\|"magenta")`          |
+| `err`    | `err()`, diff removals (`-`), `clr(text, "red")`    |
+| `code`   | `rich.markdown.Markdown(code_theme=...)` for code blocks |
+
+`info` and `ok` are intentionally distinct hexes per theme so success (`ok()`) and informational (`info()`) messages stay visually separable in every theme. `render_diff` follows the same split — additions are always the `ok` color, removals are always the `err` color.
+
+### Defining a custom theme
+
+Add an entry to `THEMES` in `ui/render.py`:
+
+```python
+"my-theme": {
+    "accent": "#00D7FF",
+    "ok":     "#00FF87",
+    "warn":   "#FFAF00",
+    "err":    "#FF5F5F",
+    "code":   "monokai",   # any Pygments style name
+},
+```
+
+It immediately appears in `/theme` with no further wiring. To ship a "no color at all" theme, use `{"disable_color": True, "code": "default"}` instead.
+
+### Examples
+
+```
+[myproject] ❯ /theme
+Available themes:
+  * default          info  ok  warn  err   (monokai)
+    dracula          info  ok  warn  err   (dracula)
+    nord             info  ok  warn  err   (nord)
+    ...
+    none           (no color)              (default)
+
+  Usage: /theme <name>
+
+[myproject] ❯ /theme dracula
+  Theme set to dracula.
 ```
 
 ---
