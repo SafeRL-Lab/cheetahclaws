@@ -647,7 +647,12 @@ def _try_reduce_output_cap_from_error(error_str: str, config: dict) -> int | Non
         prompt_tokens = int(m_prompt.group(1))
     except ValueError:
         return None
-    SAFETY_BUFFER = 200
+    # Buffer must absorb provider-side prompt-token-count variance
+    # between attempts. 200 was too tight — observed in the wild that
+    # the same conceptual prompt re-tokenizes ~200 tokens larger on
+    # the retry, which makes the new cap fail by 1 token. 1000 (~3%
+    # of a 32K window, ~0.5% of a 200K window) gives real headroom.
+    SAFETY_BUFFER = 1000
     new_cap = model_max - prompt_tokens - SAFETY_BUFFER
     # Don't return a cap that's even smaller than what's currently set
     # — that would be a no-op or a regression.

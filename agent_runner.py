@@ -247,13 +247,22 @@ class AgentRunner:
 
         iteration = 0
         # Consecutive-failure tracking — stop the agent if N iterations
-        # in a row hit the same kind of error, so a fundamentally broken
-        # request (context overflow that compaction can't fix, missing
-        # API key, unauthorized model, etc.) doesn't loop for hours.
-        # See _SAME_ERROR_STOP_LIMIT below for the threshold.
-        consecutive_failures = 0
+        # in a row hit any failure, so a fundamentally broken request
+        # (context overflow that compaction can't fix, missing API key,
+        # unauthorized model, etc.) doesn't loop for hours.
+        # Two parallel counters:
+        #   - consecutive_same_failures: same signature N times → stop
+        #   - consecutive_any_failures:  ANY failure marker N times → stop
+        # The second one is needed because agent.py alternates between
+        # `[Failed ...]` (during the retry budget) and
+        # `[Circuit breaker ...]` (during the breaker's cooldown), so
+        # signature-matched counter alone keeps resetting to 1 on every
+        # alternation and never reaches the limit.
+        consecutive_same_failures = 0
+        consecutive_any_failures = 0
         last_failure_signature: str | None = None
         _SAME_ERROR_STOP_LIMIT = 3
+        _ANY_ERROR_STOP_LIMIT = 4
         # Circuit-breaker awareness — when an iteration's text contains
         # the standard "[Circuit breaker OPEN ... Cooldown: Xs]" marker,
         # honor that cooldown instead of the configured 2s interval.
@@ -366,15 +375,26 @@ class AgentRunner:
                 # session IDs).
                 sig = (failure_match.group(0) if failure_match else err_msg)[:80]
                 if sig == last_failure_signature:
-                    consecutive_failures += 1
+                    consecutive_same_failures += 1
                 else:
                     last_failure_signature = sig
-                    consecutive_failures = 1
-                if consecutive_failures >= _SAME_ERROR_STOP_LIMIT:
+                    consecutive_same_failures = 1
+                consecutive_any_failures += 1   # any failure, regardless of sig
+
+                # Trip on either limit. ANY-failure limit catches the
+                # "Failed → Circuit breaker → Failed → …" alternation
+                # pattern that signature-matching alone misses.
+                tripped_same = consecutive_same_failures >= _SAME_ERROR_STOP_LIMIT
+                tripped_any  = consecutive_any_failures  >= _ANY_ERROR_STOP_LIMIT
+                if tripped_same or tripped_any:
+                    reason = (
+                        f"{consecutive_same_failures} consecutive identical failures"
+                        if tripped_same
+                        else f"{consecutive_any_failures} consecutive failures (mixed signatures)"
+                    )
                     self._notify(
-                        f"⏹ [{self.name}] stopping — {consecutive_failures} "
-                        f"consecutive iterations failed with the same error.\n"
-                        f"Signature: `{sig}`\n\n"
+                        f"⏹ [{self.name}] stopping — {reason}.\n"
+                        f"Last signature: `{sig}`\n\n"
                         f"This is usually one of: a fundamentally broken "
                         f"request (context too big to compact), an exhausted "
                         f"API key / quota, or an upstream model that's down. "
@@ -382,12 +402,14 @@ class AgentRunner:
                     )
                     _log.warn("agent_runner_consecutive_failure_stop",
                               name=self.name, iterations=iteration,
-                              consecutive=consecutive_failures,
+                              same_count=consecutive_same_failures,
+                              any_count=consecutive_any_failures,
                               signature=sig)
                     self._stop_event.set()
                     break
             else:
-                consecutive_failures = 0
+                consecutive_same_failures = 0
+                consecutive_any_failures  = 0
                 last_failure_signature = None
 
             # ── Circuit-breaker cooldown override ───────────────────────

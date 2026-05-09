@@ -41,11 +41,16 @@ _OPENAI_OVERFLOW_ERR = (
 
 def test_parse_reproduces_user_failure_case():
     """The user's exact error: max=32768, prompt=24577, requested=8192.
-    Safe new cap: 32768 - 24577 - 200 = 7991."""
+    Safe new cap: 32768 - 24577 - 1000_buffer = 7191.
+
+    The buffer is intentionally generous (3% of 32K) because providers
+    re-tokenize prompts slightly differently on retry; we observed
+    +201 tokens on the retry which caused the original 200-byte buffer
+    to fail by 1 token — losing the entire benefit of auto-reduction."""
     new_cap = _try_reduce_output_cap_from_error(
         _OPENAI_OVERFLOW_ERR, {"max_tokens": 8192},
     )
-    assert new_cap == 7991
+    assert new_cap == 7191
 
 
 def test_parse_returns_none_when_new_cap_not_smaller():
@@ -64,10 +69,10 @@ def test_parse_returns_none_when_safe_cap_is_too_small():
     to compaction."""
     err = (
         "This model's maximum context length is 8192 tokens. However, "
-        "your prompt contains at least 8000 input tokens, for a total "
+        "your prompt contains at least 7500 input tokens, for a total "
         "of 16192 tokens."
     )
-    # Safe cap = 8192 - 8000 - 200 = -8 < 256 → None
+    # Safe cap = 8192 - 7500 - 1000_buffer = -308 < 256 → None
     assert _try_reduce_output_cap_from_error(err, {"max_tokens": 4096}) is None
 
 
@@ -88,8 +93,8 @@ def test_parse_anthropic_style_phrasing():
         "Your prompt contains 195000 input tokens."
     )
     new_cap = _try_reduce_output_cap_from_error(err, {"max_tokens": 16000})
-    # 200000 - 195000 - 200 = 4800
-    assert new_cap == 4800
+    # 200000 - 195000 - 1000 = 4000
+    assert new_cap == 4000
 
 
 def test_parse_no_current_cap_still_works():
@@ -98,7 +103,7 @@ def test_parse_no_current_cap_still_works():
     new_cap = _try_reduce_output_cap_from_error(
         _OPENAI_OVERFLOW_ERR, {},
     )
-    assert new_cap == 7991
+    assert new_cap == 7191
 
 
 # ── Agent runner: circuit-breaker cooldown extraction ────────────────────
