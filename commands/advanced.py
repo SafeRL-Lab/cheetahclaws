@@ -306,10 +306,11 @@ def cmd_brainstorm(args: str, state, config) -> bool:
     lead_model_override, args_remaining = _parse_lead_flag(args_remaining)
     persona_models, args_remaining = _parse_models_flag(args_remaining)
     user_topic = args_remaining.strip() or "general project improvement and architectural evolution"
-    n_rounds = rounds_override if rounds_override is not None else 2
 
     if _is_in_tg_turn(config) or _is_in_web_turn(config):
+        # No interactive prompts in bridge / web mode — pick safe defaults.
         agent_count = 5
+        n_rounds = rounds_override if rounds_override is not None else 2
     else:
         try:
             ans = ask_input_interactive(clr("  How many agents? (2-100, default 5) > ", "cyan"), config).strip()
@@ -317,6 +318,21 @@ def cmd_brainstorm(args: str, state, config) -> bool:
             agent_count = max(2, min(agent_count, 100))
         except (ValueError, KeyboardInterrupt, EOFError):
             agent_count = 5
+        # Rounds prompt — only when --rounds was NOT passed via args.
+        # 1 = monologues (one shot per persona), 2 = initial + critique
+        # (recommended default), 3+ = converges harder but costs more.
+        if rounds_override is not None:
+            n_rounds = rounds_override
+        else:
+            try:
+                rans = ask_input_interactive(
+                    clr("  Rounds [1=monologues, 2=critique (default), 3-6=more debate] > ", "cyan"),
+                    config,
+                ).strip()
+                n_rounds = int(rans) if rans else 2
+                n_rounds = max(1, min(n_rounds, 6))
+            except (ValueError, KeyboardInterrupt, EOFError):
+                n_rounds = 2
 
     snapshot = f"""PROJECT CONTEXT:
 README:
