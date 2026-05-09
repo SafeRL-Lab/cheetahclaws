@@ -118,7 +118,7 @@ internal structure.
 | [`checkpoint/`](../checkpoint) | Auto-snapshot of conversation + file state after every turn.  `types.py` data models, `store.py` backup + rewind, `hooks.py` monkey-patches `Write` / `Edit` / `NotebookEdit` to snapshot pre-edit.  Command wiring in `commands/checkpoint_plan.py`. |
 | [`plugin/`](../plugin) | Plugin install / enable / disable / update from git URLs or local paths.  `loader.py` imports user plugins and registers their `TOOL_DEFS` / `COMMAND_DEFS`; `recommend.py` scores plugin marketplace by keyword/tag match. |
 | [`monitor/`](../monitor) | AI-monitored topic subscriptions — `fetchers.py` (arxiv / stocks / crypto / news), `summarizer.py` (LLM-based), `scheduler.py` (cron-ish), `notifier.py` (Telegram/Slack/stdout), `store.py` (subscription state). |
-| [`prompts/`](../prompts) | System-prompt assets as plain Markdown — `base/default.md` is the shared baseline for every model; `overlays/<family>.md` (claude / gemini / openai-reasoning) appends short, vendor-documented quirks on top; `fragments/{tmux,plan}.md` are conditional blocks.  `select.py::pick_base_prompt` assembles base + matched overlay; `load_fragment` reads the conditional blocks.  See [`prompts/README.md`](../prompts/README.md) for the overlay-admission policy. |
+| [`prompts/`](../prompts) | System-prompt assets as plain Markdown — `base/default.md` is the shared baseline for every model; `overlays/<family>.md` (claude / gemini / openai-reasoning / qwen) appends short, vendor-documented quirks on top; `fragments/{tmux,plan}.md` are conditional blocks.  `select.py::pick_base_prompt` assembles base + matched overlay; `load_fragment` reads the conditional blocks.  See [`prompts/README.md`](../prompts/README.md) for the overlay-admission policy. |
 | [`modular/`](../modular) | Auto-discovered optional feature modules.  Each subdir exposes `cmd.py::COMMAND_DEFS` and/or `tools.py::TOOL_DEFS`; `modular/__init__.py::load_all_commands` picks them up at startup.  Ships with `modular/voice/`, `modular/video/`, `modular/trading/`. |
 
 ### 3. Backward-compat shims
@@ -202,7 +202,15 @@ consume the event stream; nothing else drives the model.
         AssistantTurn             → capture
    f. Record assistant turn in state.messages
    g. yield TurnDone(in_tokens, out_tokens)
-   h. If no tool_calls → break
+   h. If no tool_calls:
+        - if user message contained an absolute path AND we have NOT
+          yet nudged this run() call: append a one-shot "[system
+          reminder] use your tools, don't ask for what was given"
+          message to state.messages and continue back to step 3a.
+          Bounded to one nudge per user turn — second text-only reply
+          always falls through to break. See `_looks_like_investigation`
+          in agent.py.
+        - otherwise: break (conversation turn complete)
    i. Permission gate each tool_call (sequential — may prompt user)
    j. Execute:
         - parallel batch for concurrent_safe tools when >1 in a turn
@@ -299,7 +307,8 @@ prompts/
 ├── overlays/
 │   ├── claude.md         # XML-tag preference (Anthropic guide)
 │   ├── gemini.md         # explicit "Agentic Mode" framing (Gemini 3 guide)
-│   └── openai-reasoning.md  # don't narrate CoT (o1 / o3 / o4 / gpt-5-codex)
+│   ├── openai-reasoning.md  # don't narrate CoT (o1 / o3 / o4 / gpt-5-codex)
+│   └── qwen.md           # "call the tool, don't ask the user" (Qwen function-calling guide)
 └── fragments/
     ├── tmux.md
     └── plan.md

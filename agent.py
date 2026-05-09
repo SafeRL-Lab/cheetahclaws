@@ -106,6 +106,13 @@ def run(
     _LOOP_REPEAT_LIMIT = 3
     _LOOP_ERROR_LIMIT  = 5
 
+    # Auto-nudge: weaker models (qwen2.5, kimi, smaller llamas, …) often
+    # reply with prose like "please give me the file name" when handed an
+    # absolute path that they could have explored themselves. We give them
+    # exactly one transparent "try again with tools" reminder when this
+    # happens. Bounded to one shot per user message to prevent any loop.
+    _nudges_remaining = 1 if _looks_like_investigation(user_message) else 0
+
     while True:
         if cancel_check and cancel_check():
             return
@@ -218,6 +225,24 @@ def run(
         yield TurnDone(assistant_turn.in_tokens, assistant_turn.out_tokens)
 
         if not assistant_turn.tool_calls:
+            # Auto-nudge: text-only reply when the user clearly wanted
+            # investigation (their message contained an absolute path).
+            # One shot only — see `_nudges_remaining` init above.
+            if _nudges_remaining > 0 and get_tool_schemas():
+                _nudges_remaining -= 1
+                _nudge_msg = (
+                    "[system reminder] You replied with text and no tool "
+                    "calls, but the user's request includes a concrete path "
+                    "or file reference. Do NOT ask the user to clarify what "
+                    "they already provided. Instead: list the path with Bash "
+                    "`ls` (or Glob `**/*` for recursive), Read the relevant "
+                    "files, then answer. Try again now."
+                )
+                state.messages.append({"role": "user", "content": _nudge_msg})
+                _log.info("auto_nudge_text_only",
+                           session_id=session_id,
+                           reason="user_provided_path_but_assistant_text_only")
+                continue   # retry the loop with the nudge in history
             break   # No tools → conversation turn complete
 
         # ── Execute tools (parallel when safe) ────────────────────────────
@@ -457,3 +482,27 @@ def _truncate_err(s: str, max_len: int = 120) -> str:
     if len(s) <= max_len:
         return s
     return s[:max_len - 3] + "..."
+
+
+# Matches an absolute-path-like token: starts with '/', has at least two
+# segments, segment chars are word/dot/dash. Rejects bare '/' or '//'.
+# The leading lookbehind keeps URL paths (https://host/...) out of the match.
+import re as _re_invest
+_PATH_RE = _re_invest.compile(
+    r"(?:(?<=^)|(?<=[\s,;:'\"`(<\[]))/[A-Za-z0-9_.][\w./-]*/[\w.][\w./-]*"
+)
+
+
+def _looks_like_investigation(text: str) -> bool:
+    """Heuristic: does the user message hand the agent a path/file to look at?
+
+    Only the highest-precision signal is used — an absolute path token —
+    because the auto-nudge that consumes this signal must not fire on
+    benign greetings. URLs are stripped first so 'https://x/y' does not
+    count as a filesystem path.
+    """
+    if not text:
+        return False
+    # Strip URLs so http(s)://host/path doesn't masquerade as a fs path.
+    no_urls = _re_invest.sub(r"https?://\S+", " ", text)
+    return bool(_PATH_RE.search(no_urls))

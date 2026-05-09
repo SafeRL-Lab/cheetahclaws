@@ -87,10 +87,14 @@ _OVERLAY_CASES = [
     ("gpt-5",                          None, "plain GPT — default only"),
     ("gpt-4o",                         None, "plain GPT — default only"),
     ("custom/openai/gpt-5",            None, "plain GPT via OpenRouter"),
+    # --- Qwen / QwQ → qwen.md overlay (explicit tool-use stance) ---
+    ("ollama/qwen2.5-coder:32b",       "qwen.md", "Qwen via Ollama"),
+    ("custom/qwen2.5-72b",             "qwen.md", "Qwen via OpenAI-compat"),
+    ("qwen/Qwen3-MAX",                 "qwen.md", "Qwen3 via DashScope"),
+    ("qwq-32b-preview",                "qwen.md", "QwQ reasoning"),
     # --- No-overlay families: rely on default base ---
     ("kimi/moonshot-v1-128k",          None, "Kimi — no overlay yet"),
     ("deepseek/deepseek-chat",         None, "DeepSeek — no overlay yet"),
-    ("ollama/qwen2.5-coder:32b",       None, "Qwen — no overlay"),
     ("ollama/llama3.3",                None, "Llama — no overlay"),
     ("ollama/gemma4:e4b",              None, "Gemma — no overlay"),
     ("custom/my-private-finetune",     None, "unknown model"),
@@ -119,11 +123,13 @@ def test_overlay_routing(model_id: str, overlay: str | None, comment: str):
 
 
 def test_runtime_is_irrelevant_for_family_routing():
-    """Qwen served three different ways → same prompt (default, no overlay)."""
+    """Qwen served three different ways → same prompt (default + qwen overlay)."""
     via_ollama     = pick_base_prompt(model_id="ollama/qwen2.5-coder")
     via_dashscope  = pick_base_prompt(model_id="qwen/Qwen3-MAX")
     via_openrouter = pick_base_prompt(model_id="custom/qwen/Qwen3-MAX")
     assert via_ollama == via_dashscope == via_openrouter
+    # And it should be picking up the qwen overlay regardless of runtime.
+    assert _overlay_text("qwen.md").strip() in via_ollama
 
 
 def test_claude_routing_is_runtime_agnostic():
@@ -256,7 +262,7 @@ def test_dead_family_base_files_are_gone():
 
 def test_overlays_directory_has_expected_files():
     """Lock the current overlay set so accidental deletes / typos are caught."""
-    expected = {"claude.md", "gemini.md", "openai-reasoning.md"}
+    expected = {"claude.md", "gemini.md", "openai-reasoning.md", "qwen.md"}
     actual = {p.name for p in _select._OVERLAYS_DIR.iterdir() if p.suffix == ".md"}
     assert expected.issubset(actual), (
         f"missing expected overlay files. expected: {expected}, found: {actual}"

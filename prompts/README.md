@@ -30,7 +30,8 @@ prompts/
 ├── overlays/
 │   ├── claude.md          # XML-tag preference (Anthropic guide)
 │   ├── gemini.md          # explicit "Agentic Mode" framing (Gemini 3 guide)
-│   └── openai-reasoning.md # don't narrate CoT (o1 / o3 / o4 / gpt-5-codex)
+│   ├── openai-reasoning.md # don't narrate CoT (o1 / o3 / o4 / gpt-5-codex)
+│   └── qwen.md            # explicit "call the tool, don't ask the user" stance (Qwen function-calling guide)
 └── fragments/
     ├── tmux.md            # appended when tmux is available
     └── plan.md            # appended when permission_mode == "plan"
@@ -78,6 +79,7 @@ Examples that meet the bar:
 | `claude.md` | XML tags around structured sections | Anthropic prompt-engineering guide |
 | `gemini.md` | Explicit "Agentic Mode" framing + 4-step loop | Gemini 3 prompting guide |
 | `openai-reasoning.md` | Don't narrate "Let me think step by step…" | OpenAI reasoning best practices |
+| `qwen.md` | Override Qwen's chat-tuned "ask first" default — call the tool instead of echoing the user's path back as a question | Qwen function-calling guide |
 
 Examples that do **not** meet the bar (would be rejected):
 
@@ -151,6 +153,9 @@ base.
 - **DeepSeek-R1** recommends *no* system prompt (all instructions in
   the user role).  Supporting that requires a bypass mechanism in
   `providers.py`; tracked separately.  No overlay for now.
-- **Many open-source families** (Qwen, Llama, Mistral, Gemma, Phi, GLM,
-  MiniMax) currently fall through to `default.md`.  Add an overlay when
-  a concrete vendor-documented quirk emerges — not before.
+- **Other open-source families** (Llama, Mistral, Gemma, Phi, GLM,
+  MiniMax, Kimi) currently fall through to `default.md`.  Add an overlay
+  when a concrete vendor-documented quirk emerges — not before.  The
+  `default.md` "Investigate Before Asking" section + the runtime
+  auto-nudge in `agent.py` (see `_looks_like_investigation`) are the
+  baseline "be agentic" defenses for any model without an overlay.

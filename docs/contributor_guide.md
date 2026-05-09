@@ -43,7 +43,7 @@ If you remember only one thing, remember this flow:
 ### Model providers + prompt context + compaction
 - `providers.py` — provider detection, model metadata, API key lookup, stream adapters, neutral message format conversion.
 - `context.py` — system prompt assembly entry point (`build_system_prompt`); injects env block + memory + tmux/plan fragments around the base prompt.
-- `prompts/` — system prompt assets as plain Markdown.  `base/default.md` is the shared baseline for every model; `overlays/<family>.md` (claude / gemini / openai-reasoning) appends short, vendor-documented quirks; `fragments/{tmux,plan}.md` are conditional blocks.  `select.py::pick_base_prompt` assembles base + matched overlay.  See `prompts/README.md` for the overlay-admission policy.
+- `prompts/` — system prompt assets as plain Markdown.  `base/default.md` is the shared baseline for every model; `overlays/<family>.md` (claude / gemini / openai-reasoning / qwen) appends short, vendor-documented quirks; `fragments/{tmux,plan}.md` are conditional blocks.  `select.py::pick_base_prompt` assembles base + matched overlay.  See `prompts/README.md` for the overlay-admission policy.
 - `compaction.py` — context window management (`snip_old_tool_results` + `compact_messages`).
 - `cc_config.py` — defaults + persistent config file handling.
 

@@ -69,9 +69,12 @@ _OVERLAY_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
     # Plain "gpt-" without a reasoning suffix gets NO overlay — the
     # default-base guidance is already what GPT chat models want.
     (("o1", "o3", "o4", "gpt-5-codex", "codex"), "openai-reasoning.md"),
-    # Families without an overlay yet (kimi / qwen / llama / mistral /
-    # gemma / phi / glm / minimax / deepseek) all rely on default.md.
-    # Add an overlay file + entry here when a documented quirk emerges.
+    # Qwen / QwQ — chat-tuned default is conversational, needs an explicit
+    # "call the tool, don't ask the user" stance for agentic use.
+    (("qwen", "qwq"),                            "qwen.md"),
+    # Families without an overlay yet (kimi / llama / mistral / gemma /
+    # phi / glm / minimax / deepseek) all rely on default.md. Add an
+    # overlay file + entry here when a documented quirk emerges.
 )
 
 # Provider → overlay fallback.  Used only when model_id is empty.
