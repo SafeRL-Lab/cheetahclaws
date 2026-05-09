@@ -48,11 +48,13 @@ def _generate_masked_prompt(tmp_path, monkeypatch) -> str:
     monkeypatch.setattr(_context, "get_platform_hints", lambda: "")
     monkeypatch.setattr(_context, "_tmux_available",    lambda: False)
 
-    # Use a model whose family has no dedicated prompt file yet (Qwen →
-    # default.md).  This pins the regression to the default.md baseline
-    # instead of a per-family prompt, so family-specific edits don't
-    # invalidate this fixture.
-    cfg = {"model": "qwen/Qwen3-MAX", "_session_id": "regression-test"}
+    # Use a model whose family has NO overlay yet so this test pins to
+    # the default.md baseline only — family-specific overlay edits don't
+    # invalidate the fixture. As of this writing kimi has no overlay
+    # (qwen used to but does now). If kimi ever gets one, switch to any
+    # other no-overlay family (llama, mistral, gemma, phi, glm, minimax,
+    # deepseek) per prompts/select.py:_OVERLAY_RULES.
+    cfg = {"model": "kimi/moonshot-v1-128k", "_session_id": "regression-test"}
     return _mask(_context.build_system_prompt(cfg))
 
 
@@ -89,7 +91,7 @@ def _regenerate() -> None:
             prev_cwd = os.getcwd()
             try:
                 os.chdir(tmp)
-                cfg = {"model": "qwen/Qwen3-MAX", "_session_id": "regression-test"}
+                cfg = {"model": "kimi/moonshot-v1-128k", "_session_id": "regression-test"}
                 prompt = _mask(_context.build_system_prompt(cfg))
             finally:
                 os.chdir(prev_cwd)
@@ -115,7 +117,7 @@ def test_env_block_separates_platform_from_git_info(tmp_path, monkeypatch):
     monkeypatch.setattr(_context, "get_platform_hints", lambda: "")
     monkeypatch.setattr(_context, "_tmux_available",    lambda: False)
 
-    cfg = {"model": "qwen/Qwen3-MAX", "_session_id": "regression-test"}
+    cfg = {"model": "kimi/moonshot-v1-128k", "_session_id": "regression-test"}
     prompt = _context.build_system_prompt(cfg)
 
     # The Platform line must terminate before "- Git branch:" begins.
