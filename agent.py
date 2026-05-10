@@ -163,6 +163,11 @@ def run(
         _nim_fallbacks_used = 0
         _NIM_FALLBACK_LIMIT = 3
 
+        # Bounded to ONE per turn so a genuine overflow (prompt itself
+        # too big) eventually surfaces instead of looping. See
+        # `_try_reduce_output_cap_from_error` for the parser.
+        _output_cap_reduced_this_turn = False
+
         # Stream from provider — retry on ANY error (never crash the session)
         max_retries = 3
         for attempt in range(max_retries + 1):
@@ -230,6 +235,32 @@ def run(
                     break
 
                 if cerr.should_compress:
+                    # Before compacting, try to PARSE the error message
+                    # for explicit token counts. Many providers return:
+                    #   "max context 32768. requested 8192 output tokens
+                    #    and your prompt contains 24577 input tokens..."
+                    # When the prompt itself fits but `requested_output`
+                    # pushes total over the limit, we can fix this by
+                    # lowering max_tokens — no compaction needed (it
+                    # wouldn't help anyway when the user's input is the
+                    # huge thing, e.g. a PDF read).
+                    # Bounded to ONE auto-reduction per turn so a true
+                    # overflow eventually surfaces.
+                    if not _output_cap_reduced_this_turn:
+                        new_cap = _try_reduce_output_cap_from_error(str(e), config)
+                        if new_cap and new_cap >= 256:
+                            _output_cap_reduced_this_turn = True
+                            old_cap = config.get("max_tokens")
+                            config = {**config, "max_tokens": new_cap}
+                            _log.info("output_cap_auto_reduced",
+                                       session_id=session_id,
+                                       from_cap=old_cap, to_cap=new_cap)
+                            yield TextChunk(
+                                f"\n[Context overflow — reducing output cap "
+                                f"{old_cap}→{new_cap} and retrying (attempt "
+                                f"{attempt+1}/{max_retries})]\n"
+                            )
+                            continue
                     _force_compact(state, config)
                     yield TextChunk(f"\n[Context too long — compacted and retrying (attempt {attempt+1}/{max_retries})]\n")
                     continue
@@ -462,6 +493,58 @@ def run(
             # a valid tool_calls ↔ tool_response pairing.
             if tc["id"] not in _redundant_tcs:
                 yield ToolEnd(tc["name"], result, permitted)
+            # Auto-fanout: when a single tool result is too big to fit in the
+            # active model's context window, split it across parallel sub-LLM
+            # summaries instead of letting the next API call overflow.  Only
+            # fires for permitted, oversize, non-error results — denials and
+            # error strings are tiny and would just waste sub-calls.
+            if permitted and isinstance(result, str):
+                _res_low = result.lstrip()[:24].lower()
+                _is_err = (_res_low.startswith("error")
+                           or _res_low.startswith("denied"))
+                if not _is_err:
+                    try:
+                        from multi_agent.fanout import (
+                            should_fanout, fanout_summarize, make_llm_caller,
+                            fanout_notice,
+                        )
+                        from compaction import get_context_limit
+                        _ctx = get_context_limit(config.get("model", ""), config)
+                        if should_fanout(tc["name"], result, _ctx, config):
+                            # Find last user message for query focus
+                            _user_q = ""
+                            for _m in reversed(state.messages):
+                                if _m.get("role") == "user":
+                                    _c = _m.get("content", "")
+                                    if isinstance(_c, str):
+                                        _user_q = _c
+                                    break
+                            _max_sub = int(config.get("auto_fanout_max_subagents", 5) or 5)
+                            yield TextChunk(
+                                "\n" + fanout_notice(tc["name"], len(result),
+                                                     _max_sub, _ctx) + "\n"
+                            )
+                            _log.info("auto_fanout_triggered",
+                                       session_id=session_id,
+                                       tool=tc["name"],
+                                       original_chars=len(result),
+                                       ctx_window=_ctx,
+                                       max_subagents=_max_sub)
+                            result = fanout_summarize(
+                                text=result, user_question=_user_q,
+                                config=config, llm_call=make_llm_caller(config),
+                                ctx_window=_ctx, max_subagents=_max_sub,
+                            )
+                    except Exception as _fanout_err:
+                        # Fanout is opportunistic — never block the tool result
+                        # path on a fanout failure.  Log + fall through with
+                        # the original result; downstream compaction / dynamic
+                        # cap can still try.
+                        _log.warn("auto_fanout_failed",
+                                   session_id=session_id,
+                                   tool=tc["name"],
+                                   error_type=type(_fanout_err).__name__,
+                                   error=_truncate_err(str(_fanout_err)))
             state.messages.append({
                 "role":         "tool",
                 "tool_call_id": tc["id"],
@@ -556,7 +639,7 @@ def _permission_desc(tc: dict) -> str:
 
 def _force_compact(state: AgentState, config: dict) -> bool:
     """Force compaction regardless of threshold. Used when API rejects for context too long."""
-    limit = get_context_limit(config.get("model", ""))
+    limit = get_context_limit(config.get("model", ""), config)
     before = estimate_tokens(state.messages)
     if before <= 0:
         return False
@@ -575,6 +658,64 @@ def _truncate_err(s: str, max_len: int = 120) -> str:
     if len(s) <= max_len:
         return s
     return s[:max_len - 3] + "..."
+
+
+def _try_reduce_output_cap_from_error(error_str: str, config: dict) -> int | None:
+    """Parse an OpenAI-style context-overflow error and compute a safe
+    new max_tokens cap that fits within the model's window.
+
+    Most providers return the message in this shape:
+
+        "This model's maximum context length is 32768 tokens. However,
+         you requested 8192 output tokens and your prompt contains at
+         least 24577 input tokens, for a total of 32769 tokens..."
+
+    From those numbers we can compute the largest output cap that fits:
+        new_cap = model_max - prompt_tokens - SAFETY_BUFFER
+
+    Returns:
+        Suggested new max_tokens (>=1), or None if numbers couldn't be
+        parsed or the new cap would be too small (<256) to be useful —
+        in which case the caller falls back to compaction.
+    """
+    if not error_str:
+        return None
+    import re as _re_cap
+    # Three numbers, in order: max-context, requested-output, prompt-tokens.
+    # All providers we've seen use these patterns; tolerant on phrasing.
+    m_max = _re_cap.search(
+        r"(?:maximum\s+context\s+length|context\s+window|max(?:imum)?\s+tokens)\s+"
+        r"(?:is\s+|of\s+)?(\d+)",
+        error_str, _re_cap.IGNORECASE,
+    )
+    m_prompt = _re_cap.search(
+        r"prompt\s+contains\s+(?:at\s+least\s+)?(\d+)",
+        error_str, _re_cap.IGNORECASE,
+    )
+    if not (m_max and m_prompt):
+        return None
+    try:
+        model_max = int(m_max.group(1))
+        prompt_tokens = int(m_prompt.group(1))
+    except ValueError:
+        return None
+    # Buffer must absorb provider-side prompt-token-count variance
+    # between attempts. Observed in the wild on vLLM-served qwen2.5-72b:
+    # the prompt grows by ~+1000 tokens between the original attempt
+    # and the retry (vLLM appears to reserve decoder priming budget
+    # that's not counted in the initial validation message). 2500
+    # (~7.6% of 32K, ~1.25% of 200K) gives real headroom for that
+    # behavior across providers we've seen.
+    SAFETY_BUFFER = 2500
+    new_cap = model_max - prompt_tokens - SAFETY_BUFFER
+    # Don't return a cap that's even smaller than what's currently set
+    # — that would be a no-op or a regression.
+    current_cap = config.get("max_tokens") or 0
+    if current_cap and new_cap >= current_cap:
+        return None
+    if new_cap < 256:
+        return None
+    return new_cap
 
 
 # Matches an absolute-path-like token: starts with '/', has at least two

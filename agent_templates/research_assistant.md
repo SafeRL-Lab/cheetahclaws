@@ -17,7 +17,10 @@ Read papers from the target directory (or URLs), extract key insights, and maint
 ## Each iteration
 
 1. **Select the next paper**: Choose a paper from the target list that is NOT already in `papers_processed.txt`. If all papers are processed, announce completion and stop.
-2. **Read the paper**: Use the Read tool to read the paper file, or WebFetch if it's a URL.
+2. **Read the paper**:
+   - For typical papers (any PDF, or any text/code file under ~50 KB / ~12K tokens), use **`SummarizeLargeFile`** with `file_path=<absolute path>` and `focus="problem, method, results, limitations"`. It returns a comprehensive summary directly — no need to call Read separately.
+   - **Always prefer `SummarizeLargeFile` over `Read` for academic papers** — it handles the chunking + parallel summarization automatically and never overflows the context window, regardless of paper length. For very small files (< 5 KB) `Read` is also fine.
+   - For URLs, use `WebFetch` (then optionally `SummarizeLargeFile` on the fetched content saved to a temp file).
 3. **Extract key information**:
    - Title, authors, venue/year
    - Problem being solved

@@ -60,6 +60,24 @@ DEFAULTS = {
     "session_cost_budget":  None,  # max USD per session
     "daily_token_budget":   None,  # max tokens today (all sessions)
     "daily_cost_budget":    None,  # max USD today (all sessions)
+    # ── Auto-fanout for oversize tool outputs ─────────────────────────────
+    # When a single tool output (e.g. Read on a 6.6 MB PDF) is bigger than
+    # auto_fanout_threshold * model_context_window, instead of letting the
+    # next API call overflow, split it into chunks and dispatch parallel
+    # sub-LLM calls to summarize each chunk, then merge. Critical for small
+    # context windows (32k local models) reading large source material.
+    "auto_fanout_enabled":                  True,
+    "auto_fanout_threshold":                0.4,   # fraction of ctx_window
+    "auto_fanout_max_subagents":            5,
+    "auto_fanout_chunk_overlap_tokens":     200,
+    # ── Autonomous-agent stagnation detection ─────────────────────────────
+    # Stop the iteration loop in agent_runner if the model emits the same
+    # summary text N iterations in a row (e.g. "task complete" repeated).
+    # 0 disables. 3 catches the common "model declares done; template
+    # politely asks again" case without false-positives on slowly-progressing
+    # multi-day work where consecutive iterations may produce similar status
+    # updates.
+    "auto_agent_dup_summary_limit":         3,
     # Per-provider API keys (optional; env vars take priority)
     # "anthropic_api_key": "sk-ant-..."
     # "openai_api_key":    "sk-..."

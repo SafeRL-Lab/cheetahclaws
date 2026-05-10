@@ -588,16 +588,25 @@ The wizard walks you through topic → schedule → delivery channel → run now
   ─── Summary ───────────────────────────────────
   Template  : research_assistant
   Name      : research
-  Args      : ~/papers/ --output research_notes.md
+  Args      : ~/papers/ --output ~/.cheetahclaws/agents/research/output/research_notes.md
   Interval  : 2.0s
   Auto-approve: True
+  Output    : ~/.cheetahclaws/agents/research/output/research_notes.md
 
   Start? [Y/n]: Y
 ✓ Agent 'research' is running.
-  Log  : ~/.cheetahclaws/agents/research/log.jsonl
+  Log    : ~/.cheetahclaws/agents/research/log.jsonl
+  Output : ~/.cheetahclaws/agents/research/output/research_notes.md
   Progress → this terminal (iterations print here).
-  Stop : /agent stop research
+  Stop   : /agent stop research
 ```
+
+> **Where do outputs land?** When you give a *relative* output filename
+> (e.g. `research_notes.md`), the wizard rewrites it to an absolute path
+> under `~/.cheetahclaws/agents/<name>/output/` so generated artifacts
+> stay out of your current working directory and your repo. Pass an
+> *absolute* path (e.g. `/tmp/notes.md` or `~/Desktop/notes.md`) to
+> override and save anywhere you want.
 
 ### Built-in templates
 

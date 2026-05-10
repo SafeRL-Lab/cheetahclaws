@@ -138,6 +138,21 @@ def stop_all() -> int:
 _LOG_DIR = Path.home() / ".cheetahclaws" / "agents"
 
 
+def _normalize_summary(text: str) -> str:
+    """Collapse a per-iteration summary into a comparable canonical form.
+
+    Stagnation detection compares summaries across successive iterations to
+    detect when the model is stuck repeating itself (e.g. "task complete, no
+    more papers to process"). Whitespace and case differences are ignored;
+    structural punctuation is preserved so "Done." and "Done!" still match if
+    the rest is identical, but "Done." vs "I am done." don't.
+    """
+    if not text:
+        return ""
+    # Lowercase + collapse runs of whitespace to a single space.
+    return " ".join(text.lower().split()).strip()
+
+
 @dataclass
 class _IterationRecord:
     iteration: int
@@ -177,6 +192,13 @@ class AgentRunner:
         self._thread: threading.Thread | None = None
         self._log_dir = _LOG_DIR / name
         self._log_dir.mkdir(parents=True, exist_ok=True)
+        # Public output dir: where templates that produce user-facing files
+        # (research notes, paper drafts, generated code) should land. Lives
+        # under ~/.cheetahclaws/agents/<name>/output/ so all agent artifacts
+        # stay in one place — no more files dropped in the cheetahclaws
+        # source directory.
+        self.output_dir = self._log_dir / "output"
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
     # ── Public interface ───────────────────────────────────────────────────
 
@@ -246,6 +268,46 @@ class AgentRunner:
         )
 
         iteration = 0
+        # Consecutive-failure tracking — stop the agent if N iterations
+        # in a row hit any failure, so a fundamentally broken request
+        # (context overflow that compaction can't fix, missing API key,
+        # unauthorized model, etc.) doesn't loop for hours.
+        # Two parallel counters:
+        #   - consecutive_same_failures: same signature N times → stop
+        #   - consecutive_any_failures:  ANY failure marker N times → stop
+        # The second one is needed because agent.py alternates between
+        # `[Failed ...]` (during the retry budget) and
+        # `[Circuit breaker ...]` (during the breaker's cooldown), so
+        # signature-matched counter alone keeps resetting to 1 on every
+        # alternation and never reaches the limit.
+        consecutive_same_failures = 0
+        consecutive_any_failures = 0
+        last_failure_signature: str | None = None
+        _SAME_ERROR_STOP_LIMIT = 3
+        _ANY_ERROR_STOP_LIMIT = 4
+        # ── Stagnation detection (separate from failure tracking) ───────────
+        # When the model successfully completes its turn but emits the same
+        # summary text N times in a row, the template's polling loop is asking
+        # it to "do more" but it's already declared itself done (e.g.
+        # "Task complete. No further papers to process."). Without this guard
+        # the loop burns thousands of API calls producing identical "I'm done"
+        # responses. Configurable via auto_agent_dup_summary_limit; 0 disables.
+        _DUP_LIMIT = int(config.get("auto_agent_dup_summary_limit", 3) or 0)
+        _recent_summaries: list[str] = []   # rolling window of normalized summaries
+        # Circuit-breaker awareness — when an iteration's text contains
+        # the standard "[Circuit breaker OPEN ... Cooldown: Xs]" marker,
+        # honor that cooldown instead of the configured 2s interval.
+        # Otherwise we burn 60+ wasted iterations per single 120s cooldown.
+        import re as _re_runner
+        _CIRCUIT_RE = _re_runner.compile(
+            r"Circuit breaker OPEN.*?Cooldown:\s*(\d+(?:\.\d+)?)\s*s",
+            _re_runner.IGNORECASE,
+        )
+        _FAILURE_RE = _re_runner.compile(
+            r"\[(?:Failed|Circuit breaker)\b[^\]]*\]",
+            _re_runner.IGNORECASE,
+        )
+
         while not self._stop_event.is_set():
             iteration += 1
             self.iteration = iteration
@@ -330,8 +392,109 @@ class AgentRunner:
             _log.info("agent_runner_iter", name=self.name, iteration=iteration,
                       status=rec_status, duration_s=rec.duration_s)
 
+            # ── Consecutive-failure tracking ────────────────────────────
+            # An iteration "fails" if the catch above marked it error OR
+            # if the streamed text contains a `[Failed ...]` / `[Circuit
+            # breaker ...]` marker (agent.py emits these in its retry
+            # loop when retries are exhausted or the breaker is open).
+            full_text = "".join(text_chunks)
+            failure_match = _FAILURE_RE.search(full_text)
+            failed_this_iter = (rec_status == "error" or bool(failure_match))
+            if failed_this_iter:
+                # Build a short signature so "same error 3x in a row" is
+                # robust against tiny phrasing differences (timestamps,
+                # session IDs).
+                sig = (failure_match.group(0) if failure_match else err_msg)[:80]
+                if sig == last_failure_signature:
+                    consecutive_same_failures += 1
+                else:
+                    last_failure_signature = sig
+                    consecutive_same_failures = 1
+                consecutive_any_failures += 1   # any failure, regardless of sig
+
+                # Trip on either limit. ANY-failure limit catches the
+                # "Failed → Circuit breaker → Failed → …" alternation
+                # pattern that signature-matching alone misses.
+                tripped_same = consecutive_same_failures >= _SAME_ERROR_STOP_LIMIT
+                tripped_any  = consecutive_any_failures  >= _ANY_ERROR_STOP_LIMIT
+                if tripped_same or tripped_any:
+                    reason = (
+                        f"{consecutive_same_failures} consecutive identical failures"
+                        if tripped_same
+                        else f"{consecutive_any_failures} consecutive failures (mixed signatures)"
+                    )
+                    self._notify(
+                        f"⏹ [{self.name}] stopping — {reason}.\n"
+                        f"Last signature: `{sig}`\n\n"
+                        f"This is usually one of: a fundamentally broken "
+                        f"request (context too big to compact), an exhausted "
+                        f"API key / quota, or an upstream model that's down. "
+                        f"Inspect the log: `/agent log {self.name}`"
+                    )
+                    _log.warn("agent_runner_consecutive_failure_stop",
+                              name=self.name, iterations=iteration,
+                              same_count=consecutive_same_failures,
+                              any_count=consecutive_any_failures,
+                              signature=sig)
+                    self._stop_event.set()
+                    break
+            else:
+                consecutive_same_failures = 0
+                consecutive_any_failures  = 0
+                last_failure_signature = None
+                # Stagnation check: only on successful iterations, because
+                # failure summaries are already tracked above.
+                if _DUP_LIMIT >= 2:
+                    norm = _normalize_summary(summary)
+                    # Skip the trivial "(no output)" case — that means the model
+                    # produced nothing this turn, which is a failure mode worth
+                    # surfacing differently (loop-guard handled it elsewhere).
+                    if norm and norm != "(no output)":
+                        _recent_summaries.append(norm)
+                        # Keep only the last _DUP_LIMIT entries
+                        if len(_recent_summaries) > _DUP_LIMIT:
+                            _recent_summaries = _recent_summaries[-_DUP_LIMIT:]
+                        if (len(_recent_summaries) >= _DUP_LIMIT
+                                and len(set(_recent_summaries)) == 1):
+                            self._notify(
+                                f"⏹ [{self.name}] stopping — model produced "
+                                f"the same summary {_DUP_LIMIT} iterations in "
+                                f"a row, likely the template's task is "
+                                f"already complete.\n\n"
+                                f"Last summary:\n{summary[:300]}\n\n"
+                                f"If this is wrong, raise the limit via "
+                                f"`/config auto_agent_dup_summary_limit=10` "
+                                f"or set to 0 to disable."
+                            )
+                            _log.warn(
+                                "agent_runner_stagnation_stop",
+                                name=self.name, iterations=iteration,
+                                duplicate_count=_DUP_LIMIT,
+                                summary_preview=summary[:200],
+                            )
+                            self._stop_event.set()
+                            break
+                    else:
+                        _recent_summaries.clear()
+
+            # ── Circuit-breaker cooldown override ───────────────────────
+            # When the iteration's output mentions a circuit-breaker
+            # cooldown, sleep that long (capped at 5 min) instead of
+            # the configured 2s interval. Avoids 60+ pointless retries
+            # against an upstream that's already telling us "wait".
+            wait_s = self.interval
+            cb_match = _CIRCUIT_RE.search(full_text)
+            if cb_match:
+                try:
+                    cooldown = float(cb_match.group(1))
+                    wait_s = max(self.interval, min(cooldown + 1.0, 300.0))
+                    _log.info("agent_runner_circuit_wait",
+                              name=self.name, cooldown_s=wait_s)
+                except ValueError:
+                    pass
+
             # Wait before next iteration (stop event wakes it early)
-            self._stop_event.wait(self.interval)
+            self._stop_event.wait(wait_s)
 
         self.status = "stopped"
         self._notify(f"⏹ Agent **{self.name}** stopped after {iteration} iterations.")

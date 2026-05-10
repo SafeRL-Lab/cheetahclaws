@@ -486,14 +486,29 @@ def _register_builtins() -> None:
     """Register all built-in tools into the central registry."""
     _schemas = {s["name"]: s for s in TOOL_SCHEMAS}
 
+    def _read_with_overflow_check(p: dict, c: dict) -> str:
+        """Read wrapper that auto-redirects on too-large files. If the
+        Read result would risk overflowing the model's context on the
+        next API call, replace it with a short message routing the model
+        to SummarizeLargeFile. See `_maybe_redirect_to_summarize`."""
+        if not p.get("file_path"):
+            return "Error: missing required parameter 'file_path'"
+        denied = _check_path_allowed(p["file_path"], c)
+        if denied:
+            return denied
+        result = _read(**p)
+        # Skip redirect for already-small results (errors, empty, etc.)
+        if not result or len(result) < 8000:
+            return result
+        from tools.files import _maybe_redirect_to_summarize
+        redirect = _maybe_redirect_to_summarize(result, p["file_path"], c)
+        return redirect if redirect else result
+
     _tool_defs = [
         ToolDef(
             name="Read",
             schema=_schemas["Read"],
-            func=lambda p, c: (
-                "Error: missing required parameter 'file_path'" if not p.get("file_path")
-                else _check_path_allowed(p["file_path"], c) or _read(**p)
-            ),
+            func=_read_with_overflow_check,
             read_only=True, concurrent_safe=True,
         ),
         ToolDef(

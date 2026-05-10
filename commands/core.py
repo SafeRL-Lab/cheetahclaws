@@ -244,7 +244,7 @@ def cmd_status(args: str, state, config) -> bool:
     tokens_in = getattr(state, "total_input_tokens", 0)
     tokens_out = getattr(state, "total_output_tokens", 0)
     est_ctx = estimate_tokens(getattr(state, "messages", []))
-    ctx_limit = get_context_limit(model)
+    ctx_limit = get_context_limit(model, config)
     ctx_pct = (est_ctx / ctx_limit * 100) if ctx_limit else 0
     plan_mode = config.get("permission_mode") == "plan"
 

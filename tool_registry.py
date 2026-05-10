@@ -120,13 +120,47 @@ def execute_tool(
             old = _cache_order.pop(0)
             _cache.pop(old, None)
 
+    # Model-aware truncation: the static 32K-char cap is fine for English
+    # but blows up CJK content (1 token per char). Cap effective max by the
+    # model's actual context window so a Bash / Read / WebFetch result
+    # can never single-handedly overflow the next API call. ~30K-token
+    # conservative ceiling (handles 32K-context models like qwen2.5-72b
+    # behind a `custom/` provider that lies about context_limit).
+    try:
+        from compaction import get_context_limit
+        model = config.get("model", "") if config else ""
+        declared_ctx = get_context_limit(model) or 32768
+        # Reserve 16K for system prompt + tool schemas + framing + headroom.
+        # 0.5× for CJK-safety (1 char ≈ 1 token worst case).
+        safe_ctx = min(declared_ctx, 30000)
+        effective_max = max(2000, int((safe_ctx - 16000) * 0.5))
+        if effective_max < max_output:
+            max_output = effective_max
+    except Exception:
+        # Compaction module unavailable in some test contexts — fall back
+        # to the static 32K cap rather than crashing.
+        pass
+
     if len(result) > max_output:
         first_half = max_output // 2
         last_quarter = max_output // 4
         truncated = len(result) - first_half - last_quarter
+        # Surface a SummarizeLargeFile pointer when the truncated tool
+        # call had a `file_path` arg — gives the model a path forward
+        # instead of just losing 50%+ of the content.
+        file_hint = ""
+        fpath = (params or {}).get("file_path") if isinstance(params, dict) else None
+        if fpath and isinstance(fpath, str):
+            file_hint = (
+                f"  Tip: this came from `{fpath}` — call "
+                f"`SummarizeLargeFile(file_path='{fpath}')` to get a "
+                f"complete chunked + map-reduce summary that fits."
+            )
         result = (
             result[:first_half]
-            + f"\n[... {truncated} chars truncated ...]\n"
+            + f"\n[... {truncated} chars truncated to keep total tool "
+              f"output ≤ {max_output:,} chars (model context safety).\n"
+              f"{file_hint}]\n"
             + result[-last_quarter:]
         )
 

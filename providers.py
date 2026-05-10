@@ -305,13 +305,67 @@ _MODEL_OUTPUT_LIMITS: dict[str, int] = {
     "deepseek-v4-pro":     32768,
 }
 
+# Per-model TOTAL context window (input+output), separate from output limit above.
+# Used by get_model_context_window to drive both compaction trigger and dynamic
+# max_tokens cap. Keys are bare model IDs; lookup also tries lowercase prefix
+# match for variants like "qwen2.5-72b-instruct-vllm-build".
+_MODEL_CONTEXT_LIMITS: dict[str, int] = {
+    # Qwen 2.5 family
+    "qwen2.5-7b":                  32768,
+    "qwen2.5-14b":                 32768,
+    "qwen2.5-32b":                 32768,
+    "qwen2.5-72b":                 32768,
+    "qwen2.5-72b-instruct":        32768,
+    "qwen2.5-coder":               32768,
+    "qwen2.5-coder-7b":            32768,
+    "qwen2.5-coder-32b":           32768,
+    "qwen2.5-coder-32b-instruct":  32768,
+    # Qwen 3 family (most variants 32k by default)
+    "qwen3-7b":                    32768,
+    "qwen3-32b":                   32768,
+    "qwen3-72b":                   32768,
+    # QwQ
+    "qwq-32b":                     32768,
+    # Llama family
+    "llama3.3":                    131072,
+    "llama3.2":                    131072,
+    "llama3.1":                    131072,
+    "llama-3.3-70b-instruct":      131072,
+    "llama-3.1-405b-instruct":     131072,
+    # Mistral / Mixtral
+    "mistral":                     32768,
+    "mistral-7b":                  32768,
+    "mixtral":                     32768,
+    "mixtral-8x7b":                32768,
+    "mixtral-8x22b":               65536,
+    # Phi
+    "phi-3-medium-128k-instruct":  131072,
+    "phi4":                        16384,
+    # Gemma
+    "gemma-2-27b-it":              8192,
+    "gemma3":                      8192,
+    "gemma4":                      8192,
+    # DeepSeek local variants
+    "deepseek-r1":                 65536,
+    "deepseek-coder-v2":           128000,
+    # CodeLlama
+    "codellama":                   16384,
+    # Llava (vision)
+    "llava":                       4096,
+}
+
 # Cache: base_url → {model_id → max_model_len}
 _custom_ctx_cache: dict[str, dict[str, int]] = {}
 
 
 def _fetch_custom_model_limit(base_url: str, model: str, api_key: str) -> int | None:
-    """Query /v1/models on a custom (vLLM/etc.) endpoint for max_model_len.
-    Returns None on any failure. Results are cached per base_url."""
+    """Query /v1/models on a custom (vLLM/etc.) endpoint for the TOTAL context
+    window (max_model_len). Returns None on any failure. Results cached per
+    base_url. Also backfills PROVIDERS['custom']['context_limit'] in-memory the
+    first time it succeeds, so compaction.get_context_limit() — which doesn't
+    have direct access to base_url — sees the real limit instead of the stale
+    128000 default.
+    """
     cache = _custom_ctx_cache.setdefault(base_url, {})
     if model in cache:
         return cache[model]
@@ -327,9 +381,90 @@ def _fetch_custom_model_limit(base_url: str, model: str, api_key: str) -> int | 
             limit = entry.get("max_model_len") or entry.get("context_window")
             if limit:
                 cache[mid] = int(limit)
-        return cache.get(model)
+        result = cache.get(model)
+        # Backfill provider-level default with the most conservative value seen.
+        # Compaction reads PROVIDERS[provider]['context_limit'] without knowing
+        # base_url, so this makes the threshold see the real limit.
+        if cache:
+            smallest = min(v for v in cache.values() if v)
+            if smallest:
+                PROVIDERS.setdefault("custom", {})["context_limit"] = smallest
+        return result
     except Exception:
         return None
+
+
+def get_model_context_window(provider: str, model: str,
+                              base_url: str = "", api_key: str = "") -> int:
+    """Return the TOTAL context window (input + output) for a model.
+
+    Single source of truth for compaction trigger and dynamic max_tokens cap.
+
+    Priority:
+      1. Per-model registry (_MODEL_CONTEXT_LIMITS)
+      2. Custom provider with base_url: live /v1/models query (cached)
+      3. Provider-level PROVIDERS[provider]['context_limit']
+      4. Fallback 128000
+    """
+    bare = bare_model(model)
+    if bare in _MODEL_CONTEXT_LIMITS:
+        return _MODEL_CONTEXT_LIMITS[bare]
+    bare_lc = bare.lower()
+    for k, v in _MODEL_CONTEXT_LIMITS.items():
+        if bare_lc.startswith(k.lower()):
+            return v
+    if provider == "custom" and base_url:
+        live = _fetch_custom_model_limit(base_url, model, api_key)
+        if live:
+            return live
+    prov_ctx = PROVIDERS.get(provider, {}).get("context_limit")
+    if prov_ctx:
+        return prov_ctx
+    return 128000
+
+
+def dynamic_cap_max_tokens(
+    messages: list,
+    system,
+    tool_schemas,
+    ctx_window: int,
+    configured: int,
+    safety_margin: int = 1024,
+) -> int:
+    """Cap max_tokens so input + output fits within the model's context window.
+
+    Estimates current prompt size (messages + system + tool schemas) using the
+    same chars/2.8 heuristic as compaction.estimate_tokens, then returns
+    min(configured, ctx_window - input_estimate - safety_margin).
+
+    Floors at 256 — if even that is infeasible, the caller's compaction layer
+    should already have fired; returning a tiny floor lets the API call surface
+    a clear error rather than silently sending an oversized request.
+    """
+    import compaction  # local import: compaction imports providers, avoid cycle
+    msg_tok = compaction.estimate_tokens(messages or [])
+    sys_tok = 0
+    if isinstance(system, str):
+        sys_tok = int(len(system) / 2.8 * 1.1)
+    elif isinstance(system, list):
+        for block in system:
+            if isinstance(block, dict):
+                txt = block.get("text") or block.get("content") or ""
+                if isinstance(txt, str):
+                    sys_tok += int(len(txt) / 2.8 * 1.1)
+            elif isinstance(block, str):
+                sys_tok += int(len(block) / 2.8 * 1.1)
+    tool_tok = 0
+    if tool_schemas:
+        try:
+            tool_tok = int(len(json.dumps(tool_schemas)) / 2.8 * 1.1)
+        except Exception:
+            tool_tok = 0
+    input_est = msg_tok + sys_tok + tool_tok
+    headroom = ctx_window - input_est - safety_margin
+    if headroom < 256:
+        return 256
+    return min(configured, headroom)
 
 
 def resolve_max_tokens(config: dict, provider: str, model: str,
@@ -784,6 +919,10 @@ def stream_anthropic(
     client = _ant.Anthropic(api_key=api_key, base_url=base_url)
 
     _mt = resolve_max_tokens(config, "anthropic", model) or 8192
+    # Per-call dynamic cap: shrink max_tokens when the current prompt is already
+    # large, so input + output never exceeds the model's context window.
+    _ctx_window = get_model_context_window("anthropic", model)
+    _mt = dynamic_cap_max_tokens(messages, system, tool_schemas, _ctx_window, _mt)
     kwargs = {
         "model":      model,
         "max_tokens": _mt,
@@ -910,6 +1049,13 @@ def stream_openai_compat(
         # Further cap by provider-level max_completion_tokens if present
         prov_cap = PROVIDERS.get(_prov, {}).get("max_completion_tokens")
         val = min(_effective_mt, prov_cap) if prov_cap else _effective_mt
+        # Per-call dynamic cap: shrink based on current prompt size so input +
+        # output never overflows the real context window. Critical for 32k
+        # local models (qwen2.5, mistral) where the static cap alone is not
+        # enough — input grows turn-by-turn.
+        _ctx_window = get_model_context_window(_prov, model, base_url, api_key)
+        # Pass the system prompt as a single-element list so dynamic_cap counts it.
+        val = dynamic_cap_max_tokens(messages, system, kwargs.get("tools"), _ctx_window, val)
         # Newer OpenAI models (o1/o3/o4/gpt-5 family) dropped max_tokens in favour of
         # max_completion_tokens.  Use max_completion_tokens for the openai provider so
         # all current and future OpenAI models work without per-model special-casing.

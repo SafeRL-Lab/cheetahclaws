@@ -183,6 +183,38 @@ truncates any result larger than `max_output` (default 32 000 chars)
 to `first_half + "[... N chars truncated ...]" + last_quarter`.  This
 is the first line of defense against a runaway tool blowing up context.
 
+**Auto-fanout** (`multi_agent/fanout.py`) is the *second* line of defense,
+running between tool execution and conversation-history append in `agent.py`:
+when a single tool result still exceeds `0.4 × ctx_window` after
+`execute_tool`'s truncation (e.g. a PDF that fits within 32 K chars but
+estimates to >13 K tokens on a 32 K-context model), `should_fanout` fires
+and `fanout_summarize` chunks the text at paragraph boundaries with
+token overlap, dispatches parallel sub-LLM map calls (cap default 5),
+then a single reduce call merges the per-chunk summaries. The merged
+summary replaces the original result before it enters `state.messages`,
+so the next API call sees a tractable input. Fanout is opportunistic:
+any internal failure falls through to the original (potentially over-
+sized) result and lets the downstream layers (compaction, dynamic cap)
+try.
+
+**Per-call dynamic max_tokens cap** (`providers.dynamic_cap_max_tokens`)
+is the *third* line — even after fanout, before each API call we estimate
+the actual prompt size (messages + system + tool schemas) and shrink
+`max_tokens` so that `input + output + 1024 safety ≤ ctx_window`. This
+matters most for 32 K-context local models (Qwen 2.5/3, Mistral, Llama 3
+small variants) where a single big tool result can come close to the
+limit even after compaction. The per-model context window comes from
+`providers._MODEL_CONTEXT_LIMITS` (registry of known local models) or,
+for `custom/...` providers, a live `/v1/models` query that backfills
+`PROVIDERS["custom"]["context_limit"]` so subsequent `compaction.
+get_context_limit` calls see the real value instead of the stale 128 K
+default.
+
+**Auto-compact** (`compaction.maybe_compact`) is the *fourth* line — when
+the conversation history (not a single tool result) crosses 70 % of the
+ctx window, snip old tool outputs first, then if still over threshold
+LLM-summarize older turns into a compressed system message.
+
 ### Agent loop
 
 `agent.run(user_message, state, config, system_prompt, depth,

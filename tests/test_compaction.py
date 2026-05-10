@@ -121,7 +121,10 @@ class TestGetContextLimit:
         assert get_context_limit("some-random-model-xyz") == 128000
 
     def test_explicit_provider_prefix(self):
-        assert get_context_limit("ollama/llama3.3") == 128000
+        # Llama 3.3 has 131072 (= 128 * 1024) tokens — the per-model registry
+        # in providers._MODEL_CONTEXT_LIMITS uses the precise value rather
+        # than the provider-level 128000 default.
+        assert get_context_limit("ollama/llama3.3") == 131072
 
 
 # ── snip_old_tool_results ─────────────────────────────────────────────────

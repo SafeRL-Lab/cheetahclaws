@@ -58,6 +58,24 @@ def _hdr(title: str) -> None:
     print(clr("╰" + "─" * w + "╯", "dim") + "\n")
 
 
+def _resolve_output_path(filename: str, agent_name: str) -> Path:
+    """Resolve a user-supplied output filename to an absolute path.
+
+    Relative paths are placed under `~/.cheetahclaws/agents/<agent_name>/output/`
+    so all autonomous-agent artifacts stay in one place — no more files
+    landing in the cheetahclaws source tree because the user happened to
+    launch from there. Absolute paths are passed through unchanged.
+
+    Creates the parent directory eagerly so the model's first Write call
+    succeeds without a separate mkdir step.
+    """
+    p = Path(filename).expanduser()
+    if not p.is_absolute():
+        p = Path.home() / ".cheetahclaws" / "agents" / agent_name / "output" / p
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 _MENU_ITEMS = [
     ("research_assistant", "📚", "Research Assistant",
      "Read papers → summarize → build related work"),
@@ -123,6 +141,7 @@ def _wizard(config: dict) -> bool:
     agent_name = template_name if template_name != "__custom__" else "agent"
     interval   = 2.0
     auto_approve = True
+    output_paths: list[Path] = []   # shown in Summary + post-start message
 
     if template_name == "research_assistant":
         target = _q("Paper directory or search topic", ".")
@@ -134,7 +153,9 @@ def _wizard(config: dict) -> bool:
         aa = _q("Auto-approve file writes? [Y/n]", "Y")
         if aa == "\x00": info("Cancelled."); return True
         auto_approve = aa.strip().lower() not in ("n", "no")
-        agent_args = f"{target} --output {notes_out}"
+        notes_path = _resolve_output_path(notes_out, agent_name)
+        output_paths.append(notes_path)
+        agent_args = f"{target} --output {shlex.quote(str(notes_path))}"
 
     elif template_name == "auto_bug_fixer":
         test_cmd = _q("Test command", "pytest")
@@ -160,7 +181,12 @@ def _wizard(config: dict) -> bool:
         agent_name = _q("Agent name", "paper")
         if agent_name == "\x00": info("Cancelled."); return True
         auto_approve = True
-        agent_args = f"{shlex.quote(outline)} --output {shlex.quote(output)} --style {shlex.quote(style)}"
+        draft_path = _resolve_output_path(output, agent_name)
+        output_paths.append(draft_path)
+        agent_args = (
+            f"{shlex.quote(outline)} --output {shlex.quote(str(draft_path))} "
+            f"--style {shlex.quote(style)}"
+        )
 
     elif template_name == "auto_coder":
         task_input = _q("Task description  (or path to tasks.md)", "tasks.md")
@@ -208,6 +234,9 @@ def _wizard(config: dict) -> bool:
     print(f"  Args      : {agent_args or '(none)'}")
     print(f"  Interval  : {interval}s")
     print(f"  Auto-approve: {auto_approve}")
+    if output_paths:
+        for op in output_paths:
+            print(f"  Output    : {clr(str(op), 'green')}")
     print()
 
     confirm = _q("Start? [Y/n]", "Y")
@@ -241,12 +270,18 @@ def _wizard(config: dict) -> bool:
 
     print()
     ok(f"Agent '{runner.name}' is running.")
-    info(f"Log  : {runner._log_dir / 'log.jsonl'}")
+    info(f"Log    : {runner._log_dir / 'log.jsonl'}")
+    if output_paths:
+        for op in output_paths:
+            info(f"Output : {clr(str(op), 'green')}")
+    else:
+        info(f"Output dir: {runner.output_dir}  (use absolute paths in templates "
+             f"to override)")
     if send_fn:
         info("Progress → active bridge (Telegram / Slack / WeChat).")
     else:
         info("Progress → this terminal (iterations print here).")
-    info(f"Stop : /agent stop {runner.name}")
+    info(f"Stop   : /agent stop {runner.name}")
     return True
 
 

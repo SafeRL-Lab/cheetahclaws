@@ -147,6 +147,7 @@ These commands the **user** can invoke at the REPL prompt — they are NOT tools
 - `/slack` `[stop | status | logout]` — Slack bot bridge (Web API)
 - `/ssj` — SSJ Developer Mode — power menu
 - `/status` — Show session status and model info
+- `/summarize` — Multi-agent map-reduce summary of any-size file (PDF / txt / code)
 - `/task` `[create | delete | get | clear | todo | in-progress | done | blocked]` — Manage tasks (alias)
 - `/tasks` `[create | delete | get | clear | todo | in-progress | done | blocked]` — Manage tasks
 - `/telegram` `[stop | status]` — Telegram bot bridge

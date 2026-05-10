@@ -55,17 +55,31 @@ def estimate_tokens(messages: list) -> int:
     return int((content_tokens + framing_tokens) * 1.1)
 
 
-def get_context_limit(model: str) -> int:
+def get_context_limit(model: str, config: dict | None = None) -> int:
     """Look up context window size for a model.
 
+    Delegates to providers.get_model_context_window for a single source of
+    truth. The optional config arg lets callers pass custom_base_url so that
+    custom/vLLM endpoints get a live /v1/models lookup instead of falling
+    back to the stale 128000 default.
+
     Args:
-        model: model string (e.g. "claude-opus-4-6", "ollama/llama3.3")
+        model: model string (e.g. "claude-opus-4-6", "ollama/llama3.3",
+               "custom/qwen2.5-72b")
+        config: optional agent config dict; reads custom_base_url and
+                custom_api_key if provider is 'custom'
     Returns:
         context limit in tokens
     """
     provider_name = providers.detect_provider(model)
-    prov = providers.PROVIDERS.get(provider_name, {})
-    return prov.get("context_limit", 128000)
+    base_url = ""
+    api_key = ""
+    if config and provider_name == "custom":
+        base_url = config.get("custom_base_url", "") or ""
+        api_key = config.get("custom_api_key", "") or ""
+    return providers.get_model_context_window(
+        provider_name, model, base_url, api_key
+    )
 
 
 # ── Layer 1: Snip old tool results ────────────────────────────────────────
@@ -293,7 +307,7 @@ def maybe_compact(state, config: dict) -> bool:
         True if compaction was performed
     """
     model = config.get("model", "")
-    limit = get_context_limit(model)
+    limit = get_context_limit(model, config)
     threshold = limit * 0.7
 
     if estimate_tokens(state.messages) <= threshold:

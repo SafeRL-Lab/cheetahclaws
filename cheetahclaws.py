@@ -242,7 +242,7 @@ from commands.checkpoint_plan import cmd_checkpoint, cmd_rewind, cmd_plan
 
 # ── Advanced commands ──────────────────────────────────────────────────────
 from commands.advanced import (
-    cmd_brainstorm, cmd_worker, cmd_ssj, cmd_draft,
+    cmd_brainstorm, cmd_worker, cmd_ssj, cmd_draft, cmd_summarize,
     cmd_memory, cmd_agents, cmd_skills, cmd_mcp, cmd_plugin, cmd_tasks,
     _save_synthesis, _print_background_notifications,
 )
@@ -408,6 +408,7 @@ COMMANDS = {
     "image":       cmd_image,
     "img":         cmd_image,
     "brainstorm":  cmd_brainstorm,
+    "summarize":   cmd_summarize,
     "draft":       cmd_draft,
     "worker":      cmd_worker,
     "agent":       cmd_agent,
@@ -573,6 +574,7 @@ _CMD_META: dict[str, tuple[str, list[str]]] = {
     "image":       ("Send clipboard image to model",      []),
     "img":         ("Send clipboard image (alias)",       []),
     "brainstorm":  ("Multi-persona AI debate + auto tasks", []),
+    "summarize":   ("Multi-agent map-reduce summary of any-size file (PDF / txt / code)", []),
     "draft":       ("Draft 3 reply candidates for a message (manual copy)", []),
     "worker":      ("Auto-implement pending tasks",       []),
     "agent":       ("Autonomous agent loop (task templates)", ["start", "stop", "list", "status", "templates"]),
@@ -1318,7 +1320,7 @@ def repl(config: dict, initial_prompt: str = None):
             try:
                 from compaction import estimate_tokens, get_context_limit
                 used = estimate_tokens(state.messages)
-                limit = get_context_limit(config.get("model", ""))
+                limit = get_context_limit(config.get("model", ""), config)
                 pct = int(used / limit * 100) if limit else 0
                 if pct >= 70:
                     ctx_hint = clr(f" {pct}%", "red")
