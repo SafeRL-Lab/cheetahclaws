@@ -1133,11 +1133,17 @@ def get_available_models() -> list[dict]:
 
 
 def reap_stale_chat_sessions():
-    """Called periodically by server.py's reaper thread."""
-    stale: list[str] = []
+    """Called periodically by server.py's reaper thread.
+
+    `remove_chat_session` requires the owning user_id for ownership-check
+    parity with the per-user DELETE endpoint, so we capture it from the
+    cached ChatSession object — collecting `(sid, user_id)` pairs under the
+    lock and applying outside it (remove_chat_session re-acquires).
+    """
+    stale: list[tuple[str, int]] = []
     with _chat_lock:
         for sid, session in _chat_sessions.items():
             if session.is_stale() and session.is_idle():
-                stale.append(sid)
-    for sid in stale:
-        remove_chat_session(sid)
+                stale.append((sid, session.user_id))
+    for sid, user_id in stale:
+        remove_chat_session(sid, user_id)

@@ -445,6 +445,30 @@ def test_session_list_includes_folder_id(server_url):
         assert s["folder_id"] is None
 
 
+def test_reap_stale_chat_sessions_passes_user_id(server_url):
+    """Regression for the daemon-thread crash where the reaper called
+    remove_chat_session(sid) without user_id and the call raised
+    TypeError on every cycle. Pre-fix this caused stale sessions to
+    accumulate forever (the reaper thread died on first invocation)."""
+    with _client(server_url) as c:
+        _register(c, "alice")
+        sid = c.post("/api/prompt",
+                     json={"prompt": "", "session_id": ""}).json()["session_id"]
+        # Force this session into the "stale + idle" state by rewinding
+        # its last_active far enough that is_stale() returns True.
+        from web import api as _apimod
+        sess = _apimod._chat_sessions.get(sid)
+        assert sess is not None, "session should be in the in-memory cache"
+        import time as _time
+        sess.last_active = _time.monotonic() - 1e9  # very old
+        # Reaper must run cleanly — pre-fix this raised
+        # TypeError: remove_chat_session() missing 1 required positional
+        # argument: 'user_id'
+        _apimod.reap_stale_chat_sessions()
+        # And it must actually evict the session
+        assert sid not in _apimod._chat_sessions
+
+
 def test_cross_user_isolation(server_url):
     with _client(server_url) as ca:
         _register(ca, "alice")
