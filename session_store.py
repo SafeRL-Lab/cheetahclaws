@@ -18,6 +18,10 @@ from typing import Optional
 
 _DB_PATH: Optional[Path] = None
 _local = threading.local()
+# Serializes save_session across threads within a single process so two
+# concurrent writers for the same session_id don't both win the
+# INSERT OR REPLACE race and silently drop one set of changes.
+_save_lock = threading.Lock()
 
 
 def _get_db_path() -> Path:
@@ -70,35 +74,44 @@ def save_session(session_id: str, messages: list, *,
                  input_tokens: int = 0,
                  output_tokens: int = 0) -> None:
     """Save or update a session in the database."""
-    conn = _get_conn()
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    messages_json = json.dumps(messages, default=str)
+    with _save_lock:
+        conn = _get_conn()
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        messages_json = json.dumps(messages, default=str)
 
-    conn.execute("""
-        INSERT OR REPLACE INTO sessions
-            (id, title, model, saved_at, turn_count, input_tokens, output_tokens, messages)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (session_id, title, model, now, turn_count, input_tokens, output_tokens, messages_json))
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("""
+                INSERT OR REPLACE INTO sessions
+                    (id, title, model, saved_at, turn_count, input_tokens, output_tokens, messages)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (session_id, title, model, now, turn_count, input_tokens, output_tokens, messages_json))
 
-    # Build searchable content from messages
-    text_parts = []
-    for m in messages:
-        content = m.get("content", "")
-        if isinstance(content, str):
-            text_parts.append(content)
-        elif isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    text_parts.append(block.get("text", ""))
-    searchable = " ".join(text_parts)[:50000]  # cap at 50k chars
+            # Build searchable content from messages
+            text_parts = []
+            for m in messages:
+                content = m.get("content", "")
+                if isinstance(content, str):
+                    text_parts.append(content)
+                elif isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text_parts.append(block.get("text", ""))
+            searchable = " ".join(text_parts)[:50000]  # cap at 50k chars
 
-    # Update FTS index
-    conn.execute("DELETE FROM sessions_fts WHERE id = ?", (session_id,))
-    conn.execute(
-        "INSERT INTO sessions_fts (id, title, content) VALUES (?, ?, ?)",
-        (session_id, title, searchable),
-    )
-    conn.commit()
+            # Update FTS index
+            conn.execute("DELETE FROM sessions_fts WHERE id = ?", (session_id,))
+            conn.execute(
+                "INSERT INTO sessions_fts (id, title, content) VALUES (?, ?, ?)",
+                (session_id, title, searchable),
+            )
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
 
 
 def load_session(session_id: str) -> Optional[dict]:
@@ -153,16 +166,23 @@ def search_sessions(query: str, limit: int = 20) -> list[dict]:
             LIMIT ?
         """, (fts_query, limit)).fetchall()
     except sqlite3.OperationalError:
-        # Fallback: simple LIKE search if FTS query fails
+        # Fallback: simple LIKE search if FTS query fails. Escape the SQL
+        # LIKE wildcards (%, _) and our chosen escape char (\) so a user
+        # query like "100%" doesn't degenerate to "match everything".
+        like_q = (
+            query.replace("\\", "\\\\")
+                 .replace("%", "\\%")
+                 .replace("_", "\\_")
+        )
         rows = conn.execute("""
             SELECT f.id, f.title, '' as snippet,
                    s.saved_at, s.turn_count, s.model
             FROM sessions_fts f
             JOIN sessions s ON s.id = f.id
-            WHERE f.content LIKE ?
+            WHERE f.content LIKE ? ESCAPE '\\'
             ORDER BY s.saved_at DESC
             LIMIT ?
-        """, (f"%{query}%", limit)).fetchall()
+        """, (f"%{like_q}%", limit)).fetchall()
 
     return [dict(r) for r in rows]
 

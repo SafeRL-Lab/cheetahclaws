@@ -24,6 +24,7 @@ start with the [top-level README](../README.md).
 
 - **Just want to use it?** Start with the [top-level README](../README.md), then [`guides/reference.md`](guides/reference.md) for the full slash-command and config reference.
 - **Setting up the Web UI?** [`guides/web-ui.md`](guides/web-ui.md).
+- **Deploying it past your laptop?** [`guides/security.md`](guides/security.md) — every `CHEETAHCLAWS_*` env var, bot-token handling, Bash denylist, plugin / MCP / file-system hardening, CSRF, terminal session owner-binding.
 - **Building a plugin / tool?** [`guides/plugin-authoring.md`](guides/plugin-authoring.md).
 - **Hacking on the core?** [`architecture.md`](architecture.md) + [`contributor_guide.md`](contributor_guide.md).
 - **Curious about the agent-OS direction?** [`agent-os.md`](agent-os.md) + the `RFC/` series (start with `0002-daemon-foundation-roadmap.md`).

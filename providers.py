@@ -700,6 +700,9 @@ _GEMMA_INLINE_NAME_RE = _re_native.compile(
 )
 
 
+_RECOVER_SCAN_MAX_CHARS = 32_000
+
+
 def _recover_args_from_text(text: str, tool_name: str) -> dict | None:
     """Last-ditch recovery: when vLLM emits a tool_call with name but
     empty arguments, scan the surrounding streamed text for the
@@ -707,9 +710,15 @@ def _recover_args_from_text(text: str, tool_name: str) -> dict | None:
     and return parsed args. Returns None if nothing recoverable.
 
     Used only when the primary parse path produced empty `input`.
+    The scan window is capped to the last `_RECOVER_SCAN_MAX_CHARS` of text;
+    tool-call markers always appear near the end of the buffer and scanning
+    a 200KB conversation is a per-call O(n) hot spot.
     """
     if not text or not tool_name:
         return None
+
+    if len(text) > _RECOVER_SCAN_MAX_CHARS:
+        text = text[-_RECOVER_SCAN_MAX_CHARS:]
 
     for tok, repl in _GEMMA_QUOTE_TOKEN_FIXES:
         text = text.replace(tok, repl)

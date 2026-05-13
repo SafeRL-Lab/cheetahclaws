@@ -141,6 +141,11 @@ def save_config(cfg: dict):
     CONFIG_DIR.mkdir(exist_ok=True)
     # Strip internal runtime keys (e.g. _run_query_callback) before saving
     data = {k: v for k, v in cfg.items() if not k.startswith("_")}
+    # `accept-all` is a one-time-confirmation escape hatch — it should NEVER
+    # outlive the session that set it. Persisting it means a user who once
+    # clicked "Accept all" silently keeps that mode on every future launch.
+    if data.get("permission_mode") == "accept-all":
+        data.pop("permission_mode", None)
     CONFIG_FILE.write_text(json.dumps(data, indent=2))
 
 

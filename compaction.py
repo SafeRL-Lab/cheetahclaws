@@ -274,13 +274,27 @@ def compact_messages(messages: list, config: dict, focus: str = "") -> list:
         summary_prompt += f"\n\nFocus especially on: {focus}"
     summary_prompt += "\n\n" + old_text
 
-    # Call auxiliary (fast/cheap) model for summary instead of the primary model
-    from auxiliary import stream_auxiliary
-    summary_text = stream_auxiliary(
-        system="You are a concise summarizer.",
-        messages=[{"role": "user", "content": summary_prompt}],
-        config=config,
-    )
+    # Call auxiliary (fast/cheap) model for summary instead of the primary model.
+    # If it fails (model unreachable, quota, etc.) fall back to returning the
+    # original messages — the next layer (snip, dynamic cap) can still try.
+    try:
+        from auxiliary import stream_auxiliary
+        summary_text = stream_auxiliary(
+            system="You are a concise summarizer.",
+            messages=[{"role": "user", "content": summary_prompt}],
+            config=config,
+        )
+    except Exception as e:
+        try:
+            import logging_utils as _log
+            _log.warn("compaction_summary_failed",
+                      error_type=type(e).__name__, error=str(e)[:200])
+        except Exception:
+            pass
+        return messages
+
+    if not summary_text or not summary_text.strip():
+        return messages
 
     summary_msg = {
         "role": "user",

@@ -79,7 +79,8 @@ _MIME = {
 
 
 def _generate_password() -> str:
-    return secrets.token_urlsafe(6)[:6]
+    # 32 url-safe chars ≈ 190 bits of entropy — resistant to online brute force.
+    return secrets.token_urlsafe(32)
 
 
 class _BufferedSocket:
@@ -121,7 +122,7 @@ _SESSION_TIMEOUT = 30  # seconds before an unattached SSE session is reaped
 class _PtySession:
     """A PTY session shared between SSE stream and POST input."""
 
-    def __init__(self):
+    def __init__(self, owner_uid: Optional[int] = None):
         if not pty:
             raise RuntimeError("PTY is not supported on this platform")
         self.master_fd, slave_fd = pty.openpty()
@@ -139,6 +140,24 @@ class _PtySession:
         self.closed = False
         self.created_at = time.monotonic()
         self.attached = False  # True once an SSE stream connects
+        # owner_uid is None in password-only mode (all callers share the same
+        # secret); when a JWT cookie is present the creator's uid is stored
+        # here so subsequent /api/{stream,input,resize} calls can refuse a
+        # different authenticated user who guesses the sid.
+        self.owner_uid = owner_uid
+
+
+def _check_pty_owner(session: "_PtySession", cookie_str: str) -> bool:
+    """Return True if the JWT-authenticated caller owns this session.
+
+    Sessions created without a JWT cookie (password-only mode) have
+    owner_uid=None and accept any authenticated caller. Sessions tagged
+    with an owner_uid require the caller to present a JWT whose `sub`
+    matches.
+    """
+    if session.owner_uid is None:
+        return True
+    return _jwt_user_id(cookie_str) == session.owner_uid
 
     def write(self, data: bytes) -> None:
         if not self.closed:
@@ -244,6 +263,7 @@ def _build_html(no_auth: bool = False) -> str:
   </span>
 </div>
 <div id="terminal"></div>
+<script src="/static/js/csrf.js"></script>
 <script src="/xterm.min.js"></script>
 <script src="/addon-fit.min.js"></script>
 <script src="/addon-web-links.min.js"></script>
@@ -471,14 +491,20 @@ def _send_http(sock: socket.socket, status: str, content_type: str,
             f"Access-Control-Allow-Origin: {origin}\r\n"
             f"Access-Control-Allow-Credentials: true\r\n"
             f"Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS\r\n"
-            f"Access-Control-Allow-Headers: Content-Type\r\n"
+            f"Access-Control-Allow-Headers: Content-Type, X-CSRF-Token\r\n"
             f"Vary: Origin\r\n"
         )
+    # CSRF cookie set by the dispatch entry on a fresh connection — append
+    # once so the very first GET response carries it.
+    csrf_cookie = getattr(_req_ctx, "set_csrf", "") or ""
+    if csrf_cookie:
+        _req_ctx.set_csrf = ""  # only once per request
     header = (
         f"HTTP/1.1 {status}\r\n"
         f"Content-Type: {content_type}\r\n"
         f"Content-Length: {len(body)}\r\n"
         f"{cors}"
+        f"{csrf_cookie}"
         f"Connection: close\r\n"
         f"{extra_headers}"
         f"\r\n"
@@ -495,6 +521,65 @@ def _send_json(sock: socket.socket, obj: dict,
     body = json.dumps(obj).encode()
     _send_http(sock, "200 OK", "application/json", body,
                request_origin=request_origin)
+
+
+_CSRF_COOKIE_NAME = "ccsrf"
+
+
+def _csrf_from_cookie(cookie_str: str) -> str:
+    """Pull the CSRF token out of a Cookie header, or "" if absent."""
+    if not cookie_str:
+        return ""
+    for part in cookie_str.split(";"):
+        part = part.strip()
+        if part.startswith(f"{_CSRF_COOKIE_NAME}="):
+            from urllib.parse import unquote
+            return unquote(part[len(_CSRF_COOKIE_NAME) + 1:])
+    return ""
+
+
+def _check_csrf(headers: dict, cookie_str: str) -> bool:
+    """Double-submit cookie CSRF check.
+
+    Passes if X-CSRF-Token header matches the ccsrf cookie. SameSite=Strict
+    on the JWT cookie is the first-line defence; this is the second line.
+    """
+    cookie_tok = _csrf_from_cookie(cookie_str)
+    if not cookie_tok:
+        return False
+    header_tok = headers.get("X-CSRF-Token") or headers.get("x-csrf-token") or ""
+    if not header_tok:
+        return False
+    return hmac.compare_digest(cookie_tok, header_tok)
+
+
+def _build_csrf_set_cookie() -> str:
+    """Return a Set-Cookie header line for a fresh CSRF token.
+
+    Non-HttpOnly so the JS client can read it and echo it back in the
+    X-CSRF-Token header. SameSite=Strict so it never crosses origins.
+    """
+    token = secrets.token_urlsafe(24)
+    return (
+        f"Set-Cookie: {_CSRF_COOKIE_NAME}={token}; Path=/; SameSite=Strict; "
+        f"Max-Age=86400\r\n"
+    )
+
+
+_CSRF_EXEMPT_PATHS = frozenset({
+    # Login/register run BEFORE the user has a CSRF cookie; they establish
+    # the session that will later carry one.
+    "/api/auth/bootstrap",
+    "/api/auth/register",
+    "/api/auth/login",
+    "/api/auth/logout",
+    # Legacy terminal password auth (POST /api/auth) — pre-JWT path.
+    "/api/auth",
+})
+
+
+def _csrf_exempt(path: str) -> bool:
+    return path in _CSRF_EXEMPT_PATHS
 
 
 def _check_auth(query: str = "", body_token: str = "",
@@ -922,6 +1007,7 @@ def _handle_connection(sock: socket.socket, addr: tuple) -> None:
     _req_ctx.user_id = None
     _req_ctx.peer = f"{addr[0]}:{addr[1]}" if addr else None
     _req_ctx.logged = False
+    _req_ctx.set_csrf = ""
     try:
         sock.settimeout(30)
         raw = _recv_until(sock, b"\r\n\r\n")
@@ -959,6 +1045,36 @@ def _handle_connection(sock: socket.socket, addr: tuple) -> None:
 
         origin = headers.get("origin", "")
         cookie = headers.get("cookie", "")
+
+        # CSRF: caller has no token yet → mint one and attach to every
+        # response on this connection so the first GET / POST/PUT/PATCH /
+        # DELETE cycle establishes the cookie. Subsequent state-changing
+        # requests must echo the cookie in an X-CSRF-Token header.
+        if not _csrf_from_cookie(cookie):
+            _req_ctx.set_csrf = _build_csrf_set_cookie()
+
+        # CSRF gate: state-changing methods must present matching
+        # cookie+header. SameSite=Strict on the JWT cookie is the first
+        # line of defence; this is the second. Exempts auth bootstrap
+        # endpoints because the user has no cookie yet at that point.
+        if (method in ("POST", "PUT", "PATCH", "DELETE")
+                and not _csrf_exempt(path)
+                and not _check_csrf(headers, cookie)):
+            cors_origin = _cors_origin(origin)
+            cors_hdrs = ""
+            if cors_origin:
+                cors_hdrs = (
+                    f"Access-Control-Allow-Origin: {cors_origin}\r\n"
+                    f"Access-Control-Allow-Credentials: true\r\n"
+                    f"Vary: Origin\r\n"
+                )
+            _send_http(
+                sock, "403 Forbidden", "application/json",
+                b'{"error":"csrf token mismatch"}',
+                extra_headers=cors_hdrs, request_origin=origin,
+            )
+            sock.close()
+            return
 
         # Parse JSON body for POST requests
         body_str = ""
@@ -1245,7 +1361,10 @@ def _handle_connection(sock: socket.socket, addr: tuple) -> None:
                 return
 
             sid = secrets.token_urlsafe(16)
-            session = _PtySession()
+            # Tag with JWT uid if one is present so /api/{stream,input,resize}
+            # can reject other users who guess the sid.
+            owner_uid = _jwt_user_id(cookie)
+            session = _PtySession(owner_uid=owner_uid)
             cols = body_json.get("cols", 120)
             rows = body_json.get("rows", 30)
             session.resize(rows, cols)
@@ -1264,6 +1383,13 @@ def _handle_connection(sock: socket.socket, addr: tuple) -> None:
             if not _check_auth(query, cookie_str=cookie):
                 _send_http(sock, "401 Unauthorized", "text/plain",
                            b"Unauthorized", request_origin=origin)
+                sock.close()
+                return
+            with _sessions_lock:
+                stream_sess = _sessions.get(sid)
+            if stream_sess is not None and not _check_pty_owner(stream_sess, cookie):
+                _send_http(sock, "403 Forbidden", "text/plain",
+                           b"not session owner", request_origin=origin)
                 sock.close()
                 return
 
@@ -1286,6 +1412,11 @@ def _handle_connection(sock: socket.socket, addr: tuple) -> None:
                 return
             with _sessions_lock:
                 session = _sessions.get(sid)
+            if session and not _check_pty_owner(session, cookie):
+                _send_http(sock, "403 Forbidden", "text/plain",
+                           b"not session owner", request_origin=origin)
+                sock.close()
+                return
             if session:
                 session.write(body_json.get("data", "").encode())
                 _send_json(sock, {"ok": True}, request_origin=origin)
@@ -1306,6 +1437,11 @@ def _handle_connection(sock: socket.socket, addr: tuple) -> None:
                 return
             with _sessions_lock:
                 session = _sessions.get(sid)
+            if session and not _check_pty_owner(session, cookie):
+                _send_http(sock, "403 Forbidden", "text/plain",
+                           b"not session owner", request_origin=origin)
+                sock.close()
+                return
             if session:
                 session.resize(body_json.get("rows", 30),
                                body_json.get("cols", 120))

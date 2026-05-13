@@ -9,6 +9,7 @@ Provides:
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time as _time_mod
 
@@ -919,12 +920,17 @@ def _tg_supervisor(token: str, chat_id: int, config: dict) -> None:
 def cmd_telegram(args: str, _state, config) -> bool:
     """Telegram bot bridge — receive and respond to messages via Telegram.
 
-    Usage: /telegram <bot_token> <chat_id>   — start the bridge
-           /telegram stop                    — stop the bridge
-           /telegram status                  — show current status
+    Token precedence: $TELEGRAM_BOT_TOKEN (recommended) > REPL arg (deprecated) > config.json.
+
+    Usage: /telegram <chat_id>                     — start (token from env or config)
+           /telegram <bot_token> <chat_id>         — start (DEPRECATED — token leaks
+                                                     into readline history)
+           /telegram stop                          — stop the bridge
+           /telegram status                        — show current status
     """
     global _telegram_thread, _telegram_stop
     from cc_config import save_config
+    from bridges import resolve_bridge_token, scrub_token_from_history
 
     parts = args.strip().split()
 
@@ -944,29 +950,54 @@ def cmd_telegram(args: str, _state, config) -> bool:
         chat_id = config.get("telegram_chat_id", 0)
         if running:
             ok(f"Telegram bridge is running. Chat ID: {chat_id}")
-        elif token:
-            info("Configured but not running. Use /telegram to start.")
+        elif token or os.environ.get("TELEGRAM_BOT_TOKEN"):
+            info("Configured but not running. Use /telegram <chat_id> to start.")
         else:
-            info("Not configured. Use /telegram <bot_token> <chat_id>")
+            info("Not configured. Set $TELEGRAM_BOT_TOKEN, then /telegram <chat_id>.")
         return True
 
-    if len(parts) >= 2:
-        token = parts[0]
+    # Parse arguments. Two supported shapes:
+    #   /telegram <chat_id>             — token from env/config
+    #   /telegram <token> <chat_id>     — DEPRECATED
+    repl_token = ""
+    chat_id_arg = ""
+    if len(parts) == 1:
+        chat_id_arg = parts[0]
+    elif len(parts) >= 2:
+        repl_token = parts[0]
+        chat_id_arg = parts[1]
+
+    token, source = resolve_bridge_token(
+        "TELEGRAM_BOT_TOKEN", "telegram_token", repl_token, config
+    )
+    if source == "repl":
+        warn(
+            "Passing the bot token as a REPL argument is deprecated — it "
+            "lands in readline history. Set $TELEGRAM_BOT_TOKEN and run "
+            "`/telegram <chat_id>` instead."
+        )
+        scrub_token_from_history(token)
+
+    if chat_id_arg:
         try:
-            chat_id = int(parts[1])
+            chat_id = int(chat_id_arg)
         except ValueError:
             err("Chat ID must be a number.")
             return True
-        config["telegram_token"] = token
-        config["telegram_chat_id"] = chat_id
-        save_config(config)
-        ok("Telegram config saved.")
     else:
-        token = config.get("telegram_token", "")
         chat_id = config.get("telegram_chat_id", 0)
 
+    # Persist chat_id always; persist token ONLY if it came from the REPL
+    # (env-supplied tokens shouldn't be copied to disk without consent).
+    if chat_id:
+        config["telegram_chat_id"] = chat_id
+    if source == "repl" and token:
+        config["telegram_token"] = token
+    save_config(config)
+
     if not token or not chat_id:
-        err("No config found. Usage: /telegram <bot_token> <chat_id>")
+        err("No token+chat_id available. Set $TELEGRAM_BOT_TOKEN and "
+            "run `/telegram <chat_id>`.")
         return True
 
     if _telegram_thread and _telegram_thread.is_alive():

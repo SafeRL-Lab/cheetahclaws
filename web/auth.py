@@ -45,22 +45,57 @@ _SECRET_PATH = Path.home() / ".cheetahclaws" / "web_secret"
 
 
 def _load_or_create_secret() -> str:
-    """Return a stable 32-byte URL-safe secret, creating it on first use."""
+    """Return a stable 32-byte URL-safe secret, creating it on first use.
+
+    The on-disk fallback must be readable only by the owner. If we can't
+    enforce 0o600 we refuse to persist it — falling back to a per-run
+    in-memory secret rather than writing a world-readable token file.
+    """
     env = os.environ.get("CHEETAHCLAWS_WEB_SECRET")
     if env:
         return env
     try:
         if _SECRET_PATH.exists():
+            st = _SECRET_PATH.stat()
+            mode = st.st_mode & 0o777
+            if mode & 0o077:
+                raise RuntimeError(
+                    f"web_secret at {_SECRET_PATH} has insecure permissions "
+                    f"{oct(mode)}. Run: chmod 600 '{_SECRET_PATH}' "
+                    f"or set CHEETAHCLAWS_WEB_SECRET in the environment."
+                )
             return _SECRET_PATH.read_text().strip()
+    except RuntimeError:
+        raise
     except OSError:
         pass
-    _SECRET_PATH.parent.mkdir(parents=True, exist_ok=True)
+
     secret = secrets.token_urlsafe(32)
-    _SECRET_PATH.write_text(secret)
     try:
-        os.chmod(_SECRET_PATH, 0o600)
+        _SECRET_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     except OSError:
-        pass
+        # Couldn't create the dir; keep the secret in memory only.
+        return secret
+    # Create with 0o600 from the start via O_CREAT|O_EXCL to avoid the brief
+    # window where the file could exist with default umask permissions.
+    try:
+        fd = os.open(str(_SECRET_PATH), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, secret.encode("utf-8"))
+        finally:
+            os.close(fd)
+        # Best-effort tighten in case umask widened mode on some platforms.
+        os.chmod(_SECRET_PATH, 0o600)
+        st = _SECRET_PATH.stat()
+        if st.st_mode & 0o077:
+            # Couldn't enforce — remove the file rather than leave a leaked secret.
+            try:
+                _SECRET_PATH.unlink()
+            except OSError:
+                pass
+            return secret
+    except OSError:
+        return secret
     return secret
 
 

@@ -40,9 +40,16 @@ _cache: Dict[str, str] = {}   # hash → result
 _cache_order: list[str] = []  # LRU eviction order
 
 
-def _cache_key(name: str, params: Dict[str, Any]) -> str:
-    """Create a stable hash from tool name + params."""
-    raw = json.dumps({"n": name, "p": params}, sort_keys=True, default=str)
+def _cache_key(name: str, params: Dict[str, Any], session_id: str = "") -> str:
+    """Create a stable hash from tool name + params + session.
+
+    Including the session_id keeps cached results scoped to the originator —
+    in a shared daemon, A's Read of ~/.env never gets handed to B's session.
+    """
+    raw = json.dumps(
+        {"n": name, "p": params, "s": session_id},
+        sort_keys=True, default=str,
+    )
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
@@ -95,10 +102,11 @@ def execute_tool(
     if tool is None:
         return f"Error: tool '{name}' not found."
 
-    # Cache hit for read-only tools (same name + same params = same result)
+    # Cache hit for read-only tools (same name + same params + same session).
     use_cache = tool.read_only
     if use_cache:
-        key = _cache_key(name, params)
+        sid = (config or {}).get("_session_id", "") or ""
+        key = _cache_key(name, params, sid)
         if key in _cache:
             return _cache[key]
     else:

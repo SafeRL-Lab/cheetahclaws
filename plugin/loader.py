@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -9,9 +10,31 @@ from .store import list_plugins
 from .types import PluginEntry, PluginScope
 
 
+def _plugins_disabled() -> bool:
+    return os.environ.get("CHEETAHCLAWS_DISABLE_PLUGINS", "0") == "1"
+
+
+def _plugin_allowlist() -> set[str] | None:
+    raw = os.environ.get("CHEETAHCLAWS_PLUGIN_ALLOWLIST", "").strip()
+    if not raw:
+        return None
+    return {name.strip() for name in raw.split(",") if name.strip()}
+
+
 def load_all_plugins(scope: PluginScope | None = None) -> list[PluginEntry]:
-    """Return enabled plugins (optionally filtered by scope)."""
-    return [p for p in list_plugins(scope) if p.enabled]
+    """Return enabled plugins (optionally filtered by scope).
+
+    Gated by two env vars (defense in depth — plugins run arbitrary Python):
+      * CHEETAHCLAWS_DISABLE_PLUGINS=1 — load nothing.
+      * CHEETAHCLAWS_PLUGIN_ALLOWLIST=a,b,c — load only the named plugins.
+    """
+    if _plugins_disabled():
+        return []
+    plugins = [p for p in list_plugins(scope) if p.enabled]
+    allow = _plugin_allowlist()
+    if allow is not None:
+        plugins = [p for p in plugins if p.name in allow]
+    return plugins
 
 
 def load_plugin_tools(scope: PluginScope | None = None) -> list[dict]:
@@ -107,10 +130,39 @@ def load_plugin_mcp_configs(scope: PluginScope | None = None) -> dict:
     return configs
 
 
+_warned_once: set[str] = set()
+
+
+def _warn_external_once(entry: PluginEntry) -> None:
+    """One-line stderr notice the first time an EXTERNAL-scope plugin is loaded.
+
+    EXTERNAL plugins come from $CHEETAHCLAWS_PLUGIN_PATH and may live anywhere;
+    surface this in the log so a stolen env var doesn't load code silently.
+    """
+    if entry.scope is not PluginScope.EXTERNAL:
+        return
+    key = f"{entry.name}@{entry.install_dir}"
+    if key in _warned_once:
+        return
+    _warned_once.add(key)
+    print(
+        f"[plugin] Loading EXTERNAL plugin '{entry.name}' from "
+        f"{entry.install_dir} — this executes arbitrary Python with your "
+        f"privileges. Set CHEETAHCLAWS_DISABLE_PLUGINS=1 or "
+        f"CHEETAHCLAWS_PLUGIN_ALLOWLIST=<names> to restrict.",
+        file=sys.stderr, flush=True,
+    )
+
+
 def _import_plugin_module(entry: PluginEntry, module_name: str):
     """Dynamically import a module from a plugin directory."""
-    # Ensure plugin dir is on sys.path
-    plugin_dir_str = str(entry.install_dir)
+    _warn_external_once(entry)
+
+    # Resolve and confine the module path inside the plugin's install_dir so
+    # a malicious manifest cannot reach for `../../etc/passwd_loader.py` or
+    # similar.
+    install_dir = entry.install_dir.resolve()
+    plugin_dir_str = str(install_dir)
     if plugin_dir_str not in sys.path:
         sys.path.insert(0, plugin_dir_str)
 
@@ -121,12 +173,17 @@ def _import_plugin_module(entry: PluginEntry, module_name: str):
 
     # Try as a file
     candidates = [
-        entry.install_dir / f"{module_name}.py",
-        entry.install_dir / module_name / "__init__.py",
+        install_dir / f"{module_name}.py",
+        install_dir / module_name / "__init__.py",
     ]
     for candidate in candidates:
-        if candidate.exists():
-            spec = importlib.util.spec_from_file_location(unique_name, candidate)
+        try:
+            resolved = candidate.resolve()
+            resolved.relative_to(install_dir)
+        except (ValueError, OSError):
+            continue
+        if resolved.exists():
+            spec = importlib.util.spec_from_file_location(unique_name, resolved)
             if spec and spec.loader:
                 mod = importlib.util.module_from_spec(spec)
                 sys.modules[unique_name] = mod

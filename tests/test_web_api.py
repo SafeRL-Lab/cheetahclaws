@@ -91,8 +91,25 @@ def fresh_db():
     yield
 
 
+def _csrf_request_hook(request):
+    """Echo the ccsrf cookie back as X-CSRF-Token on state-changing requests.
+
+    Mirrors what the browser does via the patched window.fetch in
+    web/static/js/csrf.js.
+    """
+    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return
+    cookie_hdr = request.headers.get("cookie", "")
+    for part in cookie_hdr.split(";"):
+        part = part.strip()
+        if part.startswith("ccsrf="):
+            request.headers["X-CSRF-Token"] = part[len("ccsrf="):]
+            return
+
+
 def _client(base: str) -> httpx.Client:
-    return httpx.Client(base_url=base, timeout=5.0, follow_redirects=False)
+    return httpx.Client(base_url=base, timeout=5.0, follow_redirects=False,
+                        event_hooks={"request": [_csrf_request_hook]})
 
 
 def _register(c: httpx.Client, username: str, password: str = "secret123"):

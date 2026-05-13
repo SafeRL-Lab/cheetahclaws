@@ -2,9 +2,39 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
+
+
+# Patterns that are *never* allowed, even under permission_mode=accept-all.
+# These are obvious host-destroying / filesystem-corrupting invocations that
+# no legitimate agent task should ever issue. The list is intentionally
+# narrow to avoid false positives.
+_BASH_HARD_DENY = (
+    re.compile(r"\brm\s+(?:-[a-zA-Z]*[rRf][a-zA-Z]*\s+|--recursive\s+|--force\s+)+/\s*(?:$|\s)"),
+    re.compile(r"\brm\s+-[a-zA-Z]*[rRf][a-zA-Z]*\s+/\*"),
+    re.compile(r"\bmkfs(?:\.\w+)?\s"),
+    re.compile(r"\bdd\b[^\n]*\bof=/dev/(?:sd|hd|nvme|vd|mmcblk|xvd)"),
+    re.compile(r">\s*/dev/(?:sd|hd|nvme|vd|mmcblk|xvd)"),
+    re.compile(r"\bchmod\s+-R\s+[0-7]{3,4}\s+/\s*(?:$|\s)"),
+    re.compile(r"\bchown\s+-R\s+\S+\s+/\s*(?:$|\s)"),
+    re.compile(r":\(\)\s*\{\s*:\s*\|\s*:&\s*\}\s*;\s*:"),  # classic fork bomb
+)
+
+
+def _bash_hard_denied(cmd: str) -> str | None:
+    """Return a denial reason if cmd matches a hard denylist, else None."""
+    for pat in _BASH_HARD_DENY:
+        if pat.search(cmd):
+            return (
+                f"Error: command refused by Bash hard-denylist "
+                f"(matched pattern: {pat.pattern!r}). This is a host-"
+                f"destroying invocation and cannot be bypassed by "
+                f"permission_mode."
+            )
+    return None
 
 
 # ── Process tree kill ─────────────────────────────────────────────────────
@@ -27,10 +57,26 @@ def _kill_proc_tree(pid: int) -> None:
 
 # ── Bash ──────────────────────────────────────────────────────────────────
 
+_BASH_MAX_CMD_LEN = 65536
+
+
 def _bash(command: str, timeout: int = 30, cwd: str = None,
           shell_policy: str = "allow", session_id: str = "default") -> str:
     if shell_policy == "deny":
         return "Error: Bash execution is disabled (shell_policy=deny)."
+    if not isinstance(command, str):
+        return "Error: Bash command must be a string."
+    if "\x00" in command:
+        return "Error: Bash command contains a NUL byte."
+    if len(command) > _BASH_MAX_CMD_LEN:
+        return f"Error: Bash command exceeds {_BASH_MAX_CMD_LEN} chars."
+    denied = _bash_hard_denied(command)
+    if denied:
+        print(
+            f"[bash][session={session_id}] BLOCKED {command[:300]}",
+            file=sys.stderr, flush=True,
+        )
+        return denied
     if shell_policy == "log":
         print(
             f"[bash][session={session_id}] {command[:300]}",

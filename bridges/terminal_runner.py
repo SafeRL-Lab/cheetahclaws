@@ -11,6 +11,7 @@ The running process is tracked per session so "!stop" can kill it.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import threading
 import time
@@ -26,6 +27,12 @@ _MAX_CHUNK_CHARS  = 3500   # max chars per message chunk (Telegram/Slack safe)
 _CHUNK_INTERVAL   = 2.0    # seconds between streamed chunks
 _MAX_TOTAL_OUTPUT = 40_000  # stop collecting after this many chars total
 _MAX_RUNTIME      = 300     # hard timeout seconds (5 min)
+_MAX_CMD_LEN      = 4096
+
+
+def _bridge_terminal_disabled() -> bool:
+    """Operators can hard-disable remote shell with CHEETAHCLAWS_BRIDGE_TERMINAL=0."""
+    return os.environ.get("CHEETAHCLAWS_BRIDGE_TERMINAL", "1") == "0"
 
 
 def run_terminal(
@@ -38,9 +45,27 @@ def run_terminal(
     """
     Execute `cmd` in a shell, streaming stdout+stderr back via send_fn.
 
-    send_fn is called with chunks of text as they accumulate.
-    Blocks until the command finishes, is killed, or times out.
+    Enabled by default; bridges already enforce owner-only (chat_id whitelist).
+    Set CHEETAHCLAWS_BRIDGE_TERMINAL=0 to hard-disable for sensitive deployments.
+    NUL byte / length / hard-denylist guards still apply.
     """
+    if _bridge_terminal_disabled():
+        send_fn("⚠ Remote terminal is disabled (CHEETAHCLAWS_BRIDGE_TERMINAL=0).")
+        _log.warn("terminal_blocked_disabled", session=session_key, cmd=cmd[:100])
+        return
+    if not isinstance(cmd, str) or "\x00" in cmd or len(cmd) > _MAX_CMD_LEN:
+        send_fn("⚠ Refused: command empty, too long, or contains NUL.")
+        return
+    try:
+        from tools.shell import _bash_hard_denied
+        denied = _bash_hard_denied(cmd)
+    except Exception:
+        denied = None
+    if denied:
+        send_fn(f"⚠ {denied}")
+        _log.warn("terminal_blocked_hard_deny", session=session_key, cmd=cmd[:100])
+        return
+
     _log.info("terminal_run", session=session_key, cmd=cmd[:200])
 
     try:

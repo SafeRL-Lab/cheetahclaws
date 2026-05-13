@@ -580,10 +580,13 @@ def _slack_supervisor(token: str, channel: str, config: dict) -> None:
     _slack_thread = None
 
 
-def _slack_start_bridge(config) -> None:
+def _slack_start_bridge(config, *, token: str = "", channel: str = "") -> None:
+    """Start the Slack supervisor. Caller may pass token/channel explicitly
+    (preferred — keeps env-sourced tokens off `config`); otherwise we fall
+    back to the values stored on `config`."""
     global _slack_thread, _slack_stop
-    token   = config.get("slack_token", "")
-    channel = config.get("slack_channel", "")
+    token   = token   or config.get("slack_token", "")
+    channel = channel or config.get("slack_channel", "")
     _slack_stop = threading.Event()
     _slack_thread = threading.Thread(
         target=_slack_supervisor, args=(token, channel, config), daemon=True,
@@ -600,15 +603,20 @@ def _slack_start_bridge(config) -> None:
 def cmd_slack(args: str, _state, config) -> bool:
     """Slack bot bridge — receive and respond to messages via Slack Web API.
 
+    Token precedence: $SLACK_BOT_TOKEN (recommended) > REPL arg (deprecated) > config.json.
+
     Usage:
-      /slack <token> <channel_id>  — configure and start bridge
-      /slack                       — start with saved credentials
-      /slack stop                  — stop the bridge
-      /slack status                — show current status
-      /slack logout                — clear saved credentials
+      /slack <channel_id>             — start (token from env or config)
+      /slack <token> <channel_id>     — start (DEPRECATED — token leaks into history)
+      /slack                          — start with saved credentials
+      /slack stop                     — stop the bridge
+      /slack status                   — show current status
+      /slack logout                   — clear saved credentials
     """
     global _slack_thread, _slack_stop
+    import os as _os
     from cc_config import save_config
+    from bridges import resolve_bridge_token, scrub_token_from_history
 
     parts = args.strip().split()
 
@@ -628,10 +636,10 @@ def cmd_slack(args: str, _state, config) -> bool:
         channel = config.get("slack_channel", "")
         if running:
             ok(f"Slack bridge running  (channel: {channel})")
-        elif token:
-            info("Configured but not running. Use /slack to start.")
+        elif token or _os.environ.get("SLACK_BOT_TOKEN"):
+            info("Configured but not running. Use /slack <channel_id> to start.")
         else:
-            info("Not configured. Use: /slack <token> <channel_id>")
+            info("Not configured. Set $SLACK_BOT_TOKEN, then /slack <channel_id>.")
         return True
 
     if parts and parts[0].lower() == "logout":
@@ -645,27 +653,45 @@ def cmd_slack(args: str, _state, config) -> bool:
         ok("Slack credentials cleared.")
         return True
 
-    if len(parts) >= 2 and parts[0].startswith("xoxb-"):
-        token, channel = parts[0], parts[1]
-        if _slack_thread and _slack_thread.is_alive():
-            _slack_stop.set()
-            _slack_thread.join(timeout=5)
-            _slack_thread = None
-        config["slack_token"]   = token
-        config["slack_channel"] = channel
-        save_config(config)
-        info(f"Slack credentials saved (channel: {channel}).")
-        _slack_start_bridge(config)
-        return True
+    # Parse arguments. Two supported shapes:
+    #   /slack <channel_id>             — token from env/config
+    #   /slack <token> <channel_id>     — DEPRECATED
+    repl_token = ""
+    channel_arg = ""
+    if len(parts) == 1:
+        channel_arg = parts[0]
+    elif len(parts) >= 2 and parts[0].startswith("xoxb-"):
+        repl_token = parts[0]
+        channel_arg = parts[1]
+    elif len(parts) >= 2:
+        # First arg isn't a token shape — treat both args as channel + extra
+        channel_arg = parts[0]
+
+    token, source = resolve_bridge_token(
+        "SLACK_BOT_TOKEN", "slack_token", repl_token, config
+    )
+    if source == "repl":
+        warn(
+            "Passing the Slack token as a REPL argument is deprecated — it "
+            "lands in readline history. Set $SLACK_BOT_TOKEN and run "
+            "`/slack <channel_id>` instead."
+        )
+        scrub_token_from_history(token)
 
     if _slack_thread and _slack_thread.is_alive():
         warn("Slack bridge is already running. Use /slack stop first.")
         return True
 
-    token   = config.get("slack_token", "")
-    channel = config.get("slack_channel", "")
+    channel = channel_arg or config.get("slack_channel", "")
+    if channel:
+        config["slack_channel"] = channel
+    if source == "repl" and token:
+        config["slack_token"] = token
+    save_config(config)
+
     if not token or not channel:
-        warn("No saved credentials. Usage: /slack <xoxb-token> <channel_id>")
+        warn("No token+channel available. Set $SLACK_BOT_TOKEN and run "
+             "`/slack <channel_id>`.")
         info("Get your token at https://api.slack.com/apps → OAuth & Permissions")
         return True
 
@@ -683,5 +709,5 @@ def cmd_slack(args: str, _state, config) -> bool:
 
     bot_name = me.get("user", "bot")
     info(f"Slack authenticated as @{bot_name}")
-    _slack_start_bridge(config)
+    _slack_start_bridge(config, token=token, channel=channel)
     return True

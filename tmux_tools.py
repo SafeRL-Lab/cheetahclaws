@@ -8,7 +8,6 @@ import os
 import re
 import sys
 import subprocess
-import shlex
 import shutil
 from tool_registry import ToolDef, register_tool
 
@@ -63,27 +62,29 @@ def _safe(value: str) -> str:
     return value
 
 
-def _t(params: dict, key: str = "target") -> str:
-    """Build a -t flag from params, or empty string if absent."""
+def _t_args(params: dict, key: str = "target") -> list[str]:
+    """Build the ['-t', <target>] argv pair, or [] if absent."""
     val = params.get(key, "")
-    return f" -t {_safe(val)}" if val else ""
+    return ["-t", _safe(val)] if val else []
 
 
-def _run(cmd: str, timeout: int = 10) -> str:
-    """Run a tmux command and return combined stdout+stderr.
+def _run(argv: list[str], timeout: int = 10) -> str:
+    """Run a tmux command as argv (no shell). Returns combined stdout+stderr.
 
-    Replaces bare 'tmux' prefix with the detected binary path.
-    Unsets nesting guards ($TMUX / $PSMUX_SESSION) so commands work
-    from inside an existing session.
+    The first arg may be the literal string "tmux"; it is replaced with the
+    detected tmux binary path. Unsets nesting guards ($TMUX / $PSMUX_SESSION)
+    so commands work from inside an existing session.
     """
+    if not argv:
+        return "Error: empty tmux command"
+    if argv[0] == "tmux":
+        argv = [_TMUX_BIN, *argv[1:]]
     try:
-        if cmd.startswith("tmux "):
-            cmd = f'"{_TMUX_BIN}" {cmd[5:]}'
         env = dict(os.environ)
         env.pop("TMUX", None)
         env.pop("PSMUX_SESSION", None)
         r = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True,
+            argv, shell=False, capture_output=True, text=True,
             timeout=timeout, env=env,
         )
         stdout = r.stdout.strip()
@@ -101,66 +102,81 @@ def _run(cmd: str, timeout: int = 10) -> str:
 # ── Tool implementations ────────────────────────────────────────────────────
 
 def _tmux_list_sessions(params: dict, config: dict) -> str:
-    return _run("tmux list-sessions")
+    return _run(["tmux", "list-sessions"])
 
 
 def _tmux_new_session(params: dict, config: dict) -> str:
     name = _safe(params.get("session_name", "cheetah"))
-    detach = "-d" if params.get("detached", True) else ""
+    argv = ["tmux", "new-session"]
+    if params.get("detached", True):
+        argv.append("-d")
+    argv += ["-s", name]
     cmd = params.get("command", "")
-    shell_part = f" {shlex.quote(cmd)}" if cmd else ""
-    return _run(f"tmux new-session {detach} -s {name}{shell_part}")
+    if cmd:
+        argv.append(cmd)
+    return _run(argv)
 
 
 def _tmux_split_window(params: dict, config: dict) -> str:
     direction = "-v" if params.get("direction", "vertical") == "vertical" else "-h"
+    argv = ["tmux", "split-window", direction, *_t_args(params)]
     cmd = params.get("command", "")
-    shell_part = f" {shlex.quote(cmd)}" if cmd else ""
-    return _run(f"tmux split-window {direction}{_t(params)}{shell_part}")
+    if cmd:
+        argv.append(cmd)
+    return _run(argv)
 
 
 def _tmux_send_keys(params: dict, config: dict) -> str:
     keys = params["keys"]
-    enter = " Enter" if params.get("press_enter", True) else ""
-    safe_keys = keys.replace("'", "'\\''")
-    return _run(f"tmux send-keys{_t(params)} '{safe_keys}'{enter}")
+    argv = ["tmux", "send-keys", *_t_args(params), keys]
+    if params.get("press_enter", True):
+        argv.append("Enter")
+    return _run(argv)
 
 
 def _tmux_capture_pane(params: dict, config: dict) -> str:
-    lines = params.get("lines", 50)
-    return _run(f"tmux capture-pane{_t(params)} -p -S -{int(lines)}")
+    lines = int(params.get("lines", 50))
+    return _run(["tmux", "capture-pane", *_t_args(params), "-p", "-S", f"-{lines}"])
+
+
+_PANE_FMT = "#{pane_index}: #{pane_current_command} [#{pane_width}x#{pane_height}] #{?pane_active,(active),}"
 
 
 def _tmux_list_panes(params: dict, config: dict) -> str:
-    return _run(f"tmux list-panes{_t(params)} -F '#{{pane_index}}: #{{pane_current_command}} [#{{pane_width}}x#{{pane_height}}] #{{?pane_active,(active),}}'")
+    return _run(["tmux", "list-panes", *_t_args(params), "-F", _PANE_FMT])
 
 
 def _tmux_select_pane(params: dict, config: dict) -> str:
-    return _run(f"tmux select-pane -t {_safe(params['target'])}")
+    return _run(["tmux", "select-pane", "-t", _safe(params["target"])])
 
 
 def _tmux_kill_pane(params: dict, config: dict) -> str:
-    return _run(f"tmux kill-pane{_t(params)}")
+    return _run(["tmux", "kill-pane", *_t_args(params)])
 
 
 def _tmux_new_window(params: dict, config: dict) -> str:
-    t_flag = _t(params, "target_session")
+    argv = ["tmux", "new-window", *_t_args(params, "target_session")]
     name = params.get("window_name", "")
-    n_flag = f" -n {_safe(name)}" if name else ""
+    if name:
+        argv += ["-n", _safe(name)]
     cmd = params.get("command", "")
-    shell_part = f" {shlex.quote(cmd)}" if cmd else ""
-    return _run(f"tmux new-window{t_flag}{n_flag}{shell_part}")
+    if cmd:
+        argv.append(cmd)
+    return _run(argv)
+
+
+_WINDOW_FMT = "#{window_index}: #{window_name} [#{window_width}x#{window_height}] #{?window_active,(active),}"
 
 
 def _tmux_list_windows(params: dict, config: dict) -> str:
-    return _run(f"tmux list-windows{_t(params, 'target_session')} -F '#{{window_index}}: #{{window_name}} [#{{window_width}}x#{{window_height}}] #{{?window_active,(active),}}'")
+    return _run(["tmux", "list-windows", *_t_args(params, "target_session"), "-F", _WINDOW_FMT])
 
 
 def _tmux_resize_pane(params: dict, config: dict) -> str:
     direction = params.get("direction", "down")
     amount = int(params.get("amount", 10))
     d_flag = _RESIZE_FLAGS.get(direction, "-D")
-    return _run(f"tmux resize-pane{_t(params)} {d_flag} {amount}")
+    return _run(["tmux", "resize-pane", *_t_args(params), d_flag, str(amount)])
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────

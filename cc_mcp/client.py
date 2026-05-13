@@ -4,9 +4,49 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from typing import Any, Dict, List, Optional
+
+
+# Env vars that a malicious mcp config could use to hijack the subprocess —
+# LD_PRELOAD shims libc, PYTHONPATH/PYTHONSTARTUP can run arbitrary code on
+# Python interpreter MCP servers, etc. They're stripped from caller-supplied
+# env unless the operator opts in.
+_MCP_BLOCKED_ENV_KEYS = frozenset({
+    "LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT",
+    "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH",
+    "PYTHONPATH", "PYTHONSTARTUP", "PYTHONHOME", "PYTHONEXECUTABLE",
+    "NODE_OPTIONS", "NODE_PATH",
+    "BASH_ENV", "ENV",
+})
+
+
+def _sanitized_mcp_env(user_env: Optional[dict]) -> dict[str, str]:
+    """Return os.environ updated with caller-supplied env, minus dangerous keys.
+
+    Set CHEETAHCLAWS_MCP_TRUST_ENV=1 to bypass (for power users wiring up
+    a server that legitimately needs LD_LIBRARY_PATH etc.).
+    """
+    base = dict(os.environ)
+    if not user_env:
+        return base
+    trust = os.environ.get("CHEETAHCLAWS_MCP_TRUST_ENV", "0") == "1"
+    dropped: list[str] = []
+    for k, v in user_env.items():
+        if (not trust) and k in _MCP_BLOCKED_ENV_KEYS:
+            dropped.append(k)
+            continue
+        base[k] = v
+    if dropped:
+        print(
+            f"[mcp] Dropped potentially-dangerous env keys from server "
+            f"config: {sorted(dropped)}. Set CHEETAHCLAWS_MCP_TRUST_ENV=1 "
+            f"to allow.",
+            file=sys.stderr, flush=True,
+        )
+    return base
 
 from .types import (
     MCPServerConfig, MCPServerState, MCPTool, MCPTransport,
@@ -35,7 +75,7 @@ class StdioTransport:
         self._stderr_lines: List[str] = []
 
     def start(self) -> None:
-        env = {**os.environ, **(self._config.env or {})}
+        env = _sanitized_mcp_env(self._config.env)
         cmd = [self._config.command] + list(self._config.args or [])
         self._process = subprocess.Popen(
             cmd,
@@ -62,12 +102,18 @@ class StdioTransport:
                 msg = json.loads(line)
             except Exception:
                 continue
-            # Dispatch: response (has "id") vs notification (no "id")
+            # Dispatch: response (has "id") vs notification (no "id").
+            # Use pop() with a fallback so a late-arriving response after a
+            # request timed out (and removed its holder) is silently dropped
+            # instead of racing on dict membership-then-index.
             msg_id = msg.get("id")
-            if msg_id is not None and msg_id in self._pending:
-                holder = self._pending[msg_id]
-                holder["result"] = msg
-                holder["event"].set()
+            if msg_id is None:
+                continue
+            holder = self._pending.pop(msg_id, None)
+            if holder is None:
+                continue
+            holder["result"] = msg
+            holder["event"].set()
 
     def _stderr_loop(self) -> None:
         while self._running and self._process:
@@ -96,10 +142,13 @@ class StdioTransport:
         msg = make_request(method, params, req_id)
         self._send_raw(msg)
         wait_secs = timeout or self._config.timeout
-        event.wait(timeout=wait_secs)
+        signalled = event.wait(timeout=wait_secs)
+        # Pop unconditionally — if signalled, the reader already set result
+        # before set(); if timeout, we drop the holder so a late response
+        # in _read_loop's pop() returns None and is discarded.
         self._pending.pop(req_id, None)
         result = holder["result"]
-        if result is None:
+        if not signalled or result is None:
             raise TimeoutError(f"MCP server '{self._config.name}' timed out on '{method}'")
         if "error" in result:
             err = result["error"]
@@ -249,10 +298,11 @@ class HttpTransport:
                                 try:
                                     msg = json.loads(data)
                                     msg_id = msg.get("id")
-                                    if msg_id is not None and msg_id in self._sse_pending:
-                                        holder = self._sse_pending[msg_id]
-                                        holder["result"] = msg
-                                        holder["event"].set()
+                                    if msg_id is not None:
+                                        holder = self._sse_pending.pop(msg_id, None)
+                                        if holder is not None:
+                                            holder["result"] = msg
+                                            holder["event"].set()
                                 except Exception:
                                     pass
             except Exception as e:
@@ -282,9 +332,9 @@ class HttpTransport:
             holder: dict = {"event": event, "result": None}
             self._sse_pending[req_id] = holder
             client.post(self._session_url, json=msg)
-            event.wait(timeout=wait_secs)
+            signalled = event.wait(timeout=wait_secs)
             self._sse_pending.pop(req_id, None)
-            result = holder["result"]
+            result = holder["result"] if signalled else None
         else:
             # Streamable HTTP: POST returns an SSE stream; read first data: line.
             # Retry once on 401 (token expired mid-session).

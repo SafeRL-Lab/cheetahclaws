@@ -40,18 +40,27 @@ The response is JSON. Find `"chat"` → `"id"` — that number is your chat ID:
 
 > **Tip:** if `result` is empty, go back to Telegram, send another message to your bot, then refresh the URL.
 
-3. Configure cheetahclaws (example with the values above):
+3. Configure cheetahclaws. **Recommended** — token from environment variable:
 
-```
-[myproject] ❯ /telegram 7812345678:AAFxyz123abcDEF456ghiJKL789 987654321
-  ✓ Telegram config saved.
+```bash
+export TELEGRAM_BOT_TOKEN=7812345678:AAFxyz123abcDEF456ghiJKL789
+cheetahclaws
+[myproject] ❯ /telegram 987654321
   ✓ Connected to @your_bot_name. Starting bridge...
   ✓ Telegram bridge active. Chat ID: 987654321
-  ℹ Send messages to your bot — they'll be processed here.
-  ℹ Stop with /telegram stop or send /stop in Telegram.
 ```
 
-Token and chat_id are saved to `~/.cheetahclaws/config.json`. On next launch the bridge **auto-starts** if configured — the startup banner shows `flags: [telegram]`.
+This keeps the token out of `readline` history and `~/.cheetahclaws/config.json`.
+
+The legacy two-arg form still works but is deprecated — it lands the token in your shell-history file, so cheetahclaws prints a warning and auto-scrubs it from the in-memory history:
+
+```
+[myproject] ❯ /telegram 7812345678:AAFxyz... 987654321
+  ⚠ Passing the bot token as a REPL argument is deprecated — it lands in
+    readline history. Set $TELEGRAM_BOT_TOKEN and run `/telegram <chat_id>` instead.
+```
+
+`telegram_chat_id` is saved to `~/.cheetahclaws/config.json`; the token is **only** saved if it came in via the deprecated REPL arg path. Env-supplied tokens never touch disk. On next launch the bridge **auto-starts** if the env var (or saved config) is present — the startup banner shows `flags: [telegram]`.
 
 ### How it works
 
@@ -163,10 +172,13 @@ Bot: [📎 report.pdf]
 
 | Command | Description |
 |---|---|
-| `/telegram <token> <chat_id>` | Configure token + chat_id, then start the bridge |
+| `/telegram <chat_id>` | Recommended — start with `$TELEGRAM_BOT_TOKEN` from the environment |
+| `/telegram <token> <chat_id>` | Deprecated — token leaks into readline history; cheetahclaws auto-scrubs but prints a warning |
 | `/telegram` | Start the bridge using saved config |
 | `/telegram status` | Show running state and chat_id |
 | `/telegram stop` | Stop the bridge |
+
+> **Token precedence:** `$TELEGRAM_BOT_TOKEN` > REPL arg > `~/.cheetahclaws/config.json`. Env-supplied tokens never get persisted to disk.
 
 ### Auto-start
 
@@ -417,16 +429,19 @@ stdout, you copy/paste into your IM client of choice.
 
 ### Setup (one-time, ~2 minutes)
 
-```
-[myproject] ❯ /slack xoxb-12345-... C0123456789
-  ℹ Slack credentials saved (channel: C0123456789).
+**Recommended** — token from environment variable:
+
+```bash
+export SLACK_BOT_TOKEN=xoxb-12345-...
+cheetahclaws
+[myproject] ❯ /slack C0123456789
   ℹ Slack authenticated as @cheetahclaws_bot
   ✓ Slack bridge started.
-  ℹ Send a message in the configured Slack channel — it will be processed here.
-  ℹ Stop with /slack stop or send /stop in Slack.
 ```
 
-Credentials are saved to `~/.cheetahclaws/config.json` and the bridge auto-starts on every subsequent launch — you only need to configure once.
+The legacy `/slack <xoxb-token> <channel_id>` form still works but is deprecated — it leaks the token into your readline history. cheetahclaws prints a warning and auto-scrubs it from the in-memory history.
+
+`slack_channel` is saved to `~/.cheetahclaws/config.json`; the token is **only** persisted when it came from the deprecated REPL arg path. Env-supplied tokens never touch disk. The bridge auto-starts on every subsequent launch — you only need to configure once.
 
 ### How it works
 
@@ -457,11 +472,14 @@ Every 2 seconds, cheetahclaws polls `GET conversations.history?oldest=<last_ts>`
 
 | Command | Description |
 |---|---|
-| `/slack <token> <channel_id>` | Configure and start the bridge |
+| `/slack <channel_id>` | Recommended — start with `$SLACK_BOT_TOKEN` from the environment |
+| `/slack <xoxb-token> <channel_id>` | Deprecated — token leaks into readline history; auto-scrubbed with a warning |
 | `/slack` | Start with saved credentials |
 | `/slack status` | Show running state and channel ID |
 | `/slack stop` | Stop the bridge |
 | `/slack logout` | Clear saved credentials and stop the bridge |
+
+> **Token precedence:** `$SLACK_BOT_TOKEN` > REPL arg > `~/.cheetahclaws/config.json`. Env-supplied tokens never get persisted to disk.
 
 ### Auto-start
 
@@ -528,6 +546,20 @@ Jobs are persisted to `~/.cheetahclaws/jobs.json` (last 100 kept).
 ### WeChat specifics
 
 WeChat uses **per-user queues** — each `user_id` gets an independent queue, so multiple WeChat users never block each other. All commands above are in Chinese: `!任务`, `!取消`, etc. are also accepted.
+
+---
+
+## Remote `!shell-command` from a bridge
+
+Any of the three bridges can run arbitrary shell commands on the host via `!cmd` — `!ls`, `!docker ps`, `!systemctl status nginx`, etc. Output is streamed back in chunks (50 s hard timeout, 40 KB max).
+
+The bridge already enforces an owner-only `chat_id` whitelist (a message from a non-owner is dropped). On top of that:
+
+- A hard denylist refuses obviously host-destroying commands (`rm -rf /`, fork bomb, `mkfs`, `dd of=/dev/sd…`, `chmod -R 777 /`, …) — see [`docs/guides/security.md`](security.md#bash-tool--hard-denylist).
+- NUL bytes / control characters / commands longer than 4 KB are rejected.
+- Set `CHEETAHCLAWS_BRIDGE_TERMINAL=0` to hard-disable the feature entirely — useful when a bot token is shared or stored somewhere a third party could read it.
+
+For programs that need a TTY (`!python`, `!claude`, `!bash`, `!sqlite3`, `!psql`, `!redis-cli`, …) the bridge transparently switches to a PTY-backed interactive session. The same denylist + length checks apply at session start.
 
 ---
 

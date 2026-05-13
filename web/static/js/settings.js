@@ -126,22 +126,28 @@ Object.assign(ChatApp.prototype, {
   _renderModels(providers) {
     const listEl = document.getElementById('sp-model-list');
     const currentModel = document.getElementById('sp-current-model').textContent;
+    // Use data-model + delegated handler so a model name returned by the
+    // server (deep-trust attack surface) can't break out of the onclick
+    // string literal.
     listEl.innerHTML = providers.map(p => {
       if (!p.models.length && p.provider !== 'ollama') return '';
       const models = p.models.map(m => {
         const full = `${p.provider}/${m}`;
         const isActive = currentModel === full || currentModel === m;
         return `<div class="sp-model-item${isActive?' active':''}"
-          onclick="app.selectModel('${full}')">${m}</div>`;
+          data-model="${this._esc(full)}">${this._esc(m)}</div>`;
       }).join('');
       return `<details class="sp-model-group">
-        <summary>${p.provider} (${p.models.length})
+        <summary>${this._esc(p.provider)} (${p.models.length})
           ${!p.has_api_key && p.needs_api_key
             ? '<span style="color:var(--red);font-size:10px"> no key</span>' : ''}
         </summary>
         ${models}
       </details>`;
     }).join('');
+    listEl.querySelectorAll('.sp-model-item').forEach(el => {
+      el.onclick = () => this.selectModel(el.dataset.model);
+    });
   },
 
   async selectModel(model) {

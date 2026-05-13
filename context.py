@@ -24,11 +24,24 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import threading
+import time
 from pathlib import Path
 from datetime import datetime
 
 from memory import get_memory_context
 from prompts import pick_base_prompt, load_fragment
+
+
+# Short-TTL caches: each turn rebuilds the system prompt, and shelling out to
+# git + re-reading CLAUDE.md every turn is a measurable chunk of latency in
+# long REPL sessions. Numbers are deliberately conservative.
+_GIT_CACHE_TTL = 30.0   # seconds — long enough to span a tool batch
+_CLAUDE_MD_TTL = 10.0   # seconds — short so user edits to CLAUDE.md show up quickly
+
+_git_cache: tuple[float, str, str] | None = None   # (expiry, cwd, value)
+_claude_md_cache: tuple[float, str, str] | None = None
+_cache_lock = threading.Lock()
 
 # ── Prompt injection detection ───────────────────────────────────────────
 _THREAT_PATTERNS = [
@@ -57,7 +70,13 @@ def _scan_for_threats(content: str, source: str) -> str | None:
 
 
 def get_git_info() -> str:
-    """Return git branch/status summary if in a git repo."""
+    """Return git branch/status summary if in a git repo. Cached for ~30s."""
+    global _git_cache
+    cwd = str(Path.cwd())
+    now = time.monotonic()
+    with _cache_lock:
+        if _git_cache is not None and _git_cache[1] == cwd and _git_cache[0] > now:
+            return _git_cache[2]
     try:
         branch = subprocess.check_output(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
@@ -74,16 +93,27 @@ def get_git_info() -> str:
             parts.append("- Git status:\n" + "\n".join(f"  {l}" for l in lines))
         if log:
             parts.append("- Recent commits:\n" + "\n".join(f"  {l}" for l in log.split('\n')))
-        return "\n".join(parts) + "\n"
+        result = "\n".join(parts) + "\n"
     except Exception:
-        return ""
+        result = ""
+    with _cache_lock:
+        _git_cache = (now + _GIT_CACHE_TTL, cwd, result)
+    return result
 
 
 def get_claude_md() -> str:
     """Load CLAUDE.md from cwd or parents, and ~/.claude/CLAUDE.md.
 
     Each file is scanned for prompt injection patterns before inclusion.
+    Cached for ~10s; the cache key is cwd so changing directories invalidates.
     """
+    global _claude_md_cache
+    cwd = str(Path.cwd())
+    now = time.monotonic()
+    with _cache_lock:
+        if _claude_md_cache is not None and _claude_md_cache[1] == cwd and _claude_md_cache[0] > now:
+            return _claude_md_cache[2]
+
     content_parts = []
     warnings = []
 
@@ -127,8 +157,12 @@ def get_claude_md() -> str:
             print(f"\033[33m{w}\033[0m", file=sys.stderr)
 
     if not content_parts:
-        return ""
-    return "\n# Memory / CLAUDE.md\n" + "\n\n".join(content_parts) + "\n"
+        result = ""
+    else:
+        result = "\n# Memory / CLAUDE.md\n" + "\n\n".join(content_parts) + "\n"
+    with _cache_lock:
+        _claude_md_cache = (now + _CLAUDE_MD_TTL, cwd, result)
+    return result
 
 
 def get_platform_hints() -> str:

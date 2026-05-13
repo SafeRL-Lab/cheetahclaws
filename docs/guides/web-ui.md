@@ -76,11 +76,31 @@ GET  /api/auth/whoami      →  { user: { id, username, is_admin, created_at } }
 ```
 
 - Password hashing: **bcrypt** (called directly — passlib was dropped because it crashes on `bcrypt>=4.1`; existing `$2b$...` hashes remain compatible).
-- JWT: **PyJWT**, HS256, **7-day TTL**. Signing secret is generated once and persisted to `~/.cheetahclaws/web_secret` (0600), so logins survive server restarts. Override with `CHEETAHCLAWS_WEB_SECRET` env var.
+- JWT: **PyJWT**, HS256, **7-day TTL**. Signing secret is generated once and persisted to `~/.cheetahclaws/web_secret` with `O_CREAT \| O_EXCL` + 0o600. If the file's mode is later loosened (world-readable), the loader refuses to read it and prints a clear `chmod 600` fixup message. Override with the `CHEETAHCLAWS_WEB_SECRET` env var (recommended in production — secret never touches disk).
 - Cookie: `ccjwt=<jwt>; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800`.
 - `--no-auth` short-circuits auth to a synthetic single-user `user_id=1` for localhost testing.
 
 Every other `/api/*` route requires a valid `ccjwt` cookie → `401 { "error": "auth required" }` otherwise.
+
+### CSRF (double-submit cookie)
+
+`SameSite=Strict` on the JWT cookie is the first-line defence. As a second line, every state-changing request (POST/PUT/PATCH/DELETE) must carry an `X-CSRF-Token` header that matches a non-HttpOnly `ccsrf` cookie:
+
+- The server mints `ccsrf=<32B>; Path=/; SameSite=Strict; Max-Age=86400` on the first GET that arrives without one — usually the initial page load.
+- The bundled frontend's `web/static/js/csrf.js` monkey-patches `window.fetch` so the header is added automatically for every state-changing call. Custom clients (curl, integration scripts) need to read the cookie and echo it back.
+- Exempt paths (no CSRF check, because the user has no cookie yet): `/api/auth/bootstrap`, `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/auth` (legacy terminal-password endpoint).
+- Mismatch ⇒ `403 { "error": "csrf token mismatch" }`.
+
+### Terminal session ownership
+
+The PTY terminal (`/`) and the Chat UI (`/chat`) both can spawn JWT-authenticated PTY sessions via `/api/session`. Each session is tagged with the creating user's JWT `sub` at creation time:
+
+| Auth flow | `owner_uid` on the session | Effect |
+|---|---|---|
+| `cctoken` password only (legacy terminal) | `None` | Any holder of the password can attach (shared secret model). |
+| `ccjwt` cookie present | The JWT's `sub` | `/api/stream`, `/api/input`, `/api/resize` reject every other user with `403 not session owner` even if they guess the `sid`. |
+
+This means in a multi-user web deployment, user A cannot hijack user B's terminal by knowing or guessing B's session id.
 
 ---
 
