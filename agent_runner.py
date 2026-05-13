@@ -291,6 +291,52 @@ class AgentRunner:
         else:
             print(text)
 
+    def _on_quota_exceeded(self, qe) -> None:
+        """RFC 0002 §F-9 hook — called from ``_run_loop`` when the
+        pre-iteration ``quota.check_quota`` call raised QuotaExceeded.
+
+        Base impl is a **no-op** so today's REPL path keeps its current
+        behaviour: the iteration proceeds, ``agent.run`` catches
+        QuotaExceeded internally, yields a ``[Quota exceeded …]`` text
+        chunk, and breaks; the runner sleeps ``interval`` seconds and
+        tries again. Operators see the warning in the iteration log.
+
+        Subclasses override this to *block* until the cap is lifted —
+        ``_PipeAgentRunner`` ships ``paused_budget`` over IPC so the
+        supervisor can flip ``agent_runs.status`` and the originator can
+        decide what to do (typically ``agent.resume(name=…)`` with a new
+        ceiling).
+        """
+        return
+
+    def _handle_permission_request(self, event) -> str:
+        """Decide a PermissionRequest. Sets ``event.granted`` and returns
+        the iteration record status (always ``"permission"``).
+
+        Default behaviour matches today's in-thread AgentRunner:
+          * ``auto_approve=True``  → grant, notify, continue.
+          * ``auto_approve=False`` → deny, notify, stop the loop.
+
+        Subclasses (e.g. ``_PipeAgentRunner``) override this to route the
+        request through external machinery — RFC 0002 F-4 #1 sends it over
+        the supervisor IPC channel so the originator can answer.
+        """
+        if self.auto_approve:
+            event.granted = True
+            self._notify(
+                f"🔐 [{self.name}] Auto-approved: {event.description[:120]}"
+            )
+        else:
+            self._notify(
+                f"🔐 [{self.name}] Permission needed (agent paused):\n"
+                f"{event.description}\n\n"
+                "The agent cannot continue without approval. "
+                "Restart with `--auto-approve` to enable autonomous mode."
+            )
+            event.granted = False
+            self._stop_event.set()
+        return "permission"
+
     def _run_loop(self) -> None:
         from agent import AgentState, PermissionRequest, TurnDone
         from agent import TextChunk, ToolStart, ToolEnd
@@ -363,6 +409,27 @@ class AgentRunner:
             self.status = f"running (iter {iteration})"
             t_start = time.monotonic()
 
+            # RFC 0002 §F-9 — pre-flight quota check. If a budget is
+            # exhausted, hand the situation off to ``_on_quota_exceeded``
+            # and re-check after it returns (the F-4 subprocess override
+            # blocks there until ``agent.resume`` lifts the cap; the
+            # base impl is a no-op so today's REPL behaviour — agent.run
+            # catches it internally and yields a quota text chunk —
+            # remains unchanged).
+            try:
+                import quota as _quota_mod
+                _quota_mod.check_quota(
+                    self._config.get("_session_id", "default"), self._config)
+            except _quota_mod.QuotaExceeded as _qe:
+                self._on_quota_exceeded(_qe)
+                if self._stop_event.is_set():
+                    break
+                # Re-check after _on_quota_exceeded returned; if a new
+                # budget didn't actually lift the cap, the override
+                # should already have called _stop_event.set(). Falling
+                # through here means the operator bumped the ceiling
+                # and we can attempt the iteration.
+
             prompt = (
                 f"Begin the program. Args: {self.args}" if iteration == 1 and self.args
                 else "Begin the program." if iteration == 1
@@ -371,6 +438,7 @@ class AgentRunner:
 
             text_chunks: list[str] = []
             rec_status = "ok"
+            err_msg = ""
 
             try:
                 for event in __import__("agent").run(
@@ -383,21 +451,8 @@ class AgentRunner:
                         text_chunks.append(event.text)
 
                     elif isinstance(event, PermissionRequest):
-                        if self.auto_approve:
-                            event.granted = True
-                            self._notify(
-                                f"🔐 [{self.name}] Auto-approved: {event.description[:120]}"
-                            )
-                            rec_status = "permission"
-                        else:
-                            self._notify(
-                                f"🔐 [{self.name}] Permission needed (agent paused):\n"
-                                f"{event.description}\n\n"
-                                "The agent cannot continue without approval. "
-                                "Restart with `--auto-approve` to enable autonomous mode."
-                            )
-                            event.granted = False
-                            self._stop_event.set()
+                        rec_status = self._handle_permission_request(event)
+                        if not event.granted and self._stop_event.is_set():
                             break
 
                     elif isinstance(event, ToolStart):
@@ -634,6 +689,44 @@ def _pipe_main(name_arg: Optional[str] = None) -> int:
 
     chan.send({"op": "ready"})
 
+    # ── 1.5) Optional e2e stub for ``agent.run`` ──────────────────────────
+    # When ``CHEETAHCLAWS_E2E_FAKE_AGENT=1`` is set in the subprocess env,
+    # replace ``agent.run`` with a scripted generator. This keeps the F-4
+    # end-to-end test (tests/e2e_f4_runner.py) hermetic — it exercises the
+    # real `python -m agent_runner --pipe` entry point, the real
+    # `_PipeAgentRunner`, the real IPC, and the real SQLite agent_runs /
+    # agent_iterations writes, without depending on an LLM provider being
+    # configured or reachable. The stub is gated by env var so production
+    # paths can never reach it. The test caller drives termination via
+    # ``rs.stop()`` once it sees the iteration counter rise.
+    if os.environ.get("CHEETAHCLAWS_E2E_FAKE_AGENT") == "1":
+        import agent as _agent_mod
+        from agent import (
+            TextChunk as _StubTextChunk,
+            TurnDone as _StubTurnDone,
+            PermissionRequest as _StubPermissionRequest,
+        )
+        _stub_emit_perm = os.environ.get("CHEETAHCLAWS_E2E_FAKE_PERMISSION") == "1"
+        _stub_state = {"perm_emitted": False}
+
+        def _fake_run(prompt, state, config, system_prompt,
+                      depth=0, cancel_check=None):
+            yield _StubTextChunk("e2e iteration begin")
+            if _stub_emit_perm and not _stub_state["perm_emitted"]:
+                _stub_state["perm_emitted"] = True
+                pr = _StubPermissionRequest(
+                    description="e2e fake permission request: tool=Bash"
+                )
+                yield pr
+                if not pr.granted:
+                    yield _StubTextChunk("[denied]")
+                    yield _StubTurnDone(input_tokens=1, output_tokens=1)
+                    return
+            yield _StubTextChunk("e2e iteration done")
+            yield _StubTurnDone(input_tokens=1, output_tokens=1)
+
+        _agent_mod.run = _fake_run
+
     # ── 2) Bridge send_fn → IPC notify ────────────────────────────────────
     def _ipc_send(text: str) -> None:
         try:
@@ -677,6 +770,12 @@ def _pipe_main(name_arg: Optional[str] = None) -> int:
             op = msg.get("op", "")
             if op == "stop":
                 runner._stop_event.set()
+                # Also wake any quota-pause waiter so the loop unblocks
+                # cleanly instead of waiting up to _PERMISSION_WAIT_S.
+                try:
+                    runner._resume_event.set()
+                except Exception:
+                    pass
                 break
             if op == "permission_response":
                 rid = msg.get("request_id", "")
@@ -684,6 +783,16 @@ def _pipe_main(name_arg: Optional[str] = None) -> int:
                 ev = pending_perms.get(rid)
                 if ev is not None:
                     ev.set()
+            elif op == "resume":
+                # RFC 0002 §F-9 — unblock _on_quota_exceeded after the
+                # originator bumped the daemon-level budgets via
+                # `agent.resume`. The runner re-runs the quota check at
+                # the top of the next iteration; if the new ceiling is
+                # *still* too low, it pauses again.
+                try:
+                    runner._resume_event.set()
+                except Exception:
+                    pass
 
     runner._pending_perms = pending_perms
     runner._pending_perms_results = pending_perms_results
@@ -715,11 +824,64 @@ class _PipeAgentRunner(AgentRunner):
       * PermissionRequest   → emit permission_request, await response
     """
 
+    # Cap the wait on the supervisor's permission response. Matches the
+    # PermissionStore's interactive default so the runner's view of the
+    # timeout stays consistent with the store's janitor.
+    _PERMISSION_WAIT_S = 30 * 60
+
     def __init__(self, *, chan, **kw) -> None:
         super().__init__(**kw)
         self._chan = chan
         self._pending_perms: dict = {}
         self._pending_perms_results: dict = {}
+        # RFC 0002 §F-9 — _on_quota_exceeded blocks on this until the
+        # supervisor delivers a `resume` IPC frame (driven by the
+        # `agent.resume` RPC). Re-armed on every iteration.
+        self._resume_event = threading.Event()
+
+    def _on_quota_exceeded(self, qe) -> None:
+        """RFC 0002 §F-9 — block until the supervisor delivers a
+        ``resume`` IPC frame, then return so ``_run_loop`` re-checks
+        the quota and proceeds.
+
+        Sequence:
+          1. Send ``{"op":"paused_budget", "reason": …}`` IPC. The
+             supervisor flips ``agent_runs.status='paused_budget'`` and
+             publishes ``quota_warn`` on the bus so observers can react.
+          2. Clear and then wait on ``_resume_event``. The wait honours
+             ``_stop_event`` (the control loop sets the resume event
+             before breaking on stop), so a stop arriving while paused
+             unblocks the runner cleanly.
+          3. After resume, send ``{"op":"resumed"}`` IPC so the
+             supervisor can flip the SQLite status back to ``running``.
+        """
+        reason = getattr(qe, "reason", "") or str(qe)
+        try:
+            self._chan.send({
+                "op":     "paused_budget",
+                "reason": str(reason)[:300],
+            })
+        except (BrokenPipeError, OSError):
+            self._stop_event.set()
+            return
+
+        self.status = "paused_budget"
+        self._notify(
+            f"⏸ [{self.name}] paused — {reason}. "
+            f"Use `agent.resume` with new budget_overrides to unblock."
+        )
+        # Clear before wait so an old set() can't satisfy us instantly.
+        self._resume_event.clear()
+        self._resume_event.wait()
+        # Re-arm for the next pause.
+        self._resume_event.clear()
+        try:
+            self._chan.send({"op": "resumed"})
+        except (BrokenPipeError, OSError):
+            self._stop_event.set()
+            return
+        self.status = "running"
+        self._notify(f"▶ [{self.name}] resumed.")
 
     def _persist_record(self, rec: _IterationRecord) -> None:
         # Keep the parent's jsonl write so on-disk behaviour is identical;
@@ -738,6 +900,68 @@ class _PipeAgentRunner(AgentRunner):
             })
         except (BrokenPipeError, OSError):
             self._stop_event.set()
+
+    def _handle_permission_request(self, event) -> str:
+        """Route the request through the supervisor IPC channel and block
+        until ``permission_response`` arrives.
+
+        Fast path: ``auto_approve=True`` delegates to the parent so the
+        runner doesn't bother the supervisor at all.
+
+        Slow path: emit ``permission_request`` with a fresh correlation
+        id, register an event in ``_pending_perms``, and wait up to
+        ``_PERMISSION_WAIT_S``. On wait timeout or IPC error we deny and
+        stop, matching the parent's "no approval ⇒ paused" stance.
+        """
+        if self.auto_approve:
+            return super()._handle_permission_request(event)
+
+        import uuid as _uuid
+
+        rid = _uuid.uuid4().hex[:12]
+        ev = threading.Event()
+        # Register BEFORE sending so a fast response can't race ahead of
+        # the wait setup.
+        self._pending_perms[rid] = ev
+        try:
+            self._chan.send({
+                "op":         "permission_request",
+                "request_id": rid,
+                "tool":       getattr(event, "name", "") or "",
+                "input":      getattr(event, "inputs", {}) or {},
+                "rationale":  getattr(event, "description", "") or "",
+            })
+        except (BrokenPipeError, OSError):
+            self._pending_perms.pop(rid, None)
+            event.granted = False
+            self._stop_event.set()
+            return "permission"
+
+        if not ev.wait(timeout=self._PERMISSION_WAIT_S):
+            # Supervisor never answered — treat as deny + stop.
+            self._pending_perms.pop(rid, None)
+            self._pending_perms_results.pop(rid, None)
+            event.granted = False
+            self._stop_event.set()
+            self._notify(
+                f"🔐 [{self.name}] Permission request timed out "
+                f"(no response after {self._PERMISSION_WAIT_S}s)."
+            )
+            return "permission"
+
+        granted = bool(self._pending_perms_results.pop(rid, False))
+        self._pending_perms.pop(rid, None)
+        event.granted = granted
+        if not granted:
+            self._notify(
+                f"🔐 [{self.name}] Permission denied by originator — stopping."
+            )
+            self._stop_event.set()
+        else:
+            self._notify(
+                f"🔐 [{self.name}] Approved: {event.description[:120]}"
+            )
+        return "permission"
 
 
 if __name__ == "__main__":

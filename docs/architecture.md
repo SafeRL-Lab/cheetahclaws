@@ -902,15 +902,18 @@ throttle returns `429` after sustained bad attempts.
 - `cheetahclaws daemon rotate-token` — regenerate token; existing TCP
   clients receive `401` until they re-read the file.
 
-**What's not in F-1 (intentional).**  The daemon currently exposes
-`system.ping`, `system.shutdown`, the spike's `echo.ping`, and the
-permission methods (which work end-to-end against the spike's demo
-flow but aren't yet wired into `agent.run`).  Migrating
-`monitor/scheduler`, `agent_runner` (as subprocess-per-agent),
-`proactive`, the three messaging bridges, and replacing
-`cc_daemon/methods.py` and `cc_daemon/permission.py` with
-`agent.run`-driven equivalents is the F-3 through F-8 work in the
-foundation roadmap.
+**RPC surface (as of all F-1 through F-9 landings).**  The daemon
+exposes the spike's `echo.*` / `permission.*`, plus `system.ping` /
+`system.shutdown` / `system.status` (F-1, F-9), `monitor.*` (F-3),
+`agent.start` / `agent.stop` / `agent.list` / `agent.status` /
+`agent.resume` (F-4 + F-9), `proactive.set` / `proactive.get` /
+`proactive.tickle` (F-5), `bridge.start` / `bridge.stop` /
+`bridge.list` / `bridge.send` / `bridge.status` (F-6/7/8), and
+`session.send` / `session.reply` / `session.list_recent` (F-6 Phase 2).
+The F-6/7/8 Phase 2 inbound refactor moves the bridge poll loop into
+a slim daemon-driven worker that publishes `session_inbound` on the
+event bus instead of calling `session_ctx.run_query`, so the agent
+driver (REPL/Web/automation) and the transport (bridges) decouple.
 
 #### Persistence (F-2)
 
@@ -925,8 +928,11 @@ left untouched:
   runs opportunistically every 100 publishes.  When `replay_since(N)`
   finds the requested cursor older than `MIN(id)` it yields a synthetic
   `gap` event so SSE clients (Web UI / future bridges) know to resync.
-- `agent_runs` / `agent_iterations` — placeholder tables awaiting F-4
-  (`agent_runner` subprocess-per-agent).
+- `agent_runs` / `agent_iterations` — populated by F-4. One row per
+  spawned subprocess in `agent_runs` (status: `running` /
+  `stopped` / `crashed` / `paused_budget` after F-9), one row per
+  iteration in `agent_iterations` (status, duration, tokens, cost,
+  ≤400-char summary).
 - `jobs` — replaces `~/.cheetahclaws/jobs.json`.  `jobs.py` migrates
   the legacy file once on first call (tracked via
   `schema_meta.jobs_migrated_from_json`).  Migration is **one-way**:
@@ -935,7 +941,10 @@ left untouched:
   (e.g. users still on the prior release, or backup-style tooling);
   SQLite is the source of truth from then on.
 - `monitor_subscriptions` / `monitor_reports` — placeholder for F-3.
-- `bridges` — placeholder for F-6/7/8.
+- `bridges` — populated by F-6/7/8. One row per bridge kind with
+  `enabled`, `config_json` (secrets redacted), `last_poll_at`,
+  `last_error`. `bridge.list` merges live workers with persisted rows
+  so an operator sees disabled bridges from earlier daemon runs.
 - `schema_meta` — schema version + per-feature migration markers.
 
 `cc_daemon/schema.py:init_schema()` is idempotent (CREATE IF NOT
@@ -986,18 +995,166 @@ Behaviour:
   errors}`).  SSE subscribers see digests as they land; the
   `report_id` ties the event back to the row in `monitor_reports` for
   later retrieval.
-- **Telegram / Slack / WeChat delivery from daemon waits for F-6/7/8.**
-  Until the bridges themselves move into daemon, a subscription
-  configured with `--telegram` will land its report in
-  `monitor_reports` and emit the SSE event when the daemon fires it,
-  but won't actually push to Telegram unless REPL is also running with
-  the bridge connected.
+- **Telegram / Slack / WeChat delivery from daemon is wired via
+  F-6/7/8.**  A subscription configured with `--telegram` lands its
+  report in `monitor_reports`, emits the SSE `monitor_report` event,
+  and (when the matching bridge is running in-daemon under the
+  per-kind feature flag) is also pushed to the chat. REPL doesn't
+  need to be open for delivery once the bridge worker is live.
 
 The headline F-3 user-visible win: `/monitor subscribe arxiv
 --schedule daily --console`, then exit REPL — the daemon scheduler
 keeps firing on schedule, reports persist to SQLite, SSE clients see
 each digest as it lands, history is `monitor.list_reports("arxiv")`
 away when the user reconnects.
+
+#### F-4 follow-ups: permission routing, restart policy, bridge notify
+
+The F-4 skeleton above gives crash isolation. Three follow-ups close
+the remaining acceptance gaps (RFC 0002 §F-4 #1/#2/#3):
+
+- **§F-4 #1 — permission routing.** When a runner is started with
+  `auto_approve=False`, the supervisor routes the runner's
+  `permission_request` IPC frame through
+  `cc_daemon/permission.py:PermissionStore`. The originator (the
+  `client_id` that called `agent.start`) is the only client that can
+  answer via `permission.answer`. Timeouts and denials feed back over
+  IPC as `permission_response`; the runner unblocks within its
+  30-minute wait either way.
+- **§F-4 #2 — bridge `notify` forwarding.** The reader's `notify` IPC
+  branch now calls `cc_daemon/bridge_supervisor.notify(kind, text)` so
+  a subprocess runner's iteration summary reaches the originating
+  bridge (Telegram / Slack / WeChat). The runner can target a specific
+  bridge via `msg["bridge"]` or omit it for a `"*"` broadcast.
+  `agent_runner_notify` events on the bus carry `{name, run_id,
+  bridge, delivered, text[:500]}` so observers can audit deliveries.
+- **§F-4 #3 — restart policy.** `agent.start` accepts
+  `restart_policy="on-crash"`, `max_restarts`, `backoff_base_s`,
+  `backoff_cap_s`, `backoff_jitter_s`. A crashed lineage's reader
+  `finally` consults `RestartPolicy.next_delay(restart_count)`, arms a
+  `threading.Timer`, and respawns with `_restart_count_carry=N+1`.
+  `stop()` cancels any pending Timer before the kill ladder, and
+  `_unregister(name, expected=handle)` does an identity check so a
+  successor handle spawned mid-stop isn't silently popped.  Events on
+  the bus: `agent_runner_restart_scheduled`, `agent_runner_restart`,
+  `agent_runner_restart_failed`, `agent_runner_restart_exhausted`.
+
+#### Proactive watcher in daemon (F-5)
+
+`_proactive_watcher_loop` from `cheetahclaws.py` is now daemon-owned.
+`cc_daemon/proactive_state.py` persists `proactive.enabled` /
+`proactive.interval_s` / `proactive.last_tick_at` in the F-2
+`schema_meta` table (so the setting survives daemon restarts); a
+single background thread (`proactive-scheduler`) ticks at 1 s,
+publishes `proactive_tick` on the SSE bus when the idle threshold is
+crossed, and resets `last_tick_at`.  REPL `/proactive` slash command
+routes through `proactive.set` / `proactive.get` / `proactive.tickle`
+RPCs when a daemon is detected; otherwise the legacy in-process
+watcher runs.  Step-aside check at every loop tick prevents
+double-firing across REPL + daemon.
+
+#### Bridges in daemon (F-6 / F-7 / F-8)
+
+`cc_daemon/bridge_supervisor.py` owns the lifecycle of one or more
+daemon-side bridge threads, gated per-kind by feature flags so REPL
+behaviour is byte-for-byte unchanged until the user opts in:
+
+| Env var                          | Effect                          |
+|----------------------------------|---------------------------------|
+| `CHEETAHCLAWS_ENABLE_F6`         | Telegram-in-daemon allowed.     |
+| `CHEETAHCLAWS_ENABLE_F7`         | Slack-in-daemon (requires F-6). |
+| `CHEETAHCLAWS_ENABLE_F8`         | WeChat-in-daemon (requires F-6).|
+
+Two modes per bridge:
+
+- **Phase 1 (legacy supervisor in daemon).** `bridge.start kind=…
+  daemon_phase2=False`. The daemon thread invokes
+  `bridges/<kind>.py:_<kind>_supervisor` unchanged, so today's REPL
+  network code is re-used verbatim. F-4 #2 needs this — outbound
+  `notify` from a subprocess runner lands in the bridge's send path
+  (`_tg_send` / `_slack_send` / `_wx_send`).
+- **Phase 2 (daemon-driven inbound).** `bridge.start kind=…
+  daemon_phase2=True`. The legacy supervisor is bypassed; the worker
+  runs a slim loop that (a) subscribes to the daemon event bus and
+  filters `session_outbound` events by `session_id` /
+  `target_bridges`, (b) re-uses the per-kind HTTP poll helpers from
+  `bridges/<kind>.py` and publishes `session_inbound` for every new
+  phone message instead of calling `session_ctx.run_query`.
+
+Wire-level RPCs: `bridge.start`, `bridge.stop`, `bridge.list`,
+`bridge.send`, `bridge.status` (in `cc_daemon/bridge_methods.py`).
+Persisted state lives in the F-2 `bridges` table (`kind`, `enabled`,
+`config_json`, `last_poll_at`, `last_error`); secrets are redacted
+to last 4 chars before any row write or bus publish (broad pattern:
+`token`, `secret`, `api_key`, `password`, `auth`).
+
+`session_id` formatting per kind: `tg:<chat_id>`,
+`sl:<channel>`, `wc:<user_id>`. Permission requests born inside a
+bridge-driven turn can use this as the PermissionStore originator
+(RFC 0001 §2), pinning answers back to the originating bridge.
+
+#### Session message-passing primitives (F-6 Phase 2 support)
+
+`cc_daemon/session_methods.py` registers three methods that any
+inbound / outbound source can talk:
+
+- **`session.send(session_id, text, origin?, message_id?)`** —
+  publishes `session_inbound` on the bus. Defaults `origin` to the
+  RPC caller's `client_id`. Records `(session_id, origin)` in an
+  in-memory LRU (last 256, newest-first).
+- **`session.reply(session_id, text, target_bridges?, message_id?)`** —
+  publishes `session_outbound`. `target_bridges=None` is a broadcast;
+  a list of kinds restricts delivery. Phase 2 bridge workers filter
+  on `(session_id == handle.session_id())` *and*
+  `(target_bridges is None or kind in target_bridges)`.
+- **`session.list_recent(limit=20)`** — newest-first snapshot of the
+  LRU.
+
+These are I/O-free message-passing primitives — no agent loop is
+driven by them. A REPL / Web / future automation client subscribes
+to `session_inbound`, runs the agent, calls `session.reply` for each
+outbound chunk; that gives a clean separation between transport
+(bridges) and intelligence (agent driver).
+
+#### Cost guardrails + quota-pause (F-9)
+
+Headless `cheetahclaws serve` runs unattended for hours; an unbounded
+agent can quietly compound costs while no one is watching. F-9 flips
+the four budget keys to conservative defaults under `serve` mode:
+
+```jsonc
+{
+  "session_token_budget": 200000,
+  "session_cost_budget":   2.0,
+  "daily_token_budget":   2000000,
+  "daily_cost_budget":     20.0
+}
+```
+
+REPL (`--in-process`) keeps `None` (unlimited) for back-compat; F-9
+only fires in `cmd_serve`'s startup via `_apply_serve_defaults`.
+
+Three RPC surfaces around it:
+
+- **`system.status`** — returns `{budgets: {…four keys…}, runners,
+  bridges}`. `cheetahclaws daemon status` prints this so operators
+  can confirm the defaults are in effect.
+- **`agent.resume(budget_overrides, name?)`** — merges
+  `budget_overrides` into `daemon_state.config`; when `name` is
+  supplied, also sends a `resume` IPC frame to the named runner so a
+  `paused_budget` runner unblocks. Returns `{budgets, resumed}` so
+  the caller can confirm both halves landed.
+
+Per-runner quota-pause hook:
+
+| Stage | Where | Behaviour |
+|-------|-------|-----------|
+| Pre-iter check | `AgentRunner._run_loop` (top of each iter) | `quota.check_quota` against `_config`; raises `QuotaExceeded` → `_on_quota_exceeded(qe)`. |
+| Base impl | `AgentRunner._on_quota_exceeded` | No-op — REPL path keeps today's behaviour (agent.run catches internally, yields `[Quota exceeded …]` text). |
+| F-4 override | `_PipeAgentRunner._on_quota_exceeded` | Sends `paused_budget` IPC, sets `status='paused_budget'`, blocks on `_resume_event.wait()`. Wakes from `resume` IPC, sends `resumed` IPC, returns. |
+| Supervisor inbound | `cc_daemon/runner_supervisor:_reader_loop` | New `paused_budget` / `resumed` branches: flip `agent_runs.status` in SQLite, publish `quota_warn` / `agent_runner_resumed` on the bus. |
+| Supervisor outbound | `runner_supervisor.resume(name)` | Sends `resume` IPC to the named runner; called by `agent.resume(name=…)`. |
+| Control loop | `agent_runner._pipe_main:_control_loop` | New `resume` handler sets `_resume_event`. `stop` handler also sets it so a stop arriving while paused unblocks cleanly. |
 
 ### Agent OS kernel (`cc_kernel/`)
 

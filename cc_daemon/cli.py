@@ -41,6 +41,40 @@ DEFAULT_TOKEN_PATH = DEFAULT_DATA_DIR / "daemon_token"
 DEFAULT_PID_FILE = DEFAULT_RUN_DIR / "daemon.pid"
 
 
+# ── F-9: serve-mode cost-guardrail defaults ───────────────────────────────
+#
+# REPL ``--in-process`` mode keeps the all-None defaults from cc_config so
+# existing users see no surprise.  Headless ``cheetahclaws serve`` mode
+# applies *conservative* defaults instead: a daemon often runs unattended
+# for hours/days, an unbounded agent that's quietly compounding costs
+# while no one is watching is the failure mode F-9 (#68) addresses.
+#
+# Operators who want a different ceiling override via:
+#   * cc_config keys (`session_token_budget` etc.), or
+#   * the agent.resume RPC's `budget_overrides` argument.
+F9_SERVE_BUDGET_DEFAULTS = {
+    "session_token_budget":  200_000,
+    "session_cost_budget":   2.0,
+    "daily_token_budget":    2_000_000,
+    "daily_cost_budget":     20.0,
+}
+
+
+def _apply_serve_defaults(config: dict) -> dict:
+    """Flip any ``None`` budget keys to the F-9 conservative defaults.
+
+    Pure function for testability — returns the mutated config dict so
+    tests can assert on the resulting state without poking module-level
+    globals.  Bypassed entirely when an operator has already set the
+    key to a real number (zero or above), so explicit user choices
+    always win.
+    """
+    for key, default in F9_SERVE_BUDGET_DEFAULTS.items():
+        if config.get(key) is None:
+            config[key] = default
+    return config
+
+
 # ── --listen parsing ───────────────────────────────────────────────────────
 
 def parse_listen(spec: str) -> tuple[str, object]:
@@ -151,6 +185,10 @@ def cmd_serve(args: argparse.Namespace) -> int:
     # Bump default log level so `daemon logs` has signal in serve mode.
     if config.get("log_level", "warn") == "warn":
         config["log_level"] = "info"
+    # F-9 (RFC 0002 §F-9) — apply conservative cost-guardrail defaults
+    # in serve mode.  Done BEFORE _bootstrap so the quota module sees the
+    # final values on first init.
+    _apply_serve_defaults(config)
     _bootstrap(config)
 
     # F-2: ensure the daemon's SQLite tables exist before the listener
@@ -253,16 +291,40 @@ def cmd_serve(args: argparse.Namespace) -> int:
         print(f"warning: monitor scheduler did not start: {exc}",
               file=sys.stderr, flush=True)
 
+    # F-5: proactive watcher. Same ordering rationale as F-3 — start
+    # AFTER bind + discovery so external clients can subscribe to the
+    # `proactive_tick` SSE feed before the first tick lands.
+    # ``owned_by_daemon=True`` keeps the loop from deferring to its
+    # own discovery file.
+    try:
+        from . import proactive_scheduler as _proactive_sched
+        _proactive_sched.start(owned_by_daemon=True)
+    except Exception as exc:
+        print(f"warning: proactive scheduler did not start: {exc}",
+              file=sys.stderr, flush=True)
+
     # Graceful-shutdown watcher: when DaemonState.shutdown_event fires
     # (set by system.shutdown RPC or the signal handler below), stop
-    # the monitor scheduler and trigger server.shutdown() from a side
-    # thread (the spike's invariant: the same thread as serve_forever
-    # cannot call shutdown).
+    # the monitor + proactive schedulers and trigger server.shutdown()
+    # from a side thread (the spike's invariant: the same thread as
+    # serve_forever cannot call shutdown).
     def _watch_shutdown():
         server.daemon_state.shutdown_event.wait()
         try:
             from monitor.scheduler import stop as _monitor_stop
             _monitor_stop()
+        except Exception:
+            pass
+        try:
+            from . import proactive_scheduler as _proactive_stop_ref
+            _proactive_stop_ref.stop()
+        except Exception:
+            pass
+        # RFC 0002 F-6/7/8 — stop any running daemon-owned bridges so
+        # their HTTP poll threads don't outlive the listener.
+        try:
+            from . import bridge_supervisor as _bs
+            _bs.stop_all(timeout_s=5.0)
         except Exception:
             pass
         threading.Thread(target=server.shutdown, daemon=True).start()

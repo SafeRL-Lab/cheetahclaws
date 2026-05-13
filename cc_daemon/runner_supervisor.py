@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import signal
 import subprocess
 import sys
@@ -47,7 +48,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Callable, Optional
 
 from .runner_ipc import IpcReadTimeout, JsonLineChannel
 
@@ -76,6 +77,97 @@ SIGTERM_GRACE_S = 3.0              # SIGTERM → SIGKILL after this
 # 2 + 3 = 5 s matches the F-4 acceptance criterion.
 
 _LOG_DIR = Path.home() / ".cheetahclaws" / "agents"
+
+
+# ── Restart policy (RFC 0002 F-4 #3) ──────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class RestartPolicy:
+    """How the supervisor should react to a crashed runner.
+
+    The decision to restart lives with the *originator* that started the
+    runner (RFC 0002 §F-4 #3 — "lives with the originator"). The originator
+    picks a policy at ``agent.start`` time; the supervisor then honours it
+    autonomously until ``max_restarts`` is exhausted.
+
+    Only ``mode='on-crash'`` triggers a respawn. A graceful ``stop()`` is
+    never followed by a restart.
+
+    Backoff is ``min(backoff_base_s * 2**restart_count, backoff_cap_s)``
+    plus optional jitter (``±backoff_jitter_s`` uniform), so a pathological
+    boot-loop doesn't pin one core at 100 % CPU.
+    """
+    mode:              str   = "none"      # "none" | "on-crash"
+    max_restarts:      int   = 0           # 0 disables restart even if mode='on-crash'
+    backoff_base_s:    float = 1.0
+    backoff_cap_s:     float = 60.0
+    backoff_jitter_s:  float = 0.5
+
+    @classmethod
+    def disabled(cls) -> "RestartPolicy":
+        return cls(mode="none", max_restarts=0)
+
+    @classmethod
+    def from_params(cls, params: dict) -> "RestartPolicy":
+        """Construct from a dict supplied to ``agent.start`` over RPC.
+        Unknown keys are ignored; missing keys take the default. Bad
+        types raise TypeError so the RPC layer can surface a 400."""
+        mode = str(params.get("restart_policy", "none") or "none").lower()
+        if mode not in {"none", "on-crash"}:
+            raise TypeError(
+                f"restart_policy must be 'none' or 'on-crash', got {mode!r}")
+        try:
+            max_restarts = int(params.get("max_restarts", 0) or 0)
+        except (TypeError, ValueError) as e:
+            raise TypeError(f"max_restarts must be int: {e}")
+        if max_restarts < 0:
+            raise TypeError(f"max_restarts must be ≥ 0, got {max_restarts}")
+        try:
+            base = float(params.get("backoff_base_s", 1.0))
+            cap  = float(params.get("backoff_cap_s",  60.0))
+            jitter = float(params.get("backoff_jitter_s", 0.5))
+        except (TypeError, ValueError) as e:
+            raise TypeError(f"backoff fields must be numeric: {e}")
+        if base < 0 or cap < 0 or jitter < 0:
+            raise TypeError("backoff fields must be ≥ 0")
+        if cap < base:
+            # Catch the obvious config mistake before it traps the user
+            # in an "exhausted on attempt 1 because cap < base" loop.
+            raise TypeError(
+                f"backoff_cap_s ({cap}) must be ≥ backoff_base_s ({base})")
+        return cls(mode=mode, max_restarts=max_restarts,
+                   backoff_base_s=base, backoff_cap_s=cap,
+                   backoff_jitter_s=jitter)
+
+    def next_delay(self, restart_count: int) -> Optional[float]:
+        """How long to wait before the next restart attempt.
+
+        Returns None when:
+          * mode != 'on-crash' (restarts disabled), or
+          * ``restart_count`` already at or above ``max_restarts``.
+
+        Pure function — no I/O, no clock reads — so tests can drive the
+        full decision matrix without spawning subprocesses or sleeping.
+        """
+        if self.mode != "on-crash":
+            return None
+        if restart_count >= self.max_restarts:
+            return None
+        delay = self.backoff_base_s * (2 ** max(0, restart_count))
+        delay = min(delay, self.backoff_cap_s)
+        if self.backoff_jitter_s > 0:
+            # Symmetric jitter, clipped at 0 so we never schedule into the past.
+            delay = max(0.0, delay + random.uniform(
+                -self.backoff_jitter_s, self.backoff_jitter_s))
+        return delay
+
+
+# Factory hook for tests: a `Callable[[dict], RunnerHandle]` that respawns
+# a runner from the previous handle's start_kwargs. The default points at
+# ``start`` further down the file; tests inject a stub that records the
+# call and returns a fake handle without actually forking a subprocess.
+_RESTART_SPAWNER: Optional[Callable[..., "RunnerHandle"]] = None
 
 
 # ── Feature flag ──────────────────────────────────────────────────────────
@@ -118,6 +210,35 @@ class RunnerHandle:
     template_name: str = ""
     args:          str = ""
     auto_approve:  bool = True
+    # RFC 0002 F-4 #1 — permission routing.
+    # When `auto_approve` is False AND `permission_store` is set, the reader
+    # loop routes inbound `permission_request` IPC through the store so the
+    # originator (the client_id that called agent.start) can answer via
+    # `permission.answer`. When either is missing, the reader falls back to
+    # the today's auto-approve fast path (consistent with the in-process
+    # AgentRunner's default).
+    originator:       str = ""
+    permission_store: Optional["object"] = field(default=None, repr=False)
+    # RFC 0002 F-4 #3 — restart policy.
+    # ``restart_policy`` decides what the reader's `finally` block does
+    # when the process exited non-zero (and not via graceful stop).
+    # ``restart_count`` is the running tally for *this lineage* — every
+    # successor handle inherits + 1, so the policy's max_restarts caps
+    # the whole sequence, not each respawn in isolation.
+    # ``_start_kwargs`` captures the exact arguments the supervisor used
+    # to spawn this handle so a follow-up restart is byte-for-byte
+    # equivalent. We do not snapshot the live config dict — the daemon's
+    # config is mutable, and a restart that picks up the *current* values
+    # is the behaviour callers expect.
+    restart_policy:   "RestartPolicy" = field(
+        default_factory=lambda: RestartPolicy.disabled())
+    restart_count:    int  = 0
+    _start_kwargs:    dict = field(default_factory=dict, repr=False)
+    _restart_timer:   Optional[threading.Timer] = field(default=None, repr=False)
+    # Set to True when the reader's `finally` has already scheduled (or
+    # decided not to schedule) a restart. Prevents a race where stop()
+    # cancels the timer slot just as the reader is about to write to it.
+    _restart_decided: bool = False
 
     def is_alive(self) -> bool:
         return self.proc.poll() is None
@@ -158,8 +279,22 @@ def _register(handle: RunnerHandle) -> None:
         _handles[handle.name] = handle
 
 
-def _unregister(name: str) -> None:
+def _unregister(name: str, expected: Optional["RunnerHandle"] = None) -> None:
+    """Remove ``name`` from the registry.
+
+    With ``expected=None`` (today's callers that don't care about the
+    lineage), the slot is popped unconditionally. When ``expected`` is
+    passed, the slot is popped *only if* the currently-registered
+    handle is the same object — this closes a F-4 #3 race where a
+    Timer-fired ``_do_restart`` spawns a new handle while a concurrent
+    ``stop()`` is still cleaning up the previous one. Without the
+    identity check the stop's terminal ``_unregister`` would silently
+    delete the freshly-spawned successor and leak its subprocess.
+    """
     with _handles_lock:
+        current = _handles.get(name)
+        if expected is not None and current is not expected:
+            return
         _handles.pop(name, None)
 
 
@@ -175,9 +310,31 @@ def start(
     interval: float = 2.0,
     auto_approve: bool = True,
     python: str = sys.executable,
+    originator: str = "",
+    permission_store: Optional["object"] = None,
+    restart_policy: Optional[RestartPolicy] = None,
+    _restart_count_carry: int = 0,
 ) -> RunnerHandle:
     """Spawn `python -m agent_runner --pipe` as a child process and return
     its handle after the IPC handshake completes.
+
+    Args:
+        originator: client_id of the RPC caller that started this runner.
+            Stamped on the PermissionRequest so only that client can answer
+            via `permission.answer`. Empty string disables the per-client
+            check (back-compat path for callers that don't go through the
+            RPC layer — e.g. unit tests, in-process REPL).
+        permission_store: PermissionStore instance to route `permission_request`
+            IPC through. None means the reader uses today's auto-approve
+            fast path regardless of `auto_approve` (back-compat).
+        restart_policy: RFC 0002 F-4 #3. ``None`` is equivalent to
+            ``RestartPolicy.disabled()`` (today's behaviour — a crashed
+            runner stays crashed). When ``mode='on-crash'`` and
+            ``max_restarts > 0`` the supervisor respawns the runner after
+            an exponential backoff via the reader's `finally` block.
+        _restart_count_carry: internal — used by the restart machinery to
+            propagate the lineage's restart counter to the new handle.
+            Not exposed over RPC.
 
     Raises:
         RuntimeError on handshake failure or if F-4 is disabled.
@@ -203,11 +360,32 @@ def start(
     )
 
     chan = JsonLineChannel(proc.stdout, proc.stdin)
+    effective_policy = restart_policy or RestartPolicy.disabled()
+    # Capture the exact kwargs we'd need to spawn a successor handle from
+    # this lineage. Stored on the handle so the reader's restart hook
+    # doesn't have to thread them through the closure.
+    start_kwargs = {
+        "name":             name,
+        "template_name":    template_name,
+        "args":             args,
+        "config":           config,
+        "interval":         float(interval),
+        "auto_approve":     bool(auto_approve),
+        "python":           python,
+        "originator":       str(originator or ""),
+        "permission_store": permission_store,
+        "restart_policy":   effective_policy,
+    }
     handle = RunnerHandle(
         name=name, run_id=run_id, pid=proc.pid,
         started_at=time.time(), proc=proc, chan=chan,
         template_name=template_name, args=args,
         auto_approve=bool(auto_approve),
+        originator=str(originator or ""),
+        permission_store=permission_store,
+        restart_policy=effective_policy,
+        restart_count=int(_restart_count_carry),
+        _start_kwargs=start_kwargs,
     )
 
     # Capture stderr in a background thread so a chatty runner can't
@@ -337,23 +515,96 @@ def _reader_loop(handle: RunnerHandle) -> None:
                         except Exception:
                             pass
                 elif op == "permission_request":
-                    # Auto-approve — matches AgentRunner default. Full
-                    # PermissionStore routing is a follow-up.
-                    try:
-                        handle.chan.send({
-                            "op":         "permission_response",
-                            "request_id": msg.get("request_id", ""),
-                            "granted":    True,
-                        })
-                    except (BrokenPipeError, OSError):
-                        break
+                    runner_rid = str(msg.get("request_id", ""))
+                    # Fast path: auto-approve runner or no store wired in.
+                    # Matches the in-thread AgentRunner default (auto_approve=True)
+                    # and the back-compat behaviour for callers that don't
+                    # pass a PermissionStore (unit tests, REPL).
+                    if handle.auto_approve or handle.permission_store is None:
+                        try:
+                            handle.chan.send({
+                                "op":         "permission_response",
+                                "request_id": runner_rid,
+                                "granted":    True,
+                            })
+                        except (BrokenPipeError, OSError):
+                            break
+                    else:
+                        # Route through PermissionStore so the originator
+                        # answers via `permission.answer`. The callback
+                        # forwards the result back to the runner. We use
+                        # the runner's request_id as the IPC correlation
+                        # token even though the store mints its own —
+                        # the runner doesn't need to learn about the
+                        # store's id at all.
+                        chan_ref = handle.chan
+                        def _on_answer(req, _runner_rid=runner_rid,
+                                       _chan=chan_ref):
+                            ans = req.answer or {}
+                            granted = bool(ans.get("approve"))
+                            try:
+                                _chan.send({
+                                    "op":         "permission_response",
+                                    "request_id": _runner_rid,
+                                    "granted":    granted,
+                                })
+                            except (BrokenPipeError, OSError):
+                                pass
+                        try:
+                            handle.permission_store.create(
+                                originator=handle.originator,
+                                tool=str(msg.get("tool", "")),
+                                tool_input=msg.get("input", {}) or {},
+                                rationale=str(msg.get("rationale", "")),
+                                on_answer=_on_answer,
+                            )
+                        except Exception as e:
+                            handle.error = (
+                                f"permission_routing: {type(e).__name__}: {e}"
+                            )[:512]
+                            try:
+                                handle.chan.send({
+                                    "op":         "permission_response",
+                                    "request_id": runner_rid,
+                                    "granted":    False,
+                                })
+                            except (BrokenPipeError, OSError):
+                                break
                 elif op == "exit":
                     handle.status = "stopping"   # waits for the proc to actually exit below
                     # Note: don't break here; proc.wait() will be observed.
                 elif op == "notify":
-                    # Send-fn output — currently dropped; bridge integration
-                    # is RFC 0002 F-6/7/8 work.
-                    pass
+                    # RFC 0002 F-4 #2 — forward the runner's `notify` IPC
+                    # payload to the bridge mailbox. The runner can target
+                    # a specific bridge by setting ``msg["bridge"]``
+                    # (e.g. "telegram") or omit it for a broadcast to every
+                    # live bridge ("*"). Best-effort: a missing/disabled
+                    # bridge does not raise — the runner shouldn't have to
+                    # know which channels its originator owns.
+                    text = msg.get("text") or msg.get("msg") or ""
+                    target = str(msg.get("bridge", "*") or "*")
+                    if text:
+                        try:
+                            from . import bridge_supervisor as _bs
+                            delivered = _bs.notify(target, str(text))
+                        except Exception as e:
+                            handle.error = (
+                                f"notify: {type(e).__name__}: {e}"[:512])
+                            delivered = False
+                        if bus is not None:
+                            try:
+                                bus.publish("agent_runner_notify", {
+                                    "name":      handle.name,
+                                    "run_id":    handle.run_id,
+                                    "bridge":    target,
+                                    "delivered": bool(delivered),
+                                    # Truncate aggressively — chat-sized
+                                    # notifications could be many KB and
+                                    # the event bus has retention bounds.
+                                    "text":      str(text)[:500],
+                                })
+                            except Exception:
+                                pass
                 elif op == "log":
                     # Forward through the daemon's logger when available.
                     # For the skeleton we just bus-publish at info level.
@@ -363,6 +614,38 @@ def _reader_loop(handle: RunnerHandle) -> None:
                                 "name":  handle.name,
                                 "level": msg.get("level", "info"),
                                 "msg":   msg.get("msg", ""),
+                            })
+                        except Exception:
+                            pass
+                elif op == "paused_budget":
+                    # RFC 0002 §F-9 — runner blocked on a budget cap.
+                    # Flip SQLite + publish quota_warn so the originator
+                    # can react (typically: agent.resume with bumped
+                    # budget_overrides).
+                    handle.status = "paused_budget"
+                    reason = str(msg.get("reason", ""))[:300]
+                    handle.error = reason     # surfaced via agent.status
+                    _db_update_run_status(handle, "paused_budget", reason)
+                    if bus is not None:
+                        try:
+                            bus.publish("quota_warn", {
+                                "name":   handle.name,
+                                "run_id": handle.run_id,
+                                "reason": reason,
+                            })
+                        except Exception:
+                            pass
+                elif op == "resumed":
+                    # Mirror of paused_budget — runner woke from the
+                    # pause and is about to attempt the next iteration.
+                    handle.status = "running"
+                    handle.error = ""
+                    _db_update_run_status(handle, "running", None)
+                    if bus is not None:
+                        try:
+                            bus.publish("agent_runner_resumed", {
+                                "name":   handle.name,
+                                "run_id": handle.run_id,
                             })
                         except Exception:
                             pass
@@ -414,6 +697,130 @@ def _reader_loop(handle: RunnerHandle) -> None:
                 })
             except Exception:
                 pass
+        # RFC 0002 F-4 #3 — restart policy. Only crashes trigger respawn;
+        # a graceful stop must never be followed by a restart (the user
+        # explicitly asked the runner to go away). The hook is best-effort:
+        # any failure inside _maybe_schedule_restart is logged on the
+        # handle but never re-raised, so the reader thread always exits
+        # cleanly.
+        if handle.status == "crashed":
+            try:
+                _maybe_schedule_restart(handle)
+            except Exception as e:
+                handle.error = (handle.error + " | "
+                                if handle.error else ""
+                                ) + f"restart_hook: {type(e).__name__}: {e}"
+
+
+# ── Restart hook (RFC 0002 F-4 #3) ────────────────────────────────────────
+
+
+def _maybe_schedule_restart(prev: RunnerHandle) -> None:
+    """Called from the reader's `finally` after a crash. If the lineage's
+    restart_policy says so, kick off a Timer that respawns the runner.
+
+    Sequence:
+      1. Compute next_delay() from the policy + restart_count.
+      2. If None: emit ``agent_runner_restart_exhausted`` (when the
+         lineage actually attempted at least one restart) so observers
+         can take over.  No event for "policy never enabled in the
+         first place" — that's the default and not worth the noise.
+      3. Otherwise: arm a threading.Timer for ``delay`` seconds; on fire,
+         call ``_do_restart`` which respawns via the global factory.
+
+    The Timer reference is stored on the handle so :func:`stop` can
+    cancel a pending restart before the user re-enters this corner of
+    the supervisor surface (otherwise a respawn could race past a
+    deliberate stop).
+    """
+    prev._restart_decided = True
+    policy = prev.restart_policy
+    delay = policy.next_delay(prev.restart_count)
+    bus = _get_event_bus()
+    if delay is None:
+        # Only emit "exhausted" when the lineage at least *tried* — for a
+        # disabled policy the event would be spam on every crash.
+        if policy.mode == "on-crash" and prev.restart_count > 0 and bus is not None:
+            try:
+                bus.publish("agent_runner_restart_exhausted", {
+                    "name":          prev.name,
+                    "run_id":        prev.run_id,
+                    "restart_count": prev.restart_count,
+                    "max_restarts":  policy.max_restarts,
+                })
+            except Exception:
+                pass
+        return
+
+    if bus is not None:
+        try:
+            bus.publish("agent_runner_restart_scheduled", {
+                "name":          prev.name,
+                "run_id":        prev.run_id,
+                "restart_count": prev.restart_count,
+                "delay_s":       delay,
+            })
+        except Exception:
+            pass
+
+    timer = threading.Timer(delay, _do_restart, args=(prev,))
+    timer.daemon = True
+    timer.name = f"f4-restart-{prev.name}"
+    prev._restart_timer = timer
+    timer.start()
+
+
+def _do_restart(prev: RunnerHandle) -> None:
+    """Timer callback. Re-spawn the runner with the same start_kwargs and
+    a bumped restart_count. A concurrent ``stop()`` may have unregistered
+    the lineage first — in that case we abort silently (the user is in
+    charge)."""
+    # Race guard: if the registry no longer holds *this* handle, the user
+    # called stop() between scheduling and firing. Don't respawn.
+    with _handles_lock:
+        current = _handles.get(prev.name)
+        if current is None or current.run_id != prev.run_id:
+            return
+        # Atomically swap the slot to a "restart in progress" sentinel so a
+        # second stop() arriving mid-restart doesn't double-fire.
+        _handles.pop(prev.name, None)
+
+    spawner = _RESTART_SPAWNER or start
+    try:
+        new_handle = spawner(
+            **prev._start_kwargs,
+            _restart_count_carry=prev.restart_count + 1,
+        )
+    except Exception as e:
+        # Respawn itself failed (e.g. handshake timeout because the agent
+        # template now blows up at import). Treat the lineage as
+        # exhausted at this attempt — no further auto-restart, but
+        # observers get a clear signal.
+        bus = _get_event_bus()
+        if bus is not None:
+            try:
+                bus.publish("agent_runner_restart_failed", {
+                    "name":          prev.name,
+                    "run_id":        prev.run_id,
+                    "restart_count": prev.restart_count,
+                    "error":         f"{type(e).__name__}: {e}"[:512],
+                })
+            except Exception:
+                pass
+        return
+
+    bus = _get_event_bus()
+    if bus is not None:
+        try:
+            bus.publish("agent_runner_restart", {
+                "name":           new_handle.name,
+                "old_run_id":     prev.run_id,
+                "new_run_id":     new_handle.run_id,
+                "restart_count":  new_handle.restart_count,
+                "pid":            new_handle.pid,
+            })
+        except Exception:
+            pass
 
 
 # ── Stop ──────────────────────────────────────────────────────────────────
@@ -428,12 +835,29 @@ def stop(name: str, *, timeout_s: float = 5.0) -> bool:
       3. After GRACEFUL_STOP_TIMEOUT_S + SIGTERM_GRACE_S: SIGKILL.
 
     Bounded by ``timeout_s`` (default 5 s — matches F-4 acceptance).
+
+    Side-effect: cancels any pending restart timer first (RFC 0002 F-4 #3).
+    A respawn that was scheduled because the runner crashed earlier must
+    not fire after the user explicitly asked for shutdown.
     """
     handle = get(name)
     if handle is None:
         return False
+
+    # Cancel any in-flight restart for this lineage. Doing this *before*
+    # the alive-check matters: if the previous process already exited and
+    # only a Timer is keeping the lineage going, we want to neuter the
+    # Timer and then return success.
+    timer = handle._restart_timer
+    if timer is not None:
+        try:
+            timer.cancel()
+        except Exception:
+            pass
+        handle._restart_timer = None
+
     if not handle.is_alive():
-        _unregister(name)
+        _unregister(name, expected=handle)
         return True
 
     handle.status = "stopping"
@@ -447,7 +871,7 @@ def stop(name: str, *, timeout_s: float = 5.0) -> bool:
 
     if _wait_until(handle.proc, deadline=min(deadline,
                    time.monotonic() + GRACEFUL_STOP_TIMEOUT_S)):
-        _unregister(name)
+        _unregister(name, expected=handle)
         return True
 
     # 2) SIGTERM.
@@ -460,13 +884,13 @@ def stop(name: str, *, timeout_s: float = 5.0) -> bool:
             pass
 
     if _wait_until(handle.proc, deadline=deadline):
-        _unregister(name)
+        _unregister(name, expected=handle)
         return True
 
     # 3) SIGKILL.
     _hard_kill(handle.proc)
     handle.proc.wait(timeout=1.0)
-    _unregister(name)
+    _unregister(name, expected=handle)
     return True
 
 
@@ -497,6 +921,29 @@ def stop_all(*, timeout_s: float = 5.0) -> int:
         if stop(name, timeout_s=timeout_s):
             n += 1
     return n
+
+
+def resume(name: str) -> bool:
+    """RFC 0002 §F-9 — send a ``resume`` IPC frame to a paused runner.
+
+    Returns True iff the frame was delivered. The runner's control loop
+    sets ``_resume_event`` on receipt; `_on_quota_exceeded` then unblocks,
+    re-checks the quota, and proceeds (or pauses again if the cap is
+    still too low).
+
+    A runner that wasn't paused will silently absorb the frame on the
+    control-loop side — so spurious resumes are safe.
+    """
+    handle = get(name)
+    if handle is None:
+        return False
+    if not handle.is_alive():
+        return False
+    try:
+        handle.chan.send({"op": "resume"})
+        return True
+    except (BrokenPipeError, OSError):
+        return False
 
 
 # ── SQLite persistence (agent_runs + agent_iterations) ───────────────────
@@ -581,6 +1028,25 @@ def _db_insert_iteration(handle: "RunnerHandle", msg: dict) -> bool:
         return False
 
 
+def _db_update_run_status(handle: "RunnerHandle", status: str,
+                          error: Optional[str]) -> bool:
+    """Best-effort agent_runs.status flip. Used by the F-9 paused_budget
+    / resumed IPC paths so SQLite reflects the runner's live state
+    without waiting for finalize. Idempotent: re-applying the same status
+    is a no-op at the SQL level."""
+    try:
+        from .schema import get_conn
+        conn = get_conn()
+        conn.execute(
+            "UPDATE agent_runs SET status = ?, error = ? WHERE id = ?",
+            (status, error, handle.run_id),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        return False
+
+
 def _db_finalize_run(handle: "RunnerHandle", *, status: str,
                      error: Optional[str] = None) -> bool:
     """UPDATE agent_runs at process exit. Idempotent — if the row is
@@ -643,10 +1109,12 @@ def _strip_unserialisable(cfg: dict) -> dict:
 
 
 __all__ = [
+    "RestartPolicy",
     "RunnerHandle",
     "enabled",
     "get",
     "list_all",
+    "resume",
     "start",
     "stop",
     "stop_all",

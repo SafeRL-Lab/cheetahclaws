@@ -633,6 +633,76 @@ def run_setup_wizard(config: dict) -> None:
     info("Type a message to start, or /help for available commands.\n")
 
 
+def _proactive_daemon_running() -> bool:
+    """Return True iff a *foreign* daemon owns the discovery file.
+
+    F-5: when one is up, ``/proactive`` mutates daemon-side state via
+    RPC instead of the in-process RuntimeContext. The "foreign" check
+    matches the pattern in `monitor/scheduler.py` — a daemon writing
+    its own discovery file must not defer to itself.
+    """
+    try:
+        import os
+        from cc_daemon import discovery
+        info_d = discovery.locate()
+        if info_d is None:
+            return False
+        peer_pid = info_d.get("pid")
+        return isinstance(peer_pid, int) and peer_pid != os.getpid()
+    except Exception:
+        return False
+
+
+def _proactive_rpc(method: str, params: dict | None = None) -> dict | None:
+    """One-shot daemon RPC call for the /proactive command. Returns the
+    JSON-RPC ``result`` dict or None on any failure (transport, auth,
+    etc.) — caller falls back to in-process state."""
+    try:
+        import http.client
+        import json
+        import os
+        from cc_daemon import API_VERSION, API_VERSION_HEADER, discovery
+
+        info_d = discovery.locate()
+        if info_d is None:
+            return None
+        address = info_d.get("address") or ""
+        if ":" not in address:
+            return None
+        host, port_s = address.rsplit(":", 1)
+        token_path = os.path.join(
+            os.path.expanduser("~"), ".cheetahclaws", "daemon_token"
+        )
+        try:
+            with open(token_path, "r", encoding="utf-8") as f:
+                token = f.read().strip()
+        except OSError:
+            return None
+        envelope = {"jsonrpc": "2.0", "id": 1, "method": method,
+                    "params": params or {}}
+        conn = http.client.HTTPConnection(host, int(port_s), timeout=3.0)
+        try:
+            conn.request(
+                "POST", "/rpc",
+                body=json.dumps(envelope).encode("utf-8"),
+                headers={
+                    "Authorization":     f"Bearer {token}",
+                    "Content-Type":      "application/json",
+                    API_VERSION_HEADER:  API_VERSION,
+                },
+            )
+            resp = conn.getresponse()
+            raw = resp.read()
+            if resp.status != 200:
+                return None
+            body = json.loads(raw)
+            return body.get("result")
+        finally:
+            conn.close()
+    except Exception:
+        return None
+
+
 def cmd_proactive(args: str, state, config) -> bool:
     """Manage proactive background polling.
 
@@ -640,13 +710,35 @@ def cmd_proactive(args: str, state, config) -> bool:
     /proactive 5m         — enable, trigger after 5 min of inactivity
     /proactive 30s / 1h   — enable with custom interval
     /proactive off        — disable
+
+    F-5: when ``cheetahclaws serve`` is running, the watcher lives in
+    the daemon and survives REPL exit. This command routes through the
+    ``proactive.set`` / ``proactive.get`` RPCs in that case; otherwise
+    it mutates the local RuntimeContext as before.
     """
     args = args.strip().lower()
 
     import runtime
     sctx = runtime.get_ctx(config)
+    daemon_up = _proactive_daemon_running()
 
     if not args:
+        if daemon_up:
+            result = _proactive_rpc("proactive.get")
+            if result is not None:
+                if result.get("enabled"):
+                    iv = int(result.get("interval_s", 300))
+                    info(
+                        f"Proactive background polling: ON (daemon)  "
+                        f"(triggering every {iv}s of inactivity)"
+                    )
+                else:
+                    info(
+                        "Proactive background polling: OFF (daemon)  "
+                        "(use /proactive 5m to enable)"
+                    )
+                return True
+            # Fall through to local view on RPC failure.
         if sctx.proactive_enabled:
             interval = sctx.proactive_interval
             info(f"Proactive background polling: ON  (triggering every {interval}s of inactivity)")
@@ -655,6 +747,13 @@ def cmd_proactive(args: str, state, config) -> bool:
         return True
 
     if args == "off":
+        if daemon_up:
+            result = _proactive_rpc(
+                "proactive.set", {"enabled": False, "interval_s": 300}
+            )
+            if result is not None:
+                info("Proactive background polling: OFF (daemon)")
+                return True
         sctx.proactive_enabled = False
         info("Proactive background polling: OFF")
         return True
@@ -672,11 +771,28 @@ def cmd_proactive(args: str, state, config) -> bool:
 
     try:
         val = int(val_str)
-        sctx.proactive_interval = val * multiplier
+        interval_s = val * multiplier
     except ValueError:
         err(f"Invalid duration: '{args}'. Use '5m', '30s', '1h', or 'off'.")
         return True
+    if interval_s < 1:
+        err("Interval must be >= 1 second.")
+        return True
 
+    if daemon_up:
+        result = _proactive_rpc(
+            "proactive.set", {"enabled": True, "interval_s": interval_s}
+        )
+        if result is not None:
+            iv = int(result.get("interval_s", interval_s))
+            info(
+                f"Proactive background polling: ON (daemon)  "
+                f"(triggering every {iv}s of inactivity)"
+            )
+            return True
+        # Fall back to local on RPC failure.
+
+    sctx.proactive_interval = interval_s
     sctx.proactive_enabled = True
     sctx.last_interaction_time = time.time()
     info(f"Proactive background polling: ON  (triggering every {sctx.proactive_interval}s of inactivity)")

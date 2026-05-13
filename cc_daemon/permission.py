@@ -14,7 +14,7 @@ import secrets
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 from . import events
 
@@ -46,6 +46,14 @@ class PermissionRequest:
     expires_at: float
     answer: Optional[dict] = field(default=None)
     resolved_at: Optional[float] = field(default=None)
+    # Fired once with this request after `answer` is set (either by the
+    # originator's RPC call or by the janitor's timeout path). Used by
+    # internal callers — e.g. the F-4 agent supervisor — that need to
+    # forward the result somewhere outside the RPC reply path. Never
+    # invoked under the store's lock.
+    on_answer: Optional[Callable[["PermissionRequest"], None]] = field(
+        default=None, repr=False
+    )
 
 
 class PermissionStore:
@@ -76,6 +84,7 @@ class PermissionStore:
         tool_input: dict,
         rationale: str = "",
         timeout_s: float = DEFAULT_TIMEOUT_INTERACTIVE_S,
+        on_answer: Optional[Callable[[PermissionRequest], None]] = None,
     ) -> PermissionRequest:
         rid = "pr_" + secrets.token_hex(8)
         now = time.time()
@@ -87,6 +96,7 @@ class PermissionStore:
             rationale=rationale,
             created_at=now,
             expires_at=now + timeout_s,
+            on_answer=on_answer,
         )
         with self._lock:
             self._pending[rid] = req
@@ -113,6 +123,14 @@ class PermissionStore:
             req.answer = result
             req.resolved_at = time.time()
             del self._pending[request_id]
+        # Fire the optional callback outside the lock so a slow consumer
+        # can't block other store operations.
+        cb = req.on_answer
+        if cb is not None:
+            try:
+                cb(req)
+            except Exception:
+                pass
         events.get_bus().publish(
             "permission_answered",
             {"request_id": request_id, "answer": result},
@@ -156,6 +174,17 @@ class PermissionStore:
                         expired.append(req)
                         del self._pending[rid]
             for req in expired:
+                # Synthesize an auto-deny so on_answer subscribers can
+                # treat timeout and explicit denial uniformly: check
+                # req.answer.get("approve") for the boolean outcome.
+                req.answer = {"approve": False, "timeout": True}
+                req.resolved_at = now
+                cb = req.on_answer
+                if cb is not None:
+                    try:
+                        cb(req)
+                    except Exception:
+                        pass
                 events.get_bus().publish(
                     "permission_timeout",
                     {"request_id": req.request_id, "auto_answer": "deny"},

@@ -353,10 +353,38 @@ def ask_permission_interactive(desc: str, config: dict) -> bool:
 
 # ── Proactive watcher ──────────────────────────────────────────────────────
 
+def _proactive_foreign_daemon_running() -> bool:
+    """True iff a daemon other than this process owns the discovery file.
+
+    F-5: when one is running, the daemon's :mod:`cc_daemon.proactive_scheduler`
+    fires the tick events; the REPL's own watcher must step aside so we
+    don't double-fire or run on stale local state.
+    """
+    try:
+        import os
+        from cc_daemon import discovery
+        info_d = discovery.locate()
+        if info_d is None:
+            return False
+        peer_pid = info_d.get("pid")
+        return isinstance(peer_pid, int) and peer_pid != os.getpid()
+    except Exception:
+        return False
+
+
 def _proactive_watcher_loop(config):
-    """Background daemon that fires a wake-up prompt after a period of inactivity."""
+    """Background daemon that fires a wake-up prompt after a period of inactivity.
+
+    F-5: when a foreign daemon is up, this loop becomes a no-op — the
+    daemon's scheduler owns the cadence and emits ``proactive_tick`` on
+    the SSE bus instead.
+    """
     while True:
         time.sleep(1)
+        if _proactive_foreign_daemon_running():
+            # Daemon owns the watcher. Skip the tick and wait for the
+            # next poll — discovery file disappearing flips this back.
+            continue
         sctx = runtime.get_ctx(config)
         if not sctx.proactive_enabled:
             continue
@@ -1407,6 +1435,17 @@ def repl(config: dict, initial_prompt: str = None):
         if user_input.startswith("!"):
             shell_cmd = user_input[1:].strip()
             if shell_cmd:
+                # Defense against bracketed-paste / clipboard injection: reject
+                # NUL bytes, ASCII control chars (except tab), and excessive
+                # length. Normal interactive commands never contain these.
+                if "\x00" in shell_cmd or any(
+                    (c < " " and c != "\t") for c in shell_cmd
+                ):
+                    warn("Shell escape: rejected control characters in command.")
+                    continue
+                if len(shell_cmd) > 4096:
+                    warn("Shell escape: command exceeds 4096 chars; refusing.")
+                    continue
                 print(clr(f"  $ {shell_cmd}", "dim"))
                 try:
                     import subprocess as _sp

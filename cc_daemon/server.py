@@ -65,10 +65,23 @@ class DaemonState:
         self.permissions.start_janitor()
         self.rpc = RpcRegistry()
         register_methods(self.rpc, self.permissions)
-        from . import system_methods, monitor_methods, agent_methods
+        from . import (
+            system_methods, monitor_methods, agent_methods, proactive_methods,
+            bridge_methods, session_methods,
+        )
         system_methods.register(self.rpc, self)
         monitor_methods.register(self.rpc, self)
         agent_methods.register(self.rpc, self)
+        proactive_methods.register(self.rpc, self)
+        # RFC 0002 F-6/7/8 — bridge_methods are registered unconditionally
+        # so a caller probing for `bridge.list` always gets a response, but
+        # `bridge.start` itself enforces the per-kind CHEETAHCLAWS_ENABLE_F<n>
+        # flag so a daemon that's not opted in stays REPL-equivalent.
+        bridge_methods.register(self.rpc, self)
+        # RFC 0002 F-6 Phase 2 — session.send / session.reply /
+        # session.list_recent.  The methods are I/O-free message-passing
+        # primitives, safe to register on any daemon (no feature flag).
+        session_methods.register(self.rpc, self)
         self.shutdown_event = threading.Event()
 
     def shutdown(self) -> None:

@@ -90,9 +90,36 @@ def _status(argv: list[str]) -> int:
     ok, payload = _call_rpc("system.ping")
     if ok and isinstance(payload, dict) and payload.get("result") == "pong":
         print("ping:        pong")
-        return 0
-    print(f"ping:        FAILED ({payload})", file=sys.stderr)
-    return 2
+    else:
+        print(f"ping:        FAILED ({payload})", file=sys.stderr)
+        return 2
+
+    # F-9 (RFC 0002 §F-9) — surface the live serve-mode budgets so the
+    # operator can sanity-check the defaults are wired in.  system.status
+    # is best-effort: an older daemon that pre-dates F-9 returns
+    # METHOD_NOT_FOUND, which we treat as "no budgets to display".
+    ok, payload = _call_rpc("system.status")
+    if ok and isinstance(payload, dict) and isinstance(payload.get("result"), dict):
+        result = payload["result"]
+        budgets = result.get("budgets") or {}
+        if any(v is not None for v in budgets.values()):
+            print("budgets:")
+            for k in ("session_token_budget", "session_cost_budget",
+                     "daily_token_budget",   "daily_cost_budget"):
+                v = budgets.get(k)
+                if v is None:
+                    rendered = "unlimited"
+                elif "cost" in k:
+                    rendered = f"${float(v):.2f}"
+                else:
+                    rendered = f"{int(v):,} tokens"
+                print(f"  {k:<22} {rendered}")
+        runners = result.get("runners", 0)
+        bridges = result.get("bridges", 0)
+        if runners or bridges:
+            print(f"runners:     {runners}")
+            print(f"bridges:     {bridges}")
+    return 0
 
 
 # ── stop ───────────────────────────────────────────────────────────────────
