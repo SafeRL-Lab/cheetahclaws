@@ -67,6 +67,15 @@ class RuntimeContext:
     wx_input_event:    Optional[threading.Event] = None
     wx_input_value:    str = ""
 
+    # ── QQ bridge ───────────────────────────────────────────────────────────────
+    qq_send: Optional[Callable] = None
+    qq_input_event: Optional[threading.Event] = None
+    qq_input_value: str = ""
+    qq_input_target_id: str = ""
+    in_qq_turn: bool = False
+    qq_current_target_id: str = ""
+    qq_current_msg_type: str = ""   # "group" or "c2c"
+
     # ── Live-streaming hooks (set by bridges before run_query; cleared after) ──
     # on_text_chunk(text)          — called for every TextChunk as it streams
     # on_tool_start(name, inputs)  — called when a tool call begins
@@ -88,6 +97,7 @@ class RuntimeContext:
     in_wechat_turn:   bool = False
     in_slack_turn:    bool = False
     telegram_incoming: bool = False
+    qq_incoming: bool = False
     wx_current_user_id:   str = ""
     slack_current_channel: str = ""
 

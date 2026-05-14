@@ -27,7 +27,8 @@ ocr         = ["pytesseract", "Pillow"]
 trading     = ["yfinance>=0.2.30", "rank-bm25>=0.2.2"]
 web         = ["sqlalchemy>=2.0", "bcrypt>=4.0", "PyJWT>=2.8.0"]
 litellm     = ["litellm>=1.60.0,<2.0.0"]
-all         = ["sounddevice", "Pillow", "prompt_toolkit>=3.0.43", "playwright", "pymupdf", "openpyxl", "pytesseract", "yfinance>=0.2.30", "rank-bm25>=0.2.2", "sqlalchemy>=2.0", "bcrypt>=4.0", "PyJWT>=2.8.0", "litellm>=1.60.0,<2.0.0"]
+qq          = ["qq-botpy>=1.2.1"]
+all         = ["sounddevice", "Pillow", "prompt_toolkit>=3.0.43", "playwright", "pymupdf", "openpyxl", "pytesseract", "yfinance>=0.2.30", "rank-bm25>=0.2.2", "sqlalchemy>=2.0", "bcrypt>=4.0", "PyJWT>=2.8.0", "litellm>=1.60.0,<2.0.0", "qq-botpy>=1.2.1"]
 
 [project.scripts]
 cheetahclaws = "cheetahclaws:main"

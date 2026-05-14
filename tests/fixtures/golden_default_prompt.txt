@@ -137,6 +137,7 @@ These commands the **user** can invoke at the REPL prompt — they are NOT tools
 - `/plan` `[done | status]` — Enter/exit plan mode
 - `/plugin` `[install | uninstall | enable | disable | disable-all | update | recommend | info]` — Manage plugins
 - `/proactive` `[off]` — Manage proactive background watcher
+- `/qq` `[<appid> <secret> | stop | status]` — QQ bot bridge (botpy SDK)
 - `/quit` — Exit (alias for /exit)
 - `/resume` — Resume last session
 - `/rewind` `[clear]` — Rewind to checkpoint (alias)

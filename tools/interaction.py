@@ -12,6 +12,7 @@ from typing import Optional
 _tg_thread_local    = threading.local()
 _wx_thread_local    = threading.local()
 _slack_thread_local = threading.local()
+_qq_thread_local    = threading.local()
 
 
 def _is_in_tg_turn(config: dict) -> bool:
@@ -35,6 +36,12 @@ def _is_in_slack_turn(config: dict) -> bool:
 def _is_in_web_turn(config: dict) -> bool:
     import runtime
     return bool(getattr(runtime.get_ctx(config), 'in_web_turn', False))
+
+
+def _is_in_qq_turn(config: dict) -> bool:
+    import runtime
+    return (getattr(_qq_thread_local, "active", False)
+            or bool(runtime.get_ctx(config).in_qq_turn))
 
 
 # ── options=… helpers (shared menu rendering + reply resolution) ─────────
@@ -236,6 +243,41 @@ def ask_input_interactive(prompt: str, config: dict,
         text = _session_ctx.wx_input_value.strip()
         _session_ctx.wx_input_event = None
         _session_ctx.wx_input_value = ""
+        return _resolve_choice(text, _value_map)
+
+    # ── QQ ────────────────────────────────────────────────────────────────
+    if _is_in_qq_turn(config) and _session_ctx.qq_send is not None:
+        clean_prompt = _re.sub(r'\x1b\[[0-9;]*m', '', prompt).strip()
+        payload = ""
+        if menu_text:
+            payload += _re.sub(r'\x1b\[[0-9;]*m', '', menu_text).strip() + "\n\n"
+        payload += f"❓ 需要输入\n{clean_prompt}"
+        if _menu_block:
+            payload += "\n\n" + _menu_block
+        # Echo to terminal for visibility
+        print(f"\n  📩 QQ 权限请求: {clean_prompt}")
+        if _menu_block:
+            for line in _menu_block.splitlines():
+                print(f"  {line}")
+        sctx = _runtime.get_ctx(config)
+        # Prefer thread-local target_id to avoid race conditions with concurrent handlers
+        target = (getattr(_qq_thread_local, "target_id", "")
+                  or getattr(sctx, "qq_current_target_id", "") or "")
+        if not target:
+            print(f"\n  ⚠ QQ 权限请求无法发送：target_id 为空")
+            return "(error: no QQ target_id)"
+        evt = _threading.Event()
+        _session_ctx.qq_input_target_id = target
+        _session_ctx.qq_input_event = evt
+        _session_ctx.qq_send(target, payload)
+        if not evt.wait(timeout=120):
+            _session_ctx.qq_input_event = None
+            _session_ctx.qq_input_target_id = ""
+            return "(timeout: no input received)"
+        text = _session_ctx.qq_input_value.strip()
+        _session_ctx.qq_input_event = None
+        _session_ctx.qq_input_value = ""
+        _session_ctx.qq_input_target_id = ""
         return _resolve_choice(text, _value_map)
 
     # ── Web (chat API) ────────────────────────────────────────────────────

@@ -91,6 +91,10 @@ DEFAULTS = {
     # "qwen_api_key":      "..."
     # "zhipu_api_key":     "..."
     # "deepseek_api_key":  "..."
+    # ── QQ Bot bridge ──────────────────────────────────────────────────────
+    # qq_appid / qq_secret from https://q.qq.com developer portal
+    "qq_appid":    "",
+    "qq_secret":   "",
     # ── WeChat smart-reply (off by default) ────────────────────────────────
     # When enabled, inbound messages from whitelisted contacts no longer
     # auto-reply via the agent.  Instead the auxiliary cheap model drafts
