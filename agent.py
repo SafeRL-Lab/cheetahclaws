@@ -87,6 +87,11 @@ def run(
         user_msg["images"] = [pending_img]
     state.messages.append(user_msg)
 
+    # Capture the caller's dict reference BEFORE the local rebind on the next
+    # line. Generic-model fallback writes the surviving model back through this
+    # reference so the user's next /ask inherits the swap (session stickiness).
+    _outer_config = config
+
     # Inject runtime metadata into config so tools (e.g. Agent) can access it
     config = {**config, "_depth": depth, "_system_prompt": system_prompt}
     session_id = config.get("_session_id", "default")
@@ -124,6 +129,15 @@ def run(
     # consecutive turns, then the master plan gets echoed as text twice.
     _readonly_sigs_seen: set[str] = set()
     _READ_ONLY_TOOLS = {"Read", "Glob", "Grep", "WebFetch", "WebSearch"}
+
+    # ── Generic model fallback state ───────────────────────────────────────
+    # Initialised once per run() so the swap is sticky across turns within a
+    # single user message. tried_fallback_idx = -1 means no fallback has been
+    # consumed yet; it advances by one each time the trigger gate fires.
+    # _primary_model_at_run_start is captured here so the exhaustion message
+    # can name the original primary even after a swap mutates config["model"].
+    _tried_fallback_idx = -1
+    _primary_model_at_run_start = config.get("model", "")
 
     while True:
         if cancel_check and cancel_check():
@@ -225,13 +239,76 @@ def run(
                         )
                         continue   # retry without consuming attempt budget
 
+                # Generic-model fallback: when the primary model fails with a
+                # retryable transport or API error AND the user has configured
+                # `fallback_models`, swap to the next entry and retry without
+                # consuming an `attempt` slot. Trigger categories are listed
+                # explicitly rather than reading `cerr.retryable` so AUTH and
+                # INVALID_REQUEST (both classifier-marked non-retryable) can
+                # still trip the fallback when a primary model is misconfigured
+                # or rejects the request body (e.g. image-not-supported).
+                _FALLBACK_TRIGGER_CATEGORIES = {
+                    _ErrCat.AUTH,
+                    _ErrCat.BILLING,
+                    _ErrCat.RATE_LIMIT,
+                    _ErrCat.OVERLOADED,
+                    _ErrCat.CONNECTION,
+                    _ErrCat.TIMEOUT,
+                    _ErrCat.INVALID_REQUEST,
+                }
+                _fallback_list = config.get("fallback_models") or []
+                if (cerr.category in _FALLBACK_TRIGGER_CATEGORIES
+                        and _fallback_list
+                        and _tried_fallback_idx + 1 < len(_fallback_list)):
+                    _next_idx = _tried_fallback_idx + 1
+                    _old_model = config.get("model", "")
+                    _new_model = _fallback_list[_next_idx]
+                    # Skip self-referential entries: same model as primary would refail.
+                    # Advance counter and continue without emitting a misleading [fallback] line.
+                    if _new_model == _old_model:
+                        _tried_fallback_idx = _next_idx
+                        continue
+                    _log.warn("auto_fallback",
+                               session_id=session_id,
+                               from_model=_old_model,
+                               to_model=_new_model,
+                               error_type=type(e).__name__,
+                               error_category=cerr.category.value,
+                               fallback_idx=_next_idx)
+                    yield TextChunk(
+                        f"\n[fallback] primary {_old_model} failed with "
+                        f"{type(e).__name__}, switched to {_new_model}\n"
+                    )
+                    # Mutate the caller's dict BEFORE rebinding the local name,
+                    # so the user's next /ask inherits the surviving model.
+                    _outer_config["model"] = _new_model
+                    config = {**config, "model": _new_model}
+                    _tried_fallback_idx = _next_idx
+                    continue   # retry without consuming attempt budget
+
                 if attempt >= max_retries or not cerr.retryable:
                     _log.error("api_failed", session_id=session_id,
                                error_type=type(e).__name__,
                                category=cerr.category.value,
                                error=_truncate_err(str(e)))
                     hint = f" Hint: {cerr.hint}" if cerr.hint else ""
-                    yield TextChunk(f"\n[Failed — {type(e).__name__}: {_truncate_err(str(e))}.{hint}]\n")
+                    if _tried_fallback_idx >= 0:
+                        _attempted = [_primary_model_at_run_start] + list(
+                            _fallback_list[: _tried_fallback_idx + 1]
+                        )
+                        _attempted_str = ", ".join(
+                            m[:60] for m in _attempted if m
+                        )
+                        yield TextChunk(
+                            f"\n[Failed — all models exhausted ({_attempted_str}). "
+                            f"Last error: {type(e).__name__}: "
+                            f"{_truncate_err(str(e))}.{hint}]\n"
+                        )
+                    else:
+                        yield TextChunk(
+                            f"\n[Failed — {type(e).__name__}: "
+                            f"{_truncate_err(str(e))}.{hint}]\n"
+                        )
                     break
 
                 if cerr.should_compress:

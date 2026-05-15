@@ -15,6 +15,16 @@ MR_SESSION_DIR = SESSIONS_DIR / "mr_sessions"
 
 DEFAULTS = {
     "model":            "ollama/gemma4:e4b",
+    # ── Generic model fallback ─────────────────────────────────────────────
+    # Priority-ordered list of model strings consulted ONLY when the primary
+    # model raises a retryable transport or API error (rate-limit, auth,
+    # 4xx bad-request, 5xx overloaded, connection, timeout). The active
+    # model is mutated to the surviving fallback so the user's next /ask
+    # inherits the swap for session stickiness; this is NOT persisted to
+    # config.json (use /model to make a swap permanent).
+    # Orthogonal to nim_auto_fallback (which cycles within the NIM tier on
+    # 429s) — the NIM cascade still runs first when applicable.
+    "fallback_models":  [],
     "max_tokens":       40000,
     "permission_mode":  "auto",   # auto | accept-all | manual
     "verbose":          False,
