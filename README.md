@@ -166,6 +166,7 @@ CheetahClaws: **A Lightweight** and **Easy-to-Use** Python Reimplementation of C
  </div>
 
 
+<!--
 
 ---
 
@@ -224,6 +225,8 @@ CheetahClaws: **A Lightweight** and **Easy-to-Use** Python Reimplementation of C
  </div>
 
 ---
+
+-->
 
  <div align=center>
  <img src="docs/media/demos/trading_demo.gif" width="850"/> 
