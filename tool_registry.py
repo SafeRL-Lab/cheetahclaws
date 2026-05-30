@@ -178,3 +178,113 @@ def execute_tool(
 def clear_registry() -> None:
     """Remove all registered tools. Intended for testing."""
     _registry.clear()
+
+
+# ── Tool scheduling support ────────────────────────────────────────────────
+
+import copy as _copy
+import json as _json
+
+_SCHEDULING_PROPS = {
+    "tool_call_alias": {
+        "type": "string",
+        "description": (
+            "Optional alias for this tool call. "
+            "Other tools can reference it in depends_on."
+        ),
+    },
+    "depends_on": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": (
+            "List of tool_call IDs or aliases that must complete before this tool runs."
+        ),
+    },
+}
+
+
+def _coerce_params(params: dict, schema: dict) -> dict:
+    """Coerce string parameter values to their schema-declared types.
+
+    Coercion failure is not a hard error: the original string is kept and
+    passed to the tool handler, which will surface a clear type error to
+    the model (e.g. `expected int, got 'abc'`) far more usefully than a
+    ValueError from the registry wrapper.
+    """
+    props = schema.get("properties", {})
+    return {k: _coerce_value_for(k, v, props) for k, v in params.items()}
+
+
+def _coerce_value_for(key: str, value, props: dict):
+    """Coerce a single value according to its declared type, else return as-is."""
+    prop_schema = props.get(key)
+    if not prop_schema or not isinstance(value, str):
+        return value
+    coercer = _COERCERS.get(prop_schema.get("type"))
+    if coercer is None:
+        return value
+    return coercer(value)
+
+
+def _coerce_int(value):
+    try:
+        return int(value)
+    except ValueError:
+        return value  # intentional: tool handler reports the real type mismatch
+
+
+def _coerce_float(value):
+    try:
+        return float(value)
+    except ValueError:
+        return value
+
+
+def _coerce_bool(value):
+    return value.lower() in ("true", "1", "yes")
+
+
+def _coerce_json(value):
+    try:
+        return _json.loads(value)
+    except (ValueError, _json.JSONDecodeError):
+        return value
+
+
+_COERCERS = {
+    "integer": _coerce_int,
+    "number":  _coerce_float,
+    "boolean": _coerce_bool,
+    "array":   _coerce_json,
+    "object":  _coerce_json,
+}
+
+
+# Wrap get_tool_schemas to inject scheduling properties
+_orig_get_tool_schemas = get_tool_schemas
+
+
+def get_tool_schemas():
+    """Return tool schemas with scheduling properties injected."""
+    schemas = _orig_get_tool_schemas()
+    result = []
+    for s in schemas:
+        s = _copy.deepcopy(s)
+        props = s.setdefault("properties", {})
+        for k, v in _SCHEDULING_PROPS.items():
+            props.setdefault(k, _copy.deepcopy(v))
+        result.append(s)
+    return result
+
+
+# Wrap execute_tool to strip scheduling params and coerce types
+_orig_execute_tool = execute_tool
+
+
+def execute_tool(name, params, *args, **kwargs):
+    """Execute a tool after stripping scheduling params and coercing types."""
+    clean = {k: v for k, v in params.items() if k not in _SCHEDULING_PROPS}
+    tool = get_tool(name)
+    if tool is not None:
+        clean = _coerce_params(clean, tool.schema)
+    return _orig_execute_tool(name, clean, *args, **kwargs)
