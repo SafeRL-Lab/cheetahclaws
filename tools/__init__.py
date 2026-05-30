@@ -667,13 +667,21 @@ _EXTENSION_MODULES = [
     "skill.tools",
     "cc_mcp.tools",
     "task.tools",
+    "tools.plan_mode",
 ]
 
 for _mod_name in _EXTENSION_MODULES:
     try:
         __import__(_mod_name)
-    except Exception:
-        pass  # Extension loading is best-effort; never crash startup
+    except Exception as _ext_err:
+        # Best-effort loading — a missing optional extension must not crash startup,
+        # but the cause should still be visible on stderr for diagnosis.
+        import sys as _sys
+        print(
+            f"[tools] extension {_mod_name!r} failed to load: "
+            f"{type(_ext_err).__name__}: {_ext_err}",
+            file=_sys.stderr,
+        )
 
 from multi_agent.tools import get_agent_manager as _get_agent_manager  # noqa: F401
 
@@ -697,95 +705,6 @@ for _sub in ("browser", "email", "files"):
     except Exception:
         pass
 
-# ── Plan mode tools (EnterPlanMode / ExitPlanMode) ────────────────────────
-
-from pathlib import Path as _Path
-
-
-def _enter_plan_mode(params: dict, config: dict) -> str:
-    if config.get("permission_mode") == "plan":
-        return "Already in plan mode. Write your plan to the plan file, then call ExitPlanMode."
-
-    session_id = config.get("_session_id", "default")
-    plans_dir  = _Path(config.get("_worktree_cwd") or _Path.cwd()) / ".nano_claude" / "plans"
-    plans_dir.mkdir(parents=True, exist_ok=True)
-    plan_path  = plans_dir / f"{session_id}.md"
-
-    task_desc = params.get("task_description", "")
-    if not plan_path.exists() or plan_path.stat().st_size == 0:
-        header = f"# Plan: {task_desc}\n\n" if task_desc else "# Plan\n\n"
-        plan_path.write_text(header, encoding="utf-8")
-
-    import runtime
-    sctx = runtime.get_ctx(config)
-    sctx.prev_permission_mode = config.get("permission_mode", "auto")
-    config["permission_mode"]  = "plan"
-    sctx.plan_file             = str(plan_path)
-    return (
-        f"Plan mode activated. Plan file: {plan_path}\n"
-        "Write your step-by-step plan to the plan file, then call ExitPlanMode when ready to implement."
-    )
-
-
-def _exit_plan_mode(params: dict, config: dict) -> str:
-    if config.get("permission_mode") != "plan":
-        return "Not in plan mode."
-    import runtime
-    sctx = runtime.get_ctx(config)
-    plan_file = sctx.plan_file or ""
-    plan_content = ""
-    if plan_file:
-        try:
-            plan_content = _Path(plan_file).read_text(encoding="utf-8").strip()
-        except Exception:
-            plan_content = ""
-
-    # Reject if plan file is effectively empty (only whitespace / top-level title)
-    # A top-level title is exactly "# ..." (single #).  ## sections count as content.
-    non_trivial_lines = [
-        l for l in plan_content.splitlines()
-        if l.strip() and not (l.strip().startswith("# ") and not l.strip().startswith("## "))
-    ]
-    if not non_trivial_lines:
-        return (
-            "Plan is empty — please write your step-by-step plan to the plan file "
-            f"({plan_file}) before exiting plan mode."
-        )
-
-    config["permission_mode"] = sctx.prev_permission_mode or "auto"
-    sctx.prev_permission_mode = None
-    sctx.plan_file = None
-    return (
-        f"Plan mode exited. Resuming normal permissions.\n\n"
-        f"Plan content:\n{plan_content}\n\n"
-        "Wait for the user to approve the plan before executing any steps."
-    )
-
-
-_plan_schema_enter = {
-    "name": "EnterPlanMode",
-    "description": (
-        "Switch to plan mode: read-only except for writing the plan file. "
-        "Use this to analyze a task and write a step-by-step plan before executing."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "task_description": {
-                "type": "string",
-                "description": "Brief description of what you plan to do",
-            },
-        },
-        "required": [],
-    },
-}
-_plan_schema_exit = {
-    "name": "ExitPlanMode",
-    "description": "Exit plan mode and return to normal permissions to begin executing the plan.",
-    "input_schema": {"type": "object", "properties": {}, "required": []},
-}
-
-register_tool(ToolDef("EnterPlanMode", _plan_schema_enter, _enter_plan_mode,
-                       read_only=True, concurrent_safe=False))
-register_tool(ToolDef("ExitPlanMode",  _plan_schema_exit,  _exit_plan_mode,
-                       read_only=False, concurrent_safe=False))
+# Plan mode tools (EnterPlanMode / ExitPlanMode) are registered by
+# tools/plan_mode.py via the extension loader above; the old inline block
+# that used to live here is removed so there is a single source of truth.
