@@ -1,5 +1,7 @@
 English | [中文](README.CN.MD) | [Français](README.FR.MD) | [한국어](README.KO.MD) | [日本語](README.JP.MD) | [Deutsch](README.DE.MD) | [Português](README.ES.MD)
 
+> ⚠️ Diese Übersetzung ist möglicherweise veraltet. Die aktuelle und maßgebliche Version finden Sie in der englischen [README](../../README.md).
+
 <br>
 
 

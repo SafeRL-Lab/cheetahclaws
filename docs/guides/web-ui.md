@@ -1,6 +1,6 @@
 # Web UI Guide
 
-CheetahClaws ships with a production-ready browser UI built on a pure Python stdlib HTTP server plus nine small vanilla-JS modules — no Node.js, no bundler, no build step. This guide covers installation, accounts, the Chat UI, the PTY terminal, the full HTTP API, observability, and how the pieces fit together.
+CheetahClaws ships with a production-ready browser UI built on a pure Python stdlib HTTP server plus ten small vanilla-JS modules — no Node.js, no bundler, no build step. This guide covers installation, accounts, the Chat UI, the PTY terminal, the full HTTP API, observability, and how the pieces fit together.
 
 <div align="center">
  <img src="../media/demos/web_demo.gif" width="850" alt="Web UI demo — sidebar, tool cards, approval prompts, markdown streaming"/>
@@ -133,9 +133,10 @@ Schema is bootstrapped on first run via `Base.metadata.create_all`. **In-place m
 
 ## The Chat UI (`/chat`)
 
-The thin `chat.html` (~550 lines of HTML + CSS) loads nine small JS modules in order:
+The thin `chat.html` (~550 lines of HTML + CSS) loads ten small JS modules in order:
 
 ```
+web/static/js/csrf.js       — patches window.fetch to echo the CSRF cookie on writes (loaded first)
 web/static/js/chat.js       — ChatApp class, constructor, send(), WS, SSE, event dispatch
 web/static/js/util.js       — _escapeHtml, _fmtRelTime, _renderMd (with XSS strip), _scrollBottom
 web/static/js/auth.js       — bootstrap, doAuth, whoami, logout, _fetchAuth

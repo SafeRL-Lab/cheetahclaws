@@ -7,17 +7,17 @@ The full positioning analysis. The [README](../../README.md) carries a condensed
 
 Claude Code is a powerful, production-grade AI coding assistant — but its source code is a compiled, 12 MB TypeScript/Node.js bundle (~1,300 files, ~283K lines). It is tightly coupled to the Anthropic API, hard to modify, and impossible to run against a local or alternative model.
 
-**CheetahClaws** reimplements the same core loop in ~40K lines of readable Python, keeping everything you need and dropping what you don't.
+**CheetahClaws** reimplements the same core loop in ~90K lines of readable Python (core, excluding tests), keeping everything you need and dropping what you don't.
 
 ### At a glance
 
 | Dimension | Claude Code (TypeScript) | CheetahClaws (Python) |
 |-----------|--------------------------|---------------------------|
 | Language | TypeScript + React/Ink | Python 3.8+ |
-| Source files | ~1,332 TS/TSX files | ~85 Python files |
-| Lines of code | ~283K | ~40K |
+| Source files | ~1,332 TS/TSX files | ~315 Python files (core; ~445 with tests) |
+| Lines of code | ~283K | ~90K (core; ~127K with tests) |
 | Built-in tools | 44+ | 27 |
-| Slash commands | 88 | 36 |
+| Slash commands | 88 | 50+ |
 | Voice input | Proprietary Anthropic WebSocket (OAuth required) | Local Whisper / OpenAI API — works offline, no subscription |
 | Model providers | Anthropic only | 8+ (Anthropic · OpenAI · Gemini · Kimi · Qwen · DeepSeek · MiniMax · Ollama · …) |
 | Local models | No | Yes — Ollama, LM Studio, vLLM, any OpenAI-compatible endpoint |
@@ -37,7 +37,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 
 - **Multi-provider** — switch between Claude, GPT-4o, Gemini 2.5 Pro, DeepSeek, Qwen, MiniMax, or a local Llama model with `--model` or `/model` — no recompile needed.
 - **Local model support** — run entirely offline with Ollama, LM Studio, or any vLLM-hosted model.
-- **Readable source** — the full agent loop is 174 lines (`agent.py`). Any Python developer can read, fork, and extend it in minutes.
+- **Readable source** — the agent loop lives in one readable file (`agent.py`, ~740 lines). Any Python developer can read, fork, and extend it in minutes.
 - **Zero build** — `pip install -r requirements.txt` and you're running. Changes take effect immediately.
 - **Dynamic extensibility** — register new tools at runtime with `register_tool(ToolDef(...))`, install skill packs from git URLs, or wire in any MCP server.
 - **Task dependency graph** — `TaskCreate` / `TaskUpdate` support `blocks` / `blocked_by` edges for structured multi-step planning (not available in Claude Code).
@@ -57,7 +57,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 - **Rich Live streaming rendering** — When `rich` is installed, responses stream as live-updating Markdown in place (no duplicate raw text), with clean tool-call interleaving.
 - **Native Ollama reasoning** — Local reasoning models (deepseek-r1, qwen3, gemma4) stream their `<think>` tokens directly to the terminal via `ThinkingChunk` events; enable with `/verbose` and `/thinking`.
 - **Native Ollama vision** — `/image [prompt]` captures the clipboard and sends it to local vision models (llava, gemma4, llama3.2-vision) via Ollama's native image API. No cloud required.
-- **Built-in Web UI** — `--web` launches a production-ready browser interface: multi-user accounts (bcrypt + JWT), SQLite-backed session history that survives restarts, rich Chat UI at `/chat` with streaming messages, tool cards, permission approval, sidebar session CRUD + search + markdown export, light/dark/system theme, settings panel with per-provider API keys. Full xterm.js PTY terminal at `/` keeps 100% CLI parity. Ops endpoints (`/health`, `/metrics`) + structured JSON logs + 21 pytest end-to-end tests. Nine tiny vanilla-JS modules under `web/static/js/` — no Node.js, no React, no build step. `cheetahclaws --web` auto-picks a free port if 8080 is taken.
+- **Built-in Web UI** — `--web` launches a production-ready browser interface: multi-user accounts (bcrypt + JWT), SQLite-backed session history that survives restarts, rich Chat UI at `/chat` with streaming messages, tool cards, permission approval, sidebar session CRUD + search + markdown export, light/dark/system theme, settings panel with per-provider API keys. Full xterm.js PTY terminal at `/` keeps 100% CLI parity. Ops endpoints (`/health`, `/metrics`) + structured JSON logs + 21 pytest end-to-end tests. Ten tiny vanilla-JS modules under `web/static/js/` — no Node.js, no React, no build step. `cheetahclaws --web` auto-picks a free port if 8080 is taken.
 - **Reliable multi-line paste** — Bracketed Paste Mode (`ESC[?2004h`) collects any pasted text — code blocks, multi-paragraph prompts, long diffs — as a single turn with zero latency and no blank-line artifacts.
 - **Rich Tab completion** — Tab after `/` shows all commands with one-line descriptions and subcommand hints; subcommand Tab-complete works for `/mcp`, `/plugin`, `/tasks`, `/cloudsave`, and more.
 - **Checkpoint & rewind** — `/checkpoint` lists all auto-snapshots of conversation + file state; `/checkpoint <id>` rewinds both files and history to any earlier point in the session.
@@ -74,8 +74,8 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Dimension | OpenClaw (TypeScript) | CheetahClaws (Python) |
 |-----------|----------------------|---------------------|
 | Language | TypeScript + Node.js | Python 3.8+ |
-| Source files | ~10,349 TS/JS files | ~85 Python files |
-| Lines of code | ~245K | ~12K |
+| Source files | ~10,349 TS/JS files | ~315 Python files (core) |
+| Lines of code | ~245K | ~90K (core) |
 | Primary focus | Personal life assistant across messaging channels | AI **coding** assistant / developer tool |
 | Architecture | Always-on Gateway daemon + companion apps | Zero-install terminal REPL |
 | Messaging channels | 20+ (WhatsApp · Telegram · Slack · Discord · Signal · iMessage · Matrix · WeChat · …) | Terminal + Telegram bridge + WeChat bridge (iLink) + Slack bridge (Web API) + QQ bridge (botpy) |
@@ -88,7 +88,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Live Canvas / UI | Yes (A2UI agent-driven visual workspace) | — |
 | MCP support | — | Yes (stdio/SSE/HTTP) |
 | Runtime extensibility | Skills platform (bundled/managed/workspace) | `register_tool()` at runtime, MCP, git plugins, Markdown skills |
-| Hackability | Large codebase (245K lines), harder to modify | ~12K lines — full agent loop visible in one file |
+| Hackability | Large codebase (245K lines), harder to modify | ~90K lines — agent loop visible in one file |
 
 ### Where OpenClaw wins
 
@@ -104,7 +104,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 - **Coding toolset** — Read/Write/Edit/Bash/Glob/Grep/NotebookEdit/GetDiagnostics are purpose-built for software development; CheetahClaws understands diffs, file trees, and code structure.
 - **True local model support** — full Ollama/vLLM/LM Studio integration with streaming, tool-calling, and vision — no cloud required.
 - **8+ model providers** — switch between Claude, GPT-4o, Gemini, DeepSeek, Qwen, MiniMax, and local models with a single `--model` flag.
-- **Hackable in minutes** — 12K lines of readable Python; the entire agent loop is in `agent.py`; extend with `register_tool()` at runtime without rebuilding.
+- **Hackable in minutes** — ~90K lines of readable Python; the entire agent loop is in one file (`agent.py`); extend with `register_tool()` at runtime without rebuilding.
 - **Zero setup** — `pip install cheetahclaws` and run `cheetahclaws`; no daemon, no pairing, no onboarding wizard.
 - **MCP support** — connect any MCP server (stdio/SSE/HTTP); tools auto-registered.
 - **SSJ Developer Mode** — `/ssj` power menu chains Brainstorm → TODO → Worker → Debate in a persistent interactive session; automates entire dev workflows.

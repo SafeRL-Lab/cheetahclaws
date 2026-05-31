@@ -1,5 +1,7 @@
 English | [中文](README.CN.MD) | [Français](README.FR.MD) | [한국어](README.KO.MD) | [日本語](README.JP.MD) | [Deutsch](README.DE.MD) | [Português](README.ES.MD)
 
+> ⚠️ 此翻译可能已过时。最新、最准确的内容请以英文 [README](../../README.md) 为准。
+
 <br>
 
 <div align="center">

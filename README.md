@@ -8,7 +8,7 @@ English | [中文](docs/i18n/README.CN.MD) | [한국어](docs/i18n/README.KO.MD)
   </a>
 
   
-<h2 align="center" style="font-size: 30px;"><strong><em>CheetahClaws</em></strong>: A Fast, Easy-to-Use, Agent Infrastructure for Long-Horizon, Multi-Model, Tool-Using AI Systems</h2>
+<h2 align="center" style="font-size: 30px;"><strong><em>CheetahClaws</em></strong>: A Fast and Easy-to-Use Agent Infrastructure for Long-Horizon, Multi-Model and Tool-Using AI Systems</h2>
 <p align="center">
     <a href="https://cheetahclaws.github.io/">Website</a>
     ·
@@ -99,13 +99,13 @@ CheetahClaws: **A Lightweight** and **Easy-to-Use** Python Reimplementation of C
 
 Claude Code is a powerful, production-grade AI coding assistant — but its source is a compiled ~12 MB TypeScript/Node bundle (~1,300 files, ~283K lines), tightly coupled to the Anthropic API, hard to modify, and impossible to run against a local or alternative model.
 
-**CheetahClaws** reimplements the same core loop in ~40K lines of readable Python — keeping what you need, dropping what you don't, and adding multi-provider + local-model support. Full comparison: [docs/guides/comparison.md](docs/guides/comparison.md).
+**CheetahClaws** reimplements the same core loop in ~90K lines of readable Python — keeping what you need, dropping what you don't, and adding multi-provider + local-model support. Full comparison: [docs/guides/comparison.md](docs/guides/comparison.md).
 
 | Dimension | Claude Code (TypeScript) | CheetahClaws (Python) |
 |---|---|---|
 | Language | TypeScript + React/Ink | Python 3.8+ |
-| Source files / LoC | ~1,332 files / ~283K | ~85 files / ~40K |
-| Built-in tools / commands | 44+ / 88 | 27 / 36 |
+| Source files / LoC | ~1,332 files / ~283K | ~315 files / ~90K (core; ~127K with tests) |
+| Built-in tools / commands | 44+ / 88 | 27 / 50+ |
 | Model providers | Anthropic only | 8+ (Anthropic · OpenAI · Gemini · Kimi · Qwen · DeepSeek · MiniMax · …) |
 | Local models | No | Yes — Ollama, LM Studio, vLLM, any OpenAI-compatible endpoint |
 | Build step | Yes (Bun + esbuild) | No — `python cheetahclaws.py` |
@@ -114,7 +114,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 
 **Where Claude Code wins:** richer React/Ink UI, more built-in tools, enterprise features (MDM, team permission sync, OAuth/keychain), AI-driven memory extraction, single-binary production reliability.
 
-**Where CheetahClaws wins:** any-model switching (`--model`/`/model`, no recompile) incl. full local/offline support; a readable ~174-line agent loop (`agent.py`); zero build; runtime tool registration + MCP + git plugins + Markdown skills; task dependency graph (`blocks`/`blocked_by`); two-layer context compression; offline voice; cloud session sync; bridges to Telegram/WeChat/Slack/QQ.
+**Where CheetahClaws wins:** any-model switching (`--model`/`/model`, no recompile) incl. full local/offline support; a readable agent loop in one file (`agent.py`, ~740 lines); zero build; runtime tool registration + MCP + git plugins + Markdown skills; task dependency graph (`blocks`/`blocked_by`); two-layer context compression; offline voice; cloud session sync; bridges to Telegram/WeChat/Slack/QQ.
 
 **Who it's for:** developers who want a local/non-Anthropic coding assistant, researchers studying how agentic assistants work, and teams who need a hackable baseline — without a Node.js build chain.
 
@@ -126,7 +126,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 
 | Dimension | OpenClaw (TypeScript) | CheetahClaws (Python) |
 |---|---|---|
-| Lines of code | ~245K (~10,349 files) | ~12K (~85 files) |
+| Lines of code | ~245K (~10,349 files) | ~90K core (~315 files) |
 | Primary focus | Personal assistant across channels | AI coding assistant / dev tool |
 | Architecture | Always-on Gateway daemon + apps | Zero-install terminal REPL |
 | Messaging channels | 20+ (WhatsApp · Signal · iMessage · Discord · Matrix · …) | Terminal + Telegram · WeChat · Slack · QQ bridges |
@@ -134,7 +134,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Code editing tools | Browser control, Canvas | Read · Write · Edit · Bash · Glob · Grep · NotebookEdit · GetDiagnostics |
 | Mobile / Live Canvas | Yes (menu bar + iOS/Android, A2UI) | — |
 | MCP support | — | Yes (stdio/SSE/HTTP) |
-| Hackability | 245K lines, harder to modify | ~12K lines — agent loop in one file |
+| Hackability | 245K lines, harder to modify | ~90K lines — agent loop in one file |
 
 | If you want… | Use |
 |---|---|
@@ -160,7 +160,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Multi-agent | Spawn typed sub-agents (coder/reviewer/researcher/…), git-worktree isolation, background mode |
 | Permission system | `auto` / `accept-all` / `manual` / `plan` modes |
 | Checkpoints & plan mode | Auto-snapshot conversation + files each turn (`/checkpoint`, `/rewind`); `/plan` read-only analysis mode |
-| Slash commands & themes | 37 slash commands with Tab-complete; `/theme` offers 15 curated palettes |
+| Slash commands & themes | 50+ slash commands with Tab-complete; `/theme` offers 15 curated palettes |
 | Brainstorm → Worker | `/brainstorm` runs an N-persona debate → `todo_list.txt`; `/worker` auto-implements the pending tasks |
 | SSJ Developer Mode | `/ssj` — persistent power menu chaining Brainstorm, Worker, Review, Trading, Agent, Video/TTS, Monitor, etc. |
 | Trading agent | `/trading` multi-agent analysis, backtesting, paper-trade calibration, MV portfolios. [Guide](docs/guides/trading.md) |
@@ -350,7 +350,7 @@ A built-in AI trading analysis + backtesting module (`pip install "cheetahclaws[
 
 ## Web UI
 
-A production-ready browser interface — real user accounts (bcrypt + JWT), SQLite-backed history, ops endpoints — served by Python stdlib + nine vanilla-JS modules (no Node.js / React / build step).
+A production-ready browser interface — real user accounts (bcrypt + JWT), SQLite-backed history, ops endpoints — served by Python stdlib + ten vanilla-JS modules (no Node.js / React / build step).
 
 ```bash
 pip install 'cheetahclaws[web]'
@@ -375,7 +375,7 @@ Detailed guides live in [`docs/guides/`](docs/guides/) to keep this README focus
 | [**Usage (all providers)**](docs/guides/usage.md) | Per-provider setup + example commands: Anthropic/OpenAI/Gemini/Kimi/Qwen/Zhipu/DeepSeek/MiniMax/litellm, and local Ollama/LM Studio/vLLM |
 | [**Web UI**](docs/guides/web-ui.md) | Chat UI, PTY terminal, API endpoints, settings, auth, SSE streaming |
 | [**Docker / Home Server**](docs/guides/docker.md) | Dockerfile + compose: web UI + bridges in one container, host Ollama, workspace mount |
-| [**Reference**](docs/guides/reference.md) | CLI, 36+ commands, 33 built-in tools, session search, error classification, tool cache |
+| [**Reference**](docs/guides/reference.md) | CLI, 50+ commands, 33 built-in tools, session search, error classification, tool cache |
 | [**Extensions**](docs/guides/extensions.md) | Memory, Skills, Sub-Agents, MCP servers, Plugins, Monitor, Autonomous Agents |
 | [**Bridges**](docs/guides/bridges.md) | Telegram, WeChat, Slack, QQ setup + remote control from your phone |
 | [**Security & env vars**](docs/guides/security.md) | Threat model, `CHEETAHCLAWS_*` vars, bot-token handling, Bash denylist, fs sandbox, CSRF |
@@ -416,7 +416,7 @@ cheetahclaws --accept-all -p "Init a pyproject.toml"  # CI / automation
 cheetahclaws --web --port 8008 --no-auth              # browser chat + terminal
 ```
 
-See the [Reference Guide](docs/guides/reference.md) for all 37+ slash commands, tools, and config options.
+See the [Reference Guide](docs/guides/reference.md) for all 50+ slash commands, tools, and config options.
 
 ---
 
@@ -469,6 +469,26 @@ cat error.log | cheetahclaws -p "What is causing this error?"
 
 ---
 
+## Thanks to all contributors:
+
+<!-- contributors:start -->
+
+<a href="https://github.com/chauncygu"><img src="https://avatars.githubusercontent.com/u/27274029?v=4&s=48" width="48" height="48" alt="chauncygu"/></a>
+<a href="https://github.com/KevRojo"><img src="https://avatars.githubusercontent.com/u/9065636?v=4&s=48" width="48" height="48" alt="KevRojo"/></a>
+<a href="https://github.com/mxh1999"><img src="https://avatars.githubusercontent.com/u/30319236?v=4&s=48" width="48" height="48" alt="mxh1999"/></a>
+<a href="https://github.com/seetvn"><img src="https://avatars.githubusercontent.com/u/100040536?v=4&s=48" width="48" height="48" alt="seetvn"/></a>
+<a href="https://github.com/bmaltais"><img src="https://avatars.githubusercontent.com/u/7474674?v=4&s=48" width="48" height="48" alt="bmaltais"/></a>
+<a href="https://github.com/RheagalFire"><img src="https://avatars.githubusercontent.com/u/60213893?v=4&s=48" width="48" height="48" alt="RheagalFire"/></a>
+<a href="https://github.com/yamaceay"><img src="https://avatars.githubusercontent.com/u/46201716?v=4&s=48" width="48" height="48" alt="yamaceay"/></a>
+<a href="https://github.com/tsint"><img src="https://avatars.githubusercontent.com/u/63944253?v=4&s=48" width="48" height="48" alt="tsint"/></a>
+<a href="https://github.com/albertcheng"><img src="https://avatars.githubusercontent.com/u/2686135?v=4&s=48" width="48" height="48" alt="albertcheng"/></a>
+<a href="https://github.com/LostAion"><img src="https://avatars.githubusercontent.com/u/84846068?v=4&s=48" width="48" height="48" alt="LostAion"/></a>
+<a href="https://github.com/skint007"><img src="https://avatars.githubusercontent.com/u/37035851?v=4&s=48" width="48" height="48" alt="skint007"/></a>
+<a href="https://github.com/thekbbohara"><img src="https://avatars.githubusercontent.com/u/133592644?v=4&s=48" width="48" height="48" alt="thekbbohara"/></a>
+
+<!-- contributors:end -->
+
+
 ## Citation
 If you find the repository useful, please cite the study
 ``` Bash
@@ -480,7 +500,7 @@ If you find the repository useful, please cite the study
 }
 
 @article{cheetahclaws2026,
-  title={CheetahClaws: Agent Infrastructure for Long-Horizon, Multi-Model, Tool-Using AI Systems},
+  title={CheetahClaws: Agent Infrastructure for Long-Horizon, Multi-Model and Tool-Using AI Systems},
   author={CheetahClaws Team},
   journal={github},
   year={2026}
