@@ -3,7 +3,7 @@
 ## 🔥🔥🔥 News (Pacific Time)
 
 
-- May 12, 2026 (latest, security-hardening branch): **Two-round security hardening sweep — CRITICAL + HIGH findings from the in-repo code review.** Lands a cluster of fixes that close real attack surfaces opened by the recent rapid feature growth. Zero regressions across the full 2347-test suite.
+- May 12, 2026 (**v3.05.80**): (latest, security-hardening branch): **Two-round security hardening sweep — CRITICAL + HIGH findings from the in-repo code review.** Lands a cluster of fixes that close real attack surfaces opened by the recent rapid feature growth. Zero regressions across the full 2347-test suite.
 
   **Bot tokens off `argv` / readline history.** `cmd_telegram` and `cmd_slack` now accept a single-arg form (`/telegram <chat_id>` / `/slack <channel_id>`) and read the bot token from `$TELEGRAM_BOT_TOKEN` / `$SLACK_BOT_TOKEN`. Env-supplied tokens never get persisted to `~/.cheetahclaws/config.json`; only tokens that actually came in via the deprecated REPL-arg path are saved on disk. New `bridges.scrub_token_from_history(token)` walks `readline.get_history_item` backwards and removes any in-memory entry that embeds the token the moment we know its value. Bridge supervisors get a `token=`/`channel=` kwarg so the env-sourced token can flow to the worker thread without ever sitting on the config dict — `_slack_start_bridge(config, *, token, channel)`. Telegram already passed the token explicitly to `_tg_supervisor`. WeChat is unaffected (QR-scan token, never in argv).
 
