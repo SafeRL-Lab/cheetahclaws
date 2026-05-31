@@ -1,4 +1,4 @@
-# Bridges — Telegram, WeChat, Slack
+# Bridges — Telegram, WeChat, Slack, QQ
 
 ## Telegram Bridge
 
@@ -498,9 +498,83 @@ Also auto-starts in `cheetahclaws --web` (Docker / headless deployments).
 
 ---
 
+## QQ Bridge
+
+`/qq` connects cheetahclaws to **QQ** through the official [qq-botpy](https://github.com/tencent-connect/botpy) SDK — a WebSocket gateway plus HTTP send API. It serves both **group** chats (the bot replies when @-mentioned) and **C2C** (one-to-one private) chats. Unlike the long-poll bridges, botpy's async client runs on a dedicated asyncio event loop inside a daemon thread, bridged to cheetahclaws's main thread via thread-safe queues.
+
+### Prerequisites
+
+1. Install the SDK extra:
+
+   ```bash
+   pip install "cheetahclaws[qq]"     # pulls qq-botpy>=1.2.1
+   ```
+
+2. Go to the [QQ developer portal](https://q.qq.com) → create a **bot** (机器人) → copy its **AppID** and **AppSecret**.
+3. Add the bot to a group (and/or enable C2C messaging) from the portal's release/sandbox settings.
+
+### Setup (one-time, ~2 minutes)
+
+**Recommended** — secret from environment variable:
+
+```bash
+export QQ_SECRET=your-app-secret
+cheetahclaws
+[myproject] ❯ /qq 102000000          # only the AppID on the command line
+  ✓ QQ bridge started.
+  ℹ Send a message in QQ — @mention in groups or direct message in C2C.
+```
+
+The legacy `/qq <appid> <secret>` form still works but is deprecated — it leaks the secret into your readline history. cheetahclaws prints a warning and auto-scrubs it from the in-memory history.
+
+`qq_appid` (a public identifier) is saved to `~/.cheetahclaws/config.json`; the **secret** is **only** persisted when it came from the deprecated REPL arg path. Env-supplied secrets (`$QQ_SECRET`) never touch disk. The bridge auto-starts on every subsequent launch — you only need to configure once.
+
+### How it works
+
+```
+QQ group / C2C                   cheetahclaws terminal
+─────────────                    ──────────────────────────────────
+@bot "List files here"   →       📩 QQ: List files here
+                                 ⚙ model processes query
+                       ←         ⚙ tool steps + streamed reply
+                       ←         "Here are the files: …"
+```
+
+QQ does **not** support editing a sent message, so replies are **streamed as new messages** every ~2 seconds as text arrives (instead of updating a placeholder like Slack). Long replies are chunked at 2000 characters. Passive replies reference the original `msg_id`/`event_id` and are valid for a 5-minute window; after that the bridge falls back to active pushes.
+
+### Features
+
+- **Group + C2C** — `on_group_at_message_create` (group @-mentions, mention prefix stripped) and `on_c2c_message_create` (private chats) are both handled.
+- **Per-target job queue** — each group/user gets its own FIFO queue so concurrent chats don't block each other; `!jobs` / `!job <id>` / `!retry <id>` / `!cancel` work as on the other bridges — see [Remote Control](#remote-control-phone--computer).
+- **Streaming output** — text chunks and `⚙ tool` step labels stream back live via the `on_text_chunk` / `on_tool_start` / `on_tool_end` hooks.
+- **Slash command passthrough** — send `/cost`, `/model …`, `/clear`, `/monitor`, `/agent`, etc. from QQ and they execute in cheetahclaws; results return to the same chat.
+- **Interactive menu & permission routing** — permission prompts and interactive menus route to QQ, **scoped to the originating target** so an approval can't be answered from a different group/user.
+- **Image input** — image attachments are downloaded (off the event loop, in a worker thread) and forwarded to the vision model for the turn.
+- **Message deduplication** — `id`/`event_id` dedup prevents double-processing.
+- **Error resilience** — a supervisor reconnects with exponential backoff (2 s → 120 s) on unexpected disconnects.
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `/qq <appid>` | Recommended — start with `$QQ_SECRET` from the environment |
+| `/qq <appid> <secret>` | Deprecated — secret leaks into readline history; auto-scrubbed with a warning |
+| `/qq` | Start with saved credentials |
+| `/qq status` | Show running state and AppID |
+| `/qq stop` | Stop the bridge |
+| `/qq logout` | Clear saved credentials and stop the bridge |
+
+> **Secret precedence:** `$QQ_SECRET` > REPL arg > `~/.cheetahclaws/config.json`. Env-supplied secrets never get persisted to disk.
+
+### Auto-start
+
+If `qq_appid` and `qq_secret` are set in `~/.cheetahclaws/config.json`, the bridge starts automatically on every cheetahclaws launch, including under `cheetahclaws --web` (Docker / headless deployments). Note that headless auto-start reads credentials from `config.json`; the `$QQ_SECRET` env var is consulted by the interactive `/qq` command, not by the auto-start path.
+
+---
+
 ## Remote Control (Phone → Computer)
 
-All three bridges (Telegram, Slack, WeChat) include a persistent job queue and remote management commands so you can control long-running work from your phone.
+All four bridges (Telegram, Slack, WeChat, QQ) include a persistent job queue and remote management commands so you can control long-running work from your phone.
 
 ### Job queue
 
@@ -522,7 +596,7 @@ cheetahclaws: 📊 Job Dashboard
               !job <id>  !retry <id>  !cancel
 ```
 
-### Bridge commands (all three bridges)
+### Bridge commands (all four bridges)
 
 | Command | Description |
 |---|---|
@@ -551,7 +625,7 @@ WeChat uses **per-user queues** — each `user_id` gets an independent queue, so
 
 ## Remote `!shell-command` from a bridge
 
-Any of the three bridges can run arbitrary shell commands on the host via `!cmd` — `!ls`, `!docker ps`, `!systemctl status nginx`, etc. Output is streamed back in chunks (50 s hard timeout, 40 KB max).
+Any of the four bridges can run arbitrary shell commands on the host via `!cmd` — `!ls`, `!docker ps`, `!systemctl status nginx`, etc. Output is streamed back in chunks (50 s hard timeout, 40 KB max).
 
 The bridge already enforces an owner-only `chat_id` whitelist (a message from a non-owner is dropped). On top of that:
 

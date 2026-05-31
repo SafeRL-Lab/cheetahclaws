@@ -142,7 +142,7 @@ CheetahClaws does **not** have a generic event-based hooks system. The `checkpoi
 
 ### Bridges
 
-Telegram, WeChat, and Slack bridges poll for messages and route them through `RuntimeContext.run_query`. Bridge-specific state (turn flags, current user/channel) lives in `RuntimeContext`, not in the config dict.
+Telegram, WeChat, Slack, and QQ bridges receive messages and route them through `RuntimeContext.run_query`. Telegram/WeChat/Slack long-poll; QQ uses the qq-botpy async WebSocket SDK on a dedicated event-loop thread. Bridge-specific state (turn flags, current user/channel/target) lives in `RuntimeContext`, not in the config dict.
 
 ## Conventions
 

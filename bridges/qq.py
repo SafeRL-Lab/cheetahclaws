@@ -312,6 +312,19 @@ def _mute_botpy():
                 _h.setLevel(logging.WARNING)
 
 
+# ── Blocking image fetch (runs in executor, never on the event loop) ───────
+
+
+def _qq_download_image_b64(url: str) -> str | None:
+    """Fetch an image URL and return base64.  Blocking — call only via
+    ``loop.run_in_executor`` so the async botpy event loop stays responsive."""
+    import urllib.request
+
+    with urllib.request.urlopen(url, timeout=30) as resp:
+        img_bytes = resp.read()
+    return base64.b64encode(img_bytes).decode("utf-8")
+
+
 # ── botpy Client subclass ──────────────────────────────────────────────────
 
 
@@ -383,17 +396,21 @@ def _create_client_class():
                     msg_type,
                 )
 
-            # Download images from attachments
+            # Download images from attachments.  urllib is blocking, so fetch
+            # in the default executor — a synchronous urlopen here would freeze
+            # the botpy event loop (and its WebSocket heartbeat) for up to 30s
+            # per image, risking a heartbeat-timeout disconnect.
             images: list[str] = []
+            loop = asyncio.get_running_loop()
             for att in message.attachments or []:
                 url = getattr(att, "url", "")
                 if url:
                     try:
-                        import urllib.request
-
-                        with urllib.request.urlopen(url, timeout=30) as resp:
-                            img_bytes = resp.read()
-                        images.append(base64.b64encode(img_bytes).decode("utf-8"))
+                        img_b64 = await loop.run_in_executor(
+                            None, _qq_download_image_b64, url
+                        )
+                        if img_b64:
+                            images.append(img_b64)
                     except Exception as exc:
                         _log.warn("qq_image_download_error", error=str(exc)[:200])
 
@@ -1085,15 +1102,21 @@ def _qq_start_bridge(config) -> None:
 def cmd_qq(args: str, _state, config) -> bool:
     """QQ bot bridge via official botpy SDK.
 
-    Usage: /qq <appid> <secret>          — configure and start the bridge
-           /qq                           — start using saved credentials
+    Secret precedence: $QQ_SECRET (recommended) > REPL arg (deprecated) > config.json.
+
+    Usage: /qq <appid>                   — start (secret from $QQ_SECRET / config)
+           /qq <appid> <secret>          — start (DEPRECATED — secret leaks to history)
+           /qq                           — start using saved/env credentials
            /qq stop                      — stop the bridge
            /qq status                    — show current status
+           /qq logout                    — clear saved credentials
 
     Obtain appid + secret from https://q.qq.com developer portal.
     """
     global _qq_thread, _qq_stop
+    import os as _os
     from cc_config import save_config
+    from bridges import resolve_bridge_token, scrub_token_from_history
 
     parts = args.strip().split()
 
@@ -1109,33 +1132,66 @@ def cmd_qq(args: str, _state, config) -> bool:
 
     if parts and parts[0].lower() == "status":
         running = _qq_thread and _qq_thread.is_alive()
-        appid = config.get("qq_appid", "")
+        appid = config.get("qq_appid", "") or _os.environ.get("QQ_APPID", "")
+        has_secret = bool(config.get("qq_secret") or _os.environ.get("QQ_SECRET"))
         if running:
             ok(f"QQ bridge running  (appid: {appid[:8]}…)")
-        elif appid:
+        elif appid and has_secret:
             info("Configured but not running. Use /qq to start.")
         else:
-            info("Not configured. Use /qq <appid> <secret>")
+            info("Not configured. Set $QQ_SECRET (and $QQ_APPID), then /qq.")
         return True
 
-    if len(parts) >= 2:
-        appid = parts[0]
-        secret = parts[1]
-        config["qq_appid"] = appid
-        config["qq_secret"] = secret
+    if parts and parts[0].lower() == "logout":
+        if _qq_thread and _qq_thread.is_alive():
+            _qq_stop.set()
+            _qq_thread.join(timeout=5)
+            _qq_thread = None
+        config.pop("qq_appid", None)
+        config.pop("qq_secret", None)
         save_config(config)
-        ok("QQ config saved.")
-    else:
-        appid = config.get("qq_appid", "")
-        secret = config.get("qq_secret", "")
+        ok("QQ credentials cleared.")
+        return True
+
+    # Resolve credentials.  Precedence per value: env var > REPL arg > config.
+    #   /qq <appid> <secret>   — both via REPL (DEPRECATED: secret leaks to history)
+    #   /qq <appid>            — appid via REPL, secret from $QQ_SECRET / config
+    #   /qq                    — both from env / config
+    repl_appid = parts[0] if len(parts) >= 1 else ""
+    repl_secret = parts[1] if len(parts) >= 2 else ""
+
+    appid, _appid_source = resolve_bridge_token(
+        "QQ_APPID", "qq_appid", repl_appid, config
+    )
+    secret, secret_source = resolve_bridge_token(
+        "QQ_SECRET", "qq_secret", repl_secret, config
+    )
+
+    if secret_source == "repl":
+        warn(
+            "Passing the QQ secret as a REPL argument is deprecated — it lands "
+            "in readline history. Set $QQ_SECRET and run `/qq <appid>` instead."
+        )
+        scrub_token_from_history(secret)
 
     if not appid or not secret:
-        err("No config found. Usage: /qq <appid> <secret>")
+        err("No config found. Set $QQ_SECRET (and $QQ_APPID), or /qq <appid> <secret>.")
         return True
 
     if _qq_thread and _qq_thread.is_alive():
         warn("QQ bridge is already running. Use /qq stop first.")
         return True
+
+    # Persist the appid (a public identifier) and only a REPL-supplied secret —
+    # an env-sourced secret is never written to ~/.cheetahclaws/config.json.
+    config["qq_appid"] = appid
+    if secret_source == "repl":
+        config["qq_secret"] = secret
+    save_config(config)
+    if secret_source != "repl":
+        # Make the live env/config secret available to the bridge thread in
+        # memory only — set after save_config so it never lands on disk.
+        config["qq_secret"] = secret
 
     _qq_start_bridge(config)
     return True

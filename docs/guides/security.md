@@ -28,7 +28,9 @@ hardening below kicks in.
 |---|---|---|
 | `TELEGRAM_BOT_TOKEN` | (unset) | Recommended way to provide the Telegram bot token. Token from env never lands in `readline` history or `~/.cheetahclaws/config.json`. Beats the `/telegram <token> <chat_id>` syntax. |
 | `SLACK_BOT_TOKEN` | (unset) | Same idea for Slack (`xoxb-…`). |
-| `CHEETAHCLAWS_BRIDGE_TERMINAL` | `1` | Set to `0` to hard-disable remote `!cmd` shell from any bridge (Telegram / Slack / WeChat). Useful when a bridge owner is *not* the same person as the host operator. |
+| `QQ_SECRET` | (unset) | QQ bot AppSecret (qq-botpy). Env-supplied secret never lands in `readline` history or `~/.cheetahclaws/config.json`. Beats the `/qq <appid> <secret>` syntax. |
+| `QQ_APPID` | (unset) | QQ bot AppID — a public identifier, not sensitive. Optional convenience so `/qq` works with no args. |
+| `CHEETAHCLAWS_BRIDGE_TERMINAL` | `1` | Set to `0` to hard-disable remote `!cmd` shell from any bridge (Telegram / Slack / WeChat / QQ). Useful when a bridge owner is *not* the same person as the host operator. |
 | `CHEETAHCLAWS_FS_NO_SANDBOX` | `0` | Bypass the credential-path denylist (SSH private keys, `~/.aws`, `~/.gnupg`, `/etc/shadow`, etc.). Only set if you're deliberately auditing your own secrets. |
 | `CHEETAHCLAWS_DISABLE_PLUGINS` | `0` | Hard-disable plugin loading regardless of what's installed in `~/.cheetahclaws/plugins/`. |
 | `CHEETAHCLAWS_PLUGIN_ALLOWLIST` | (unset) | Comma-separated plugin names. When set, only these plugins are loaded — everything else is silently skipped, even if enabled in the registry. |
@@ -58,6 +60,11 @@ If you do use the old two-arg form, cheetahclaws will:
 
 WeChat does not have a token-in-argv path — its session token is obtained
 via QR-code scan and stored in `~/.cheetahclaws/config.json` (0600).
+
+QQ works the same way as Telegram/Slack: prefer `export QQ_SECRET=…` and run
+`/qq <appid>` (only the public AppID on the command line). The AppSecret from
+the environment is never written to `config.json`; the deprecated
+`/qq <appid> <secret>` form warns and scrubs the secret from history.
 
 ## Bash tool — hard denylist
 
