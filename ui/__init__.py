@@ -7,5 +7,5 @@ from .render import (
     _TOOL_SPINNER_PHRASES, _DEBATE_SPINNER_PHRASES,
     _start_tool_spinner, _stop_tool_spinner, _change_spinner_phrase,
     print_tool_start, print_tool_end, _tool_desc,
-    set_rich_live,
+    set_rich_live, set_spinner_tips,
 )

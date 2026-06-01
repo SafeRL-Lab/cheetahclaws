@@ -202,7 +202,7 @@ from ui.render import (
     render_diff, _has_diff,
     stream_text, stream_thinking, flush_response,
     _start_tool_spinner, _stop_tool_spinner, _change_spinner_phrase,
-    set_spinner_phrase, set_rich_live,
+    set_spinner_phrase, set_rich_live, set_spinner_tips,
     print_tool_start, print_tool_end,
     _RICH, console,
 )
@@ -1033,6 +1033,12 @@ def repl(config: dict, initial_prompt: str = None):
                           and _os.environ.get("TERM_PROGRAM", "") in ("Apple_Terminal", ""))
     _rich_live_default = not _in_ssh and not _is_dumb and not _is_macos_terminal
     set_rich_live(config.get("rich_live", _rich_live_default))
+
+    # Apply spinner_tips config: rotating Claude-Code-style tips beneath the
+    # spinner. Disabled automatically where multi-line cursor moves misbehave
+    # (dumb terminals, macOS Terminal.app) so the tip line never garbles output.
+    _spinner_tips_default = not _is_dumb and not _is_macos_terminal
+    set_spinner_tips(config.get("spinner_tips", _spinner_tips_default))
 
     # Initialize proactive polling state via RuntimeContext (defaults already set)
     session_ctx.last_interaction_time = time.time()

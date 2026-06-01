@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import sys
 import json
+import time
 import threading
 
 # ── Optional rich for markdown rendering ──────────────────────────────────
@@ -258,33 +259,98 @@ _DEBATE_SPINNER_PHRASES = [
     "🎯  Finding common ground...",
 ]
 
+# Rotating "did you know" tips shown beneath the spinner while the model works,
+# Claude-Code style. Each references a real CheetahClaws feature/command.
+_SPINNER_TIPS = [
+    "Use /compact to shrink a long conversation without losing the thread",
+    "Run /checkpoint to snapshot the session, then /rewind to jump back",
+    "Type /plan to enter plan mode — Claude designs before it edits",
+    "Use /ssj for SSJ Developer Mode — a power menu of expert tools",
+    "Try /research <topic> to fan out web searches into a cited report",
+    "Spawn background helpers with /agent — see them with /agents",
+    "Persistent memories live in /memory — search, list, or consolidate",
+    "Toggle extended reasoning anytime with /thinking",
+    "Check token usage with /context and spend with /cost",
+    "Switch models on the fly with /model — no restart needed",
+    "Recolor the whole UI with /theme — pick from a dozen palettes",
+    "Run /web to open the browser terminal / chat UI in the background",
+    "Sync sessions to a GitHub Gist with /cloudsave",
+    "Bridge chats with /telegram, /slack, /wechat, or /qq",
+    "Summarize any-size PDF or code file with /summarize",
+    "Set permission mode with /permissions — auto, accept-all, or manual",
+    "Stuck on health? /doctor diagnoses your installation",
+    "Paste an image from the clipboard straight to the model with /image",
+    "Manage MCP servers live with /mcp reload / add / remove",
+    "Drop a CLAUDE.md with /init so Claude learns your project conventions",
+]
+
 _tool_spinner_thread = None
 _tool_spinner_stop = threading.Event()
 _spinner_phrase = ""
 _spinner_lock = threading.Lock()
+_spinner_start = 0.0           # monotonic timestamp when current spinner began
+_spinner_tips_enabled = True   # toggled via set_spinner_tips() (config spinner_tips)
+_spinner_tip = ""              # tip currently displayed (rotates while spinning)
+
+
+def set_spinner_tips(enabled: bool) -> None:
+    """Called from repl.py to apply the spinner_tips config setting."""
+    global _spinner_tips_enabled
+    _spinner_tips_enabled = bool(enabled)
+
+
+def _fmt_elapsed(seconds: float) -> str:
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s"
+    return f"{s // 60}m {s % 60:02d}s"
+
+
+def _pick_tip() -> str:
+    import random
+    return random.choice(_SPINNER_TIPS)
 
 
 def _run_tool_spinner():
-    """Background spinner on a single line using carriage return."""
+    """Background spinner. Single carriage-return line, plus a Claude-Code-style
+    rotating tip line beneath it when attached to a TTY and tips are enabled."""
     chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
     i = 0
+    # Tips need cursor up/down moves, which only behave on a real terminal.
+    two_line = _spinner_tips_enabled and bool(getattr(sys.stdout, "isatty", lambda: False)())
     while not _tool_spinner_stop.is_set():
         with _spinner_lock:
             phrase = _spinner_phrase
+            tip = _spinner_tip
         frame = chars[i % len(chars)]
-        sys.stdout.write(f"\r  {frame} {clr(phrase, 'dim')}   ")
+        elapsed = _fmt_elapsed(time.monotonic() - _spinner_start)
+        if two_line:
+            # Rotate the tip roughly every 12s.
+            if i and i % 120 == 0:
+                with _spinner_lock:
+                    globals()["_spinner_tip"] = _pick_tip()
+                    tip = _spinner_tip
+            line1 = f"  {frame} {clr(phrase, 'dim')} {clr('(' + elapsed + ')', 'dim')}"
+            line2 = f"  {clr('⎿  Tip: ' + tip, 'dim')}"
+            # Write line1, drop to line2, then climb back up to line1's column 0
+            # so the next frame overwrites in place. \033[2K clears each line.
+            sys.stdout.write("\r\033[2K" + line1 + "\n\033[2K" + line2 + "\033[1A\r")
+        else:
+            sys.stdout.write(f"\r\033[2K  {frame} {clr(phrase, 'dim')} {clr('(' + elapsed + ')', 'dim')}   ")
         sys.stdout.flush()
         i += 1
         _tool_spinner_stop.wait(0.1)
 
 def _start_tool_spinner():
-    global _tool_spinner_thread
+    global _tool_spinner_thread, _spinner_start
     if _tool_spinner_thread and _tool_spinner_thread.is_alive():
         return
-    import random
     with _spinner_lock:
-        global _spinner_phrase
+        global _spinner_phrase, _spinner_tip
+        import random
         _spinner_phrase = random.choice(_TOOL_SPINNER_PHRASES)
+        _spinner_tip = _pick_tip()
+    _spinner_start = time.monotonic()
     _tool_spinner_stop.clear()
     _tool_spinner_thread = threading.Thread(target=_run_tool_spinner, daemon=True)
     _tool_spinner_thread.start()
@@ -309,7 +375,12 @@ def _stop_tool_spinner():
     _tool_spinner_stop.set()
     _tool_spinner_thread.join(timeout=1)
     _tool_spinner_thread = None
-    sys.stdout.write(f"\r{' ' * 50}\r")
+    # Clear the spinner line and, if we drew one, the tip line below it, then
+    # leave the cursor at column 0 of the (now blank) spinner line.
+    if _spinner_tips_enabled and bool(getattr(sys.stdout, "isatty", lambda: False)()):
+        sys.stdout.write("\r\033[2K\n\033[2K\033[1A\r")
+    else:
+        sys.stdout.write(f"\r{' ' * 50}\r")
     sys.stdout.flush()
 
 
