@@ -15,8 +15,6 @@ English | [中文](docs/i18n/README.CN.MD) | [한국어](docs/i18n/README.KO.MD)
     <a href="https://arxiv.org/pdf/2605.26112">Scaling the Harness</a>
     ·
     <a href="https://github.com/SafeRL-Lab/cheetahclaws/issues">Issue</a>
-    ·
-    <a href="https://github.com/chauncygu/collection-claude-code-source-code">The newest source of Claude Code</a>
     
   
   </p>
