@@ -126,6 +126,20 @@ class TestGetContextLimit:
         # than the provider-level 128000 default.
         assert get_context_limit("ollama/llama3.3") == 131072
 
+    def test_context_window_override_takes_priority(self):
+        # A positive context_window in config overrides the model default — both
+        # larger (correct a stale default) and smaller (force earlier compaction).
+        assert get_context_limit("deepseek-chat", {"context_window": 1_000_000}) == 1_000_000
+        assert get_context_limit("claude-opus-4-6", {"context_window": 50_000}) == 50_000
+
+    def test_context_window_override_ignored_when_unset_or_zero(self):
+        # 0 / missing / non-numeric → fall back to the model default, never crash.
+        assert get_context_limit("deepseek-chat", {"context_window": 0}) == 128000
+        assert get_context_limit("deepseek-chat", {}) == 128000
+        assert get_context_limit("deepseek-chat", {"context_window": "oops"}) == 128000
+        # max_tokens must NOT be treated as the context window (kept distinct).
+        assert get_context_limit("deepseek-chat", {"max_tokens": 1_000_000}) == 128000
+
 
 # ── snip_old_tool_results ─────────────────────────────────────────────────
 

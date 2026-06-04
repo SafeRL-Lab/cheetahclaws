@@ -447,6 +447,27 @@ def get_model_context_window(provider: str, model: str,
     return 128000
 
 
+def context_window_override(config) -> int:
+    """Parse a user-set ``context_window`` from config.
+
+    Returns a positive token count, or 0 when unset/zero/invalid. This is the
+    single source of truth for the override so it stays consistent across the
+    prompt %/compaction limit (compaction.get_context_limit) AND the per-call
+    output-token cap below. A bool (``/config context_window=true``) is rejected
+    rather than coerced to 1.
+    """
+    if not config:
+        return 0
+    raw = config.get("context_window", 0)
+    if isinstance(raw, bool):
+        return 0
+    try:
+        override = int(raw or 0)
+    except (TypeError, ValueError):
+        return 0
+    return override if override > 0 else 0
+
+
 def dynamic_cap_max_tokens(
     messages: list,
     system,
@@ -955,6 +976,9 @@ def stream_anthropic(
     # Per-call dynamic cap: shrink max_tokens when the current prompt is already
     # large, so input + output never exceeds the model's context window.
     _ctx_window = get_model_context_window("anthropic", model)
+    _ov = context_window_override(config)
+    if _ov:
+        _ctx_window = _ov
     _mt = dynamic_cap_max_tokens(messages, system, tool_schemas, _ctx_window, _mt)
     kwargs = {
         "model":      model,
@@ -1087,6 +1111,9 @@ def stream_openai_compat(
         # local models (qwen2.5, mistral) where the static cap alone is not
         # enough — input grows turn-by-turn.
         _ctx_window = get_model_context_window(_prov, model, base_url, api_key)
+        _ov = context_window_override(config)
+        if _ov:
+            _ctx_window = _ov
         # Pass the system prompt as a single-element list so dynamic_cap counts it.
         val = dynamic_cap_max_tokens(messages, system, kwargs.get("tools"), _ctx_window, val)
         # Newer OpenAI models (o1/o3/o4/gpt-5 family) dropped max_tokens in favour of
@@ -1427,6 +1454,9 @@ def stream_litellm(
         prov_cap = PROVIDERS["litellm"].get("max_completion_tokens")
         val = min(_effective_mt, prov_cap) if prov_cap else _effective_mt
         _ctx_window = get_model_context_window("litellm", model)
+        _ov = context_window_override(config)
+        if _ov:
+            _ctx_window = _ov
         val = dynamic_cap_max_tokens(messages, system, kwargs.get("tools"), _ctx_window, val)
         kwargs["max_tokens"] = val
 

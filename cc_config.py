@@ -15,7 +15,13 @@ MR_SESSION_DIR = SESSIONS_DIR / "mr_sessions"
 
 DEFAULTS = {
     "model":            "ollama/gemma4:e4b",
-    "max_tokens":       40000,
+    "max_tokens":       40000,    # max OUTPUT tokens per response (NOT the context window)
+    # Context-window override in tokens. 0 = use the model/provider default.
+    # Drives the prompt % indicator, /context, and the compaction trigger. Set
+    # via `/config context_window=<N>` to correct a stale provider default for
+    # the session. WARNING: setting it ABOVE the model's real window disables the
+    # compaction safety net — the API may then reject oversized prompts.
+    "context_window":   0,
     "permission_mode":  "auto",   # auto | accept-all | manual
     "verbose":          False,
     # Tri-state: None = unset (use provider default), True = ON, False = explicit OFF.

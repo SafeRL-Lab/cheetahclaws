@@ -184,3 +184,32 @@ class TestQwen32kRegression:
         )
         # The whole point: input_est + capped must fit under ctx with safety.
         assert input_est + capped <= ctx - 1024 + 1  # +1 for floor() rounding
+
+
+# ── context_window user override (single source for % / compaction / cap) ──
+
+class TestContextWindowOverride:
+    def test_parses_positive_and_rejects_junk(self):
+        assert providers.context_window_override({"context_window": 1_000_000}) == 1_000_000
+        assert providers.context_window_override({"context_window": "1000000"}) == 1_000_000
+        assert providers.context_window_override({"context_window": 60_000}) == 60_000
+        # unset / zero / negative / non-numeric / bool / None config → 0 (no override)
+        assert providers.context_window_override({"context_window": 0}) == 0
+        assert providers.context_window_override({}) == 0
+        assert providers.context_window_override({"context_window": -5}) == 0
+        assert providers.context_window_override({"context_window": "oops"}) == 0
+        assert providers.context_window_override({"context_window": True}) == 0
+        assert providers.context_window_override(None) == 0
+        # max_tokens (output cap) must NOT be read as the context window
+        assert providers.context_window_override({"max_tokens": 1_000_000}) == 0
+
+    def test_override_flows_to_both_limit_and_output_cap(self):
+        # get_context_limit (drives % + compaction) honors the override...
+        assert compaction.get_context_limit("deepseek-chat", {"context_window": 500_000}) == 500_000
+        # ...and the same parser is what the send paths apply to the cap window,
+        # so an input that fits 500k no longer gets its output floored as if 128k.
+        cfg = {"context_window": 500_000}
+        eff_ctx = providers.context_window_override(cfg) or providers.get_model_context_window(
+            "deepseek", "deepseek-chat"
+        )
+        assert eff_ctx == 500_000

@@ -126,6 +126,20 @@ def cmd_config(args: str, _state, config) -> bool:
         config[key] = val
         save_config(config)
         ok(f"Set {key} = {val!r}")
+        if key == "context_window" and isinstance(val, int) and not isinstance(val, bool) and val > 0:
+            # The override drives the prompt %, /context, AND the compaction
+            # trigger. Warn if it exceeds the model's real window, since that
+            # disables compaction and the API may reject oversized prompts.
+            from compaction import get_context_limit
+            # Real window with the override forced off (keeps custom_base_url so
+            # custom/vLLM endpoints still get their live lookup).
+            real = get_context_limit(config.get("model", ""), {**config, "context_window": 0})
+            if real and val > real:
+                warn(f"context_window={val:,} exceeds the model's real window "
+                     f"(~{real:,}); compaction won't fire before the real limit, "
+                     "so the API may reject oversized prompts. Use this only to "
+                     "correct a wrong default.")
+            info("Takes effect on the next prompt (no restart needed).")
     else:
         k = args.strip()
         v = config.get(k, "(not set)")

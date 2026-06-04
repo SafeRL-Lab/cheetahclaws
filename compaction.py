@@ -63,14 +63,28 @@ def get_context_limit(model: str, config: dict | None = None) -> int:
     custom/vLLM endpoints get a live /v1/models lookup instead of falling
     back to the stale 128000 default.
 
+    A positive ``context_window`` in config overrides the looked-up default
+    (set via ``/config context_window=<N>``). This is deliberately distinct from
+    ``max_tokens`` (the output cap): the override lets a user correct a stale
+    provider default for the session and applies consistently to the prompt %,
+    /context, and the compaction trigger. It is bidirectional — a smaller value
+    forces earlier compaction; a larger value can disable it (the caller should
+    warn about that footgun). Scope: it applies wherever ``config`` is passed —
+    the prompt %, /context, the compaction trigger, AND the per-call output-token
+    cap (providers shares this parser via ``context_window_override``). Only
+    auto-fanout sizing, called without ``config``, still uses the registry window.
+
     Args:
         model: model string (e.g. "claude-opus-4-6", "ollama/llama3.3",
                "custom/qwen2.5-72b")
-        config: optional agent config dict; reads custom_base_url and
-                custom_api_key if provider is 'custom'
+        config: optional agent config dict; reads context_window override, plus
+                custom_base_url / custom_api_key if provider is 'custom'
     Returns:
         context limit in tokens
     """
+    override = providers.context_window_override(config)
+    if override > 0:
+        return override
     provider_name = providers.detect_provider(model)
     base_url = ""
     api_key = ""
