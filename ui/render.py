@@ -407,12 +407,34 @@ _spinner_lock = threading.Lock()
 _spinner_start = 0.0           # monotonic timestamp when current spinner began
 _spinner_tips_enabled = True   # toggled via set_spinner_tips() (config spinner_tips)
 _spinner_tip = ""              # tip currently displayed (rotates while spinning)
+_spinner_tokens = 0            # live (estimated) output-token meter shown on the spinner
 
 
 def set_spinner_tips(enabled: bool) -> None:
     """Called from repl.py to apply the spinner_tips config setting."""
     global _spinner_tips_enabled
     _spinner_tips_enabled = bool(enabled)
+
+
+def set_spinner_tokens(n: int) -> None:
+    """Update the live token counter shown on the spinner line.
+
+    Providers only report real usage at turn end, so during streaming we feed
+    a cheap char-based estimate here (see est_tokens). 0 hides the counter.
+    """
+    global _spinner_tokens
+    with _spinner_lock:
+        _spinner_tokens = max(0, int(n))
+
+
+def est_tokens(text: str) -> int:
+    """Cheap ~4-chars-per-token estimate for the live meter (not billing)."""
+    return max(0, len(text or "") // 4)
+
+
+def fmt_tokens(n: int) -> str:
+    """Compact token count: 1234 -> '1.2k', 980 -> '980'."""
+    return f"{n / 1000:.1f}k" if n >= 1000 else str(int(n))
 
 
 def _fmt_elapsed(seconds: float) -> str:
@@ -438,21 +460,27 @@ def _run_tool_spinner():
         with _spinner_lock:
             phrase = _spinner_phrase
             tip = _spinner_tip
+            tokens = _spinner_tokens
         frame = chars[i % len(chars)]
         elapsed = _fmt_elapsed(time.monotonic() - _spinner_start)
+        # Claude-Code-style meta: "(7s · ↓ 435 tokens)". Token part appears
+        # only once we've streamed enough to estimate a non-zero count.
+        meta = elapsed
+        if tokens > 0:
+            meta = f"{elapsed} · ↓ {fmt_tokens(tokens)} tokens"
         if two_line:
             # Rotate the tip roughly every 12s.
             if i and i % 120 == 0:
                 with _spinner_lock:
                     globals()["_spinner_tip"] = _pick_tip()
                     tip = _spinner_tip
-            line1 = f"  {frame} {clr(phrase, 'dim')} {clr('(' + elapsed + ')', 'dim')}"
+            line1 = f"  {frame} {clr(phrase, 'dim')} {clr('(' + meta + ')', 'dim')}"
             line2 = f"  {clr('⎿  Tip: ' + tip, 'dim')}"
             # Write line1, drop to line2, then climb back up to line1's column 0
             # so the next frame overwrites in place. \033[2K clears each line.
             sys.stdout.write("\r\033[2K" + line1 + "\n\033[2K" + line2 + "\033[1A\r")
         else:
-            sys.stdout.write(f"\r\033[2K  {frame} {clr(phrase, 'dim')} {clr('(' + elapsed + ')', 'dim')}   ")
+            sys.stdout.write(f"\r\033[2K  {frame} {clr(phrase, 'dim')} {clr('(' + meta + ')', 'dim')}   ")
         sys.stdout.flush()
         i += 1
         _tool_spinner_stop.wait(0.1)
@@ -502,6 +530,96 @@ def _stop_tool_spinner():
 
 # ── Tool call display ──────────────────────────────────────────────────────
 
+# Quiet mode: suppress the per-tool ⚙/✓ lines while a turn runs and instead
+# emit a single Claude-Code-style summary line ("Read 1 file, ran 3 shell
+# commands") once the turn finishes. Verbose mode always wins and shows
+# everything regardless of this flag.
+_QUIET = False
+_turn_tool_stats: dict[str, int] = {}   # tool name -> times invoked this turn
+_turn_tool_order: list[str] = []        # first-seen order, for stable summary
+
+
+def set_quiet(enabled: bool) -> None:
+    """Enable/disable compact (Claude-Code-style) tool display."""
+    global _QUIET
+    _QUIET = bool(enabled)
+
+
+def reset_turn_stats() -> None:
+    """Clear the per-turn tool counters. Call at the start of every turn."""
+    _turn_tool_stats.clear()
+    _turn_tool_order.clear()
+
+
+def _record_tool(name: str) -> None:
+    if name not in _turn_tool_stats:
+        _turn_tool_order.append(name)
+    _turn_tool_stats[name] = _turn_tool_stats.get(name, 0) + 1
+
+
+# verb, singular-noun, plural-noun used to phrase each tool family in the
+# turn summary. Anything not listed falls back to a generic "called X".
+_SUMMARY_VERBS = {
+    "Read":      ("Read", "file", "files"),
+    "Write":     ("wrote", "file", "files"),
+    "Edit":      ("edited", "file", "files"),
+    "Bash":      ("ran", "shell command", "shell commands"),
+    "Glob":      ("ran", "file search", "file searches"),
+    "Grep":      ("ran", "search", "searches"),
+    "LS":        ("listed", "directory", "directories"),
+    "WebFetch":  ("fetched", "URL", "URLs"),
+    "WebSearch": ("ran", "web search", "web searches"),
+    "Agent":     ("ran", "agent", "agents"),
+}
+
+
+def turn_summary_line():
+    """Build a one-line summary of the tools used this turn, or None if idle."""
+    if not _turn_tool_order:
+        return None
+    parts = []
+    for name in _turn_tool_order:
+        n = _turn_tool_stats.get(name, 0)
+        if n <= 0:
+            continue
+        verb, sing, plur = _SUMMARY_VERBS.get(name, ("called", name, name))
+        noun = sing if n == 1 else plur
+        parts.append(f"{verb} {n} {noun}")
+    if not parts:
+        return None
+    # Capitalize only the very first verb, like Claude Code does.
+    text = ", ".join(parts)
+    return text[0].upper() + text[1:]
+
+
+def print_turn_stats(elapsed_s: float, in_tok: int, out_tok: int) -> None:
+    """Print a Claude-Code-style footer with real elapsed time + token usage.
+
+    Uses the true counts from TurnDone (not the live estimate). Shown once at
+    the end of a turn in quiet mode, e.g. '✻ Worked for 7.2s · ↑ 1.2k · ↓ 435'.
+    """
+    if in_tok <= 0 and out_tok <= 0:
+        return
+    el = _fmt_elapsed(elapsed_s)
+    print(clr(f"  ✻ Worked for {el} · ↑ {fmt_tokens(in_tok)} · ↓ {fmt_tokens(out_tok)}", "dim"),
+          flush=True)
+
+
+def print_turn_summary() -> None:
+    """Print a summary of tools used since the last summary, then reset.
+
+    Called both at the tool→text boundary (so the summary sits *above* the
+    assistant's reply, like Claude Code) and at turn end (to flush any tools
+    that ran after the last text block). Clearing after print keeps repeated
+    calls from double-reporting the same tools.
+    """
+    line = turn_summary_line()
+    if line:
+        print(clr(f"  {line}", "dim"), flush=True)
+    _turn_tool_stats.clear()
+    _turn_tool_order.clear()
+
+
 def _tool_desc(name: str, inputs: dict) -> str:
     if name == "Read":   return f"Read({inputs.get('file_path','')})"
     if name == "Write":  return f"Write({inputs.get('file_path','')})"
@@ -542,6 +660,12 @@ def print_tool_start(name: str, inputs: dict, verbose: bool):
     """Show tool invocation."""
     if name == "AskUserQuestion":
         return
+    _record_tool(name)
+    # Quiet (non-verbose) mode: stay silent here. The spinner conveys live
+    # activity and print_turn_summary() reports the tally at turn end.
+    if _QUIET and not verbose:
+        set_spinner_phrase(_tool_desc(name, inputs)[:60])
+        return
     desc = _tool_desc(name, inputs)
     print(clr(f"  ⚙  {desc}", "dim", "cyan"), flush=True)
     if verbose:
@@ -549,6 +673,13 @@ def print_tool_start(name: str, inputs: dict, verbose: bool):
 
 def print_tool_end(name: str, result: str, verbose: bool):
     if name == "AskUserQuestion":
+        return
+    # Quiet mode swallows the per-tool result line. Errors still surface so the
+    # user isn't left guessing when something failed mid-turn.
+    if _QUIET and not verbose:
+        rs = str(result or "")
+        if rs.startswith("Error") or rs.startswith("Denied"):
+            print(clr(f"  ✗ {rs[:120]}", "dim", "red"), flush=True)
         return
     lines = result.count("\n") + 1
     size = len(result)

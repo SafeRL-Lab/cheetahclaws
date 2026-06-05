@@ -156,6 +156,17 @@ def cmd_verbose(_args: str, _state, config) -> bool:
     return True
 
 
+def cmd_quiet(_args: str, _state, config) -> bool:
+    from cc_config import save_config
+    config["quiet"] = not config.get("quiet", True)
+    state_str = "ON" if config["quiet"] else "OFF"
+    ok(f"Quiet mode: {state_str}  "
+       + ("(hide tool execution, show a per-turn summary)" if config["quiet"]
+          else "(show each tool call)"))
+    save_config(config)
+    return True
+
+
 def cmd_thinking(_args: str, _state, config) -> bool:
     from cc_config import save_config
     config["thinking"] = not config.get("thinking", False)

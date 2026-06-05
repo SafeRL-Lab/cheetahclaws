@@ -11,6 +11,8 @@ Options:
   -m, --model MODEL    Override model (e.g. gpt-4o, ollama/llama3.3)
   --accept-all         Auto-approve all operations (no permission prompts)
   --verbose            Show thinking blocks and per-turn token counts
+  --show-tools         Show each tool call instead of a per-turn summary
+                       (alias: --no-quiet; default is the compact summary)
   --thinking           Enable Extended Thinking (Claude only)
   --version            Print version and exit
   -h, --help           Show help
@@ -62,6 +64,7 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/context` | Show message count, token estimate, and context-window usage (honors a `context_window` override) |
 | `/cost` | Show token usage and estimated USD cost |
 | `/verbose` | Toggle verbose mode (tokens + thinking) |
+| `/quiet` | Toggle compact tool display — hide per-tool execution lines and show one summary line per turn (on by default; `/verbose` overrides it) |
 | `/thinking` | Toggle Extended Thinking (Claude only) |
 | `/permissions` | Show current permission mode |
 | `/permissions <mode>` | Set permission mode: `auto` / `accept-all` / `manual` |
@@ -323,6 +326,7 @@ Keys are saved to `~/.cheetahclaws/config.json` and loaded automatically on next
   "context_window": 0,
   "permission_mode": "auto",
   "verbose": false,
+  "quiet": true,
   "thinking": false,
   "qwen_api_key": "sk-...",
   "kimi_api_key": "sk-...",

@@ -25,6 +25,7 @@ Slash commands in REPL:
   /cost       Show API cost this session
   /status     Show current session status (model, mode, tokens, cost)
   /verbose    Toggle verbose mode
+  /quiet      Toggle compact tool display (hide execution, show per-turn summary)
   /thinking   Toggle extended thinking
   /permissions [mode]  Set permission mode
   /cwd [path] Show or change working directory
@@ -204,6 +205,8 @@ from ui.render import (
     _start_tool_spinner, _stop_tool_spinner, _change_spinner_phrase,
     set_spinner_phrase, set_rich_live, set_spinner_tips,
     print_tool_start, print_tool_end,
+    set_quiet, reset_turn_stats, print_turn_summary,
+    set_spinner_tokens, print_turn_stats,
     _RICH, console, _rgb,
 )
 
@@ -230,7 +233,7 @@ from commands.session import (
 
 # ── Config commands ────────────────────────────────────────────────────────
 from commands.config_cmd import (
-    cmd_model, cmd_config, cmd_verbose, cmd_thinking,
+    cmd_model, cmd_config, cmd_verbose, cmd_thinking, cmd_quiet,
     cmd_permissions, cmd_cwd, _interactive_ollama_picker,
 )
 
@@ -328,10 +331,35 @@ def _missing_module_cmd(name: str):
 
 # ── Permission prompt ──────────────────────────────────────────────────────
 
+def _compact_perm_desc(desc: str, max_len: int = 100) -> str:
+    """Collapse a multi-line / very long permission description to one line.
+
+    Quiet mode hides tool execution, so a permission prompt that dumps a whole
+    heredoc script defeats the purpose. We keep the first meaningful line and
+    note how many more lines were hidden, e.g.
+        Run: python3 << 'PYEOF'  … (+58 行)
+    """
+    if not desc:
+        return desc
+    lines = desc.splitlines()
+    first = lines[0].rstrip()
+    extra = len(lines) - 1
+    if len(first) > max_len:
+        first = first[:max_len - 1] + "…"
+    if extra > 0:
+        first += f"  … (+{extra} 行)"
+    return first
+
+
 def ask_permission_interactive(desc: str, config: dict) -> bool:
     # Inline-keyboard buttons for bridges that support them (Telegram today).
     # Terminal / Slack / WeChat ignore `options` and the [y/N/a] hint in the
     # prompt text keeps them functional.
+    # In quiet mode, collapse multi-line commands so the approval prompt stays
+    # a single tidy line instead of dumping the entire script.
+    quiet = config.get("quiet", True) and not config.get("verbose", False)
+    if quiet:
+        desc = _compact_perm_desc(desc)
     perm_options = [
         ("✅ Approve",       "y"),
         ("❌ Reject",        "n"),
@@ -425,6 +453,7 @@ COMMANDS = {
     "context":     cmd_context,
     "cost":        cmd_cost,
     "verbose":     cmd_verbose,
+    "quiet":       cmd_quiet,
     "thinking":    cmd_thinking,
     "permissions": cmd_permissions,
     "cwd":         cmd_cwd,
@@ -587,6 +616,7 @@ _CMD_META: dict[str, tuple[str, list[str]]] = {
     "context":     ("Show token-context usage",           []),
     "cost":        ("Show cost estimate",                 []),
     "verbose":     ("Toggle verbose output",              []),
+    "quiet":       ("Toggle compact tool display",        []),
     "thinking":    ("Toggle extended thinking",           []),
     "permissions": ("Set permission mode",                ["auto", "accept-all", "manual"]),
     "cwd":         ("Show / change working directory",    []),
@@ -959,6 +989,8 @@ def repl(config: dict, initial_prompt: str = None):
         prov_clr  = clr(f"({pname})", "dim")
         pmode     = clr(config.get("permission_mode", "auto"), "yellow")
         ver_clr   = clr(f"v{VERSION}", "green")
+        out_mode  = "quiet" if (config.get("quiet", True) and not config.get("verbose", False)) else "full"
+        out_clr   = clr(out_mode, "cyan")
 
         # ── Banner: aligned box ─────────────────────────────────────────
         # Compute widths from plain text (strip ANSI escapes from coloring).
@@ -966,6 +998,7 @@ def repl(config: dict, initial_prompt: str = None):
         line_plains = [
             f"  Model: {model} ({pname})",
             f"  Permissions: {config.get('permission_mode', 'auto')}",
+            f"  Output: {out_mode}",
             f"  /model to switch · /help for commands",
         ]
         # Inner width = widest content; title needs 3 chars of decoration ("─ X ").
@@ -992,7 +1025,8 @@ def repl(config: dict, initial_prompt: str = None):
 
         print(_row(clr("  Model: ", "dim") + model_clr + " " + prov_clr, line_plains[0]))
         print(_row(clr("  Permissions: ", "dim") + pmode,                 line_plains[1]))
-        print(_row(clr(line_plains[2], "dim"),                            line_plains[2]))
+        print(_row(clr("  Output: ", "dim") + out_clr,                    line_plains[2]))
+        print(_row(clr(line_plains[3], "dim"),                            line_plains[3]))
 
         # Bottom: ╰─...─╯ (same inner_w as top)
         print(clr("  ╰" + "─" * inner_w + "╯", "dim"))
@@ -1052,6 +1086,17 @@ def repl(config: dict, initial_prompt: str = None):
 
         with query_lock:
             verbose = config.get("verbose", False)
+            # Quiet mode (Claude-Code-style): hide per-tool execution lines and
+            # show one summary line per turn. Verbose always overrides it.
+            quiet = config.get("quiet", True) and not verbose
+            set_quiet(quiet)
+            reset_turn_stats()
+            # Live token meter (estimated) + real per-turn totals for the footer.
+            set_spinner_tokens(0)
+            turn_start = time.monotonic()
+            turn_in_tokens = 0
+            turn_out_tokens = 0
+            streamed_chars = 0
 
             # Rebuild system prompt each turn (picks up cwd changes, etc.)
             system_prompt = build_system_prompt(config)
@@ -1075,12 +1120,33 @@ def repl(config: dict, initial_prompt: str = None):
 
             try:
                 for event in run(user_input, state, config, system_prompt):
+                    # Live token meter: estimate output tokens from streamed
+                    # text + reasoning so the spinner can show "↓ N tokens"
+                    # while the model is still working (real usage only lands
+                    # at TurnDone). Accumulates across the whole user-turn.
+                    if isinstance(event, (TextChunk, ThinkingChunk)):
+                        streamed_chars += len(getattr(event, "text", "") or "")
+                        set_spinner_tokens(streamed_chars // 4)
+                        # Reasoning models stream thinking while the spinner is
+                        # still up — label it so it reads "Thinking… (7s · ↓ N tokens)".
+                        if isinstance(event, ThinkingChunk) and spinner_shown and not verbose:
+                            set_spinner_phrase("Thinking")
+
                     # Stop spinner only when visible output arrives
                     if spinner_shown:
                         show_thinking = isinstance(event, ThinkingChunk) and verbose
-                        if isinstance(event, TextChunk) or show_thinking or isinstance(event, ToolStart):
+                        # In quiet mode a ToolStart prints nothing, so keep the
+                        # spinner alive (it just updates its phrase) instead of
+                        # tearing it down and redrawing it for every tool.
+                        tool_breaks_spinner = isinstance(event, ToolStart) and not quiet
+                        if isinstance(event, TextChunk) or show_thinking or tool_breaks_spinner:
                             _stop_tool_spinner()
                             spinner_shown = False
+                            # Quiet mode: emit the tool summary at the tool→text
+                            # boundary so it sits just above the reply, the way
+                            # Claude Code does. No-op if no tools are pending.
+                            if quiet and isinstance(event, TextChunk) and _post_tool:
+                                print_turn_summary()
                             # Restore │ prefix for first text chunk in plain-text (non-Rich) mode
                             if isinstance(event, TextChunk) and not _RICH and not _post_tool:
                                 print(clr("│ ", "dim"), end="", flush=True)
@@ -1167,6 +1233,13 @@ def repl(config: dict, initial_prompt: str = None):
                     elif isinstance(event, TurnDone):
                         _stop_tool_spinner()
                         spinner_shown = False
+                        # Real usage (a turn may fire several TurnDone events
+                        # across tool round-trips — accumulate for the footer).
+                        turn_in_tokens += event.input_tokens
+                        turn_out_tokens += event.output_tokens
+                        if quiet:
+                            flush_response()  # commit final text before summary
+                            print_turn_summary()
                         if verbose:
                             flush_response()  # stop Live before printing token info
                             print(clr(
@@ -1200,7 +1273,13 @@ def repl(config: dict, initial_prompt: str = None):
                 warn("Your conversation is intact. You can retry or type a new message.")
 
             _stop_tool_spinner()
+            set_spinner_tokens(0)  # clear the live meter for the next turn
             flush_response()  # stop Live, commit any remaining text
+            # Quiet-mode footer: real elapsed time + token usage for the turn.
+            # Verbose already prints per-turn token lines, so skip it there.
+            if quiet:
+                print_turn_stats(time.monotonic() - turn_start,
+                                 turn_in_tokens, turn_out_tokens)
             print(clr("╰──────────────────────────────────────────────", "dim"))
             print()
 
@@ -1823,6 +1902,9 @@ def main():
                         help="Never ask permission (accept all operations)")
     parser.add_argument("--verbose", action="store_true",
                         help="Show thinking + token counts")
+    parser.add_argument("--show-tools", "--no-quiet", dest="show_tools",
+                        action="store_true",
+                        help="Show each tool call instead of a per-turn summary")
     parser.add_argument("--thinking", action="store_true",
                         help="Enable extended thinking")
     parser.add_argument("--version", action="store_true", help="Print version")
@@ -1903,6 +1985,8 @@ def main():
         config["permission_mode"] = "accept-all"
     if args.verbose:
         config["verbose"] = True
+    if getattr(args, "show_tools", False):
+        config["quiet"] = False
     if args.thinking:
         config["thinking"] = True
 
