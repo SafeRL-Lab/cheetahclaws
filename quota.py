@@ -23,10 +23,18 @@ from pathlib import Path
 
 
 class QuotaExceeded(Exception):
-    """Raised before an API call when a configured budget would be exceeded."""
-    def __init__(self, reason: str):
+    """Raised before an API call when a configured budget would be exceeded.
+
+    Carries which cap broke (``key`` / ``scope`` / ``unit`` / ``limit``) so the
+    REPL can suggest raising *that* cap in the right unit instead of a generic,
+    possibly-wrong hint."""
+    def __init__(self, reason: str, *, key=None, scope=None, unit=None, limit=None):
         super().__init__(reason)
         self.reason = reason
+        self.key = key          # config key, e.g. "session_token_budget"
+        self.scope = scope      # "session" | "daily"
+        self.unit = unit        # "tok" | "usd"
+        self.limit = limit      # the breached limit value
 
 
 # ── In-memory counters (per session, reset on session end) ─────────────────
@@ -73,10 +81,17 @@ def _save_daily(tokens: int, cost: float) -> None:
 
 # ── Public API ─────────────────────────────────────────────────────────────
 
-def check_quota(session_id: str, config: dict) -> None:
+def check_quota(session_id: str, config: dict,
+                projected_tokens: int = 0, projected_cost: float = 0.0) -> None:
     """
-    Raise QuotaExceeded if any configured limit has already been reached.
+    Raise QuotaExceeded if any configured limit is (or would be) reached.
     Call this BEFORE making an API request.
+
+    ``projected_tokens`` / ``projected_cost`` estimate the pending request's
+    INPUT. When given, the cap also fires if the *next* call would cross it —
+    stopping before the (billable) call instead of letting one large tool-heavy
+    turn overshoot the budget. With both at 0 the behaviour is the original
+    "already spent ≥ limit" check, so existing callers are unaffected.
     """
     lim_st = config.get("session_token_budget") or 0
     lim_sc = config.get("session_cost_budget")  or 0.0
@@ -92,22 +107,66 @@ def check_quota(session_id: str, config: dict) -> None:
         sc = _sess_cost.get(session_id, 0.0)
         dt, dc = _load_daily()
 
-    if lim_st and st >= lim_st:
-        raise QuotaExceeded(
-            f"Session token budget reached ({st:,}/{lim_st:,} tokens)"
-        )
-    if lim_sc and sc >= lim_sc:
-        raise QuotaExceeded(
-            f"Session cost budget reached (${sc:.4f}/${lim_sc:.4f})"
-        )
-    if lim_dt and dt >= lim_dt:
-        raise QuotaExceeded(
-            f"Daily token budget reached ({dt:,}/{lim_dt:,} tokens)"
-        )
-    if lim_dc and dc >= lim_dc:
-        raise QuotaExceeded(
-            f"Daily cost budget reached (${dc:.4f}/${lim_dc:.4f})"
-        )
+    pt = max(0, int(projected_tokens or 0))
+    pc = max(0.0, float(projected_cost or 0.0))
+
+    # For each cap: a hard stop when already reached, else a pre-call stop when
+    # the projected next request would cross it (overshoot stays ≈ 0). Each raise
+    # tags which cap broke so the REPL can suggest raising it in the right unit.
+    specs = [
+        ("session_token_budget", "session", "tok", lim_st, st, pt),
+        ("session_cost_budget",  "session", "usd", lim_sc, sc, pc),
+        ("daily_token_budget",   "daily",   "tok", lim_dt, dt, pt),
+        ("daily_cost_budget",    "daily",   "usd", lim_dc, dc, pc),
+    ]
+    for key, scope, unit, lim, used, proj in specs:
+        if not lim:
+            continue
+        label = f"{scope.capitalize()} {'token' if unit == 'tok' else 'cost'} budget"
+        if unit == "tok":
+            caps = f"{lim:,}"
+            reached_amt, proj_amt, tail = f"{used:,}", f"{used + proj:,}", " tokens"
+        else:
+            caps = f"${lim:.4f}"
+            reached_amt, proj_amt, tail = f"${used:.4f}", f"${used + proj:.4f}", ""
+        if used >= lim:
+            raise QuotaExceeded(f"{label} reached ({reached_amt}/{caps}{tail})",
+                                key=key, scope=scope, unit=unit, limit=lim)
+        if used + proj >= lim:
+            raise QuotaExceeded(f"{label} would be exceeded by the next request "
+                                f"(~{proj_amt}/{caps}{tail})",
+                                key=key, scope=scope, unit=unit, limit=lim)
+
+
+def output_room(session_id: str, config: dict,
+                projected_tokens: int = 0, projected_cost: float = 0.0) -> int | None:
+    """Max output tokens this call may emit before any configured budget is hit,
+    given the projected input already counted. ``None`` when no token/cost cap
+    constrains the output. Used to clamp ``max_tokens`` so one response can't
+    blow past a cap (cost caps convert via the model's per-output-token price)."""
+    u = get_usage(session_id)
+    pt = max(0, int(projected_tokens or 0))
+    pc = max(0.0, float(projected_cost or 0.0))
+    rooms: list[int] = []
+    if config.get("session_token_budget"):
+        rooms.append(int(config["session_token_budget"]) - u["session_tokens"] - pt)
+    if config.get("daily_token_budget"):
+        rooms.append(int(config["daily_token_budget"]) - u["daily_tokens"] - pt)
+    try:
+        from providers import COSTS, bare_model
+        _ic, oc = COSTS.get(bare_model(config.get("model", "")), (0.0, 0.0))
+    except Exception:
+        oc = 0.0
+    if oc and oc > 0:
+        if config.get("session_cost_budget"):
+            rooms.append(int((float(config["session_cost_budget"]) - u["session_cost"] - pc)
+                             * 1_000_000 / oc))
+        if config.get("daily_cost_budget"):
+            rooms.append(int((float(config["daily_cost_budget"]) - u["daily_cost"] - pc)
+                             * 1_000_000 / oc))
+    if not rooms:
+        return None
+    return max(0, min(rooms))
 
 
 def record_usage(session_id: str, model: str, in_tokens: int, out_tokens: int) -> None:
@@ -152,3 +211,96 @@ def reset_session(session_id: str) -> None:
     with _lock:
         _sess_tokens.pop(session_id, None)
         _sess_cost.pop(session_id, None)
+
+
+# ── User-facing helpers (for the /budget command, --budget flag, warnings) ──
+
+# Maps a parsed budget kind+scope to its config key.
+BUDGET_KEYS = {
+    ("tokens", "session"): "session_token_budget",
+    ("cost",   "session"): "session_cost_budget",
+    ("tokens", "daily"):   "daily_token_budget",
+    ("cost",   "daily"):   "daily_cost_budget",
+}
+
+
+def parse_budget(s: str) -> tuple[str, float]:
+    """Parse a human budget string into ``(kind, value)``.
+
+    Cost (``kind="cost"``) when prefixed ``$`` or suffixed ``usd``/``$``
+    (e.g. ``$5``, ``5usd`` → ``("cost", 5.0)``); otherwise a token count with
+    optional ``k``/``m`` suffix (``200k`` → ``("tokens", 200000)``,
+    ``1.5m`` → ``("tokens", 1500000)``). Raises ``ValueError`` on bad input.
+    """
+    raw = s.strip().lower().replace(",", "").replace(" ", "")
+    if not raw:
+        raise ValueError("empty budget")
+    is_cost = False
+    if raw.startswith("$"):
+        is_cost, raw = True, raw[1:]
+    elif raw.endswith("usd"):
+        is_cost, raw = True, raw[:-3]
+    elif raw.endswith("$"):
+        is_cost, raw = True, raw[:-1]
+    mult = 1.0
+    if raw.endswith("k"):
+        mult, raw = 1_000, raw[:-1]
+    elif raw.endswith("m"):
+        mult, raw = 1_000_000, raw[:-1]
+    try:
+        num = float(raw) * mult
+    except ValueError:
+        raise ValueError(f"can't parse budget: {s!r}")
+    if num <= 0:
+        raise ValueError("budget must be a positive number")
+    return ("cost", round(num, 4)) if is_cost else ("tokens", int(num))
+
+
+def fmt_amount(value: float, unit: str) -> str:
+    """Compact rendering of a budget amount: ``$1.83`` for cost, ``124k`` for tokens."""
+    if unit == "usd":
+        return f"${value:,.2f}"
+    value = int(value)
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.1f}m".replace(".0m", "m")
+    if value >= 1_000:
+        return f"{value / 1_000:.1f}k".replace(".0k", "k")
+    return str(value)
+
+
+def usage_vs_limits(session_id: str, config: dict) -> list[dict]:
+    """Return the four budget rows with current usage, limit, and percent.
+
+    Each row: ``{key, label, scope, unit, used, limit, pct}`` where ``limit`` is
+    ``None`` (unlimited) and ``pct`` is ``None`` when no limit is set.
+    """
+    u = get_usage(session_id)
+    spec = [
+        ("session_cost_budget",  "Session cost",   "session", "usd", u["session_cost"]),
+        ("session_token_budget", "Session tokens", "session", "tok", u["session_tokens"]),
+        ("daily_cost_budget",    "Daily cost",     "daily",   "usd", u["daily_cost"]),
+        ("daily_token_budget",   "Daily tokens",   "daily",   "tok", u["daily_tokens"]),
+    ]
+    rows = []
+    for key, label, scope, unit, used in spec:
+        limit = config.get(key) or None
+        pct = (used / limit * 100) if limit else None
+        rows.append({"key": key, "label": label, "scope": scope, "unit": unit,
+                     "used": used, "limit": limit, "pct": pct})
+    return rows
+
+
+def warnings(session_id: str, config: dict) -> list[tuple[str, str]]:
+    """Return ``(level, message)`` for any budget at ≥80% (``warn``) / ≥95%
+    (``crit``) but not yet exhausted. Empty when nothing is close. Used by the
+    REPL to warn before the hard stop arrives."""
+    out: list[tuple[str, str]] = []
+    for r in usage_vs_limits(session_id, config):
+        if not r["limit"] or r["pct"] is None or r["pct"] >= 100 or r["pct"] < 80:
+            continue
+        level = "crit" if r["pct"] >= 95 else "warn"
+        out.append((level,
+                    f"{r['label']} at {r['pct']:.0f}% "
+                    f"({fmt_amount(r['used'], r['unit'])} / "
+                    f"{fmt_amount(r['limit'], r['unit'])})"))
+    return out

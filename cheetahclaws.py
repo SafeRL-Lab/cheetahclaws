@@ -23,6 +23,7 @@ Slash commands in REPL:
   /history    Print conversation history
   /context    Show context window usage
   /cost       Show API cost this session
+  /budget     View or set token/cost budgets (session + daily)
   /status     Show current session status (model, mode, tokens, cost)
   /verbose    Toggle verbose mode
   /quiet      Toggle compact tool display (hide execution, show per-turn summary)
@@ -239,7 +240,7 @@ from commands.config_cmd import (
 
 # ── Core commands ──────────────────────────────────────────────────────────
 from commands.core import (
-    cmd_help, cmd_clear, cmd_context, cmd_cost, cmd_compact,
+    cmd_help, cmd_clear, cmd_context, cmd_cost, cmd_budget, cmd_compact,
     cmd_init, cmd_export, cmd_copy, cmd_status, cmd_doctor,
     cmd_proactive, cmd_image, cmd_circuit, cmd_web, run_setup_wizard,
 )
@@ -452,6 +453,7 @@ COMMANDS = {
     "search":      cmd_search,
     "context":     cmd_context,
     "cost":        cmd_cost,
+    "budget":      cmd_budget,
     "verbose":     cmd_verbose,
     "quiet":       cmd_quiet,
     "thinking":    cmd_thinking,
@@ -615,6 +617,7 @@ _CMD_META: dict[str, tuple[str, list[str]]] = {
     "search":      ("Search past sessions",               []),
     "context":     ("Visualize context-window usage by category", []),
     "cost":        ("Show cost estimate",                 []),
+    "budget":      ("View or set token/cost budgets (session + daily)", ["session", "daily", "clear"]),
     "verbose":     ("Toggle verbose output",              []),
     "quiet":       ("Toggle compact tool display",        []),
     "thinking":    ("Toggle extended thinking",           []),
@@ -895,7 +898,7 @@ def _start_headless_bridges(config: dict) -> None:
 def repl(config: dict, initial_prompt: str = None):
     from cc_config import HISTORY_FILE
     from context import build_system_prompt
-    from agent import AgentState, run, TextChunk, ThinkingChunk, ToolStart, ToolEnd, TurnDone, PermissionRequest
+    from agent import AgentState, run, TextChunk, ThinkingChunk, ToolStart, ToolEnd, TurnDone, PermissionRequest, QuotaPause
 
     if HAS_PROMPT_TOOLKIT:
         # Inject live providers so ui.input's completer enumerates the same
@@ -1101,6 +1104,7 @@ def repl(config: dict, initial_prompt: str = None):
             turn_start = time.monotonic()
             turn_in_tokens = 0
             turn_out_tokens = 0
+            quota_paused = False    # set when a budget is reached mid-turn
             streamed_chars = 0
 
             # Rebuild system prompt each turn (picks up cwd changes, etc.)
@@ -1251,6 +1255,38 @@ def repl(config: dict, initial_prompt: str = None):
                                 f"\n  [tokens: +{event.input_tokens} in / "
                                 f"+{event.output_tokens} out]", "dim"
                             ))
+
+                    elif isinstance(event, QuotaPause):
+                        # A configured budget was reached BEFORE making the next
+                        # (billable) call. Auto-save so nothing is lost, then tell
+                        # the user how to resume or raise the budget and continue.
+                        _stop_tool_spinner()
+                        spinner_shown = False
+                        flush_response()
+                        quota_paused = True
+                        print()
+                        print(clr(f"  ⛔ Budget reached — {event.reason}", "yellow", "bold"))
+                        # save_latest() prints the saved paths itself — don't echo.
+                        try:
+                            from commands.session import save_latest
+                            save_latest("", state, config)
+                        except Exception:
+                            pass
+                        # Suggest raising the cap that actually broke, in its own
+                        # unit/scope — a token cap can't be lifted with a $ amount.
+                        try:
+                            import quota as _q
+                            _pre = "daily " if event.scope == "daily" else ""
+                            _amt = _q.fmt_amount((event.limit or 0) * 2, event.unit or "tok")
+                            _raise_cmd = f"/budget {_pre}{_amt}" if event.limit else "/budget 40k"
+                        except Exception:
+                            _raise_cmd = "/budget 40k"
+                        print(clr("  To continue:", "bold"))
+                        print("    • raise it:   " + clr(_raise_cmd, "cyan")
+                              + "  (or " + clr("/budget clear", "cyan") + "), then resend your message")
+                        print("    • later:      restart and run " + clr("/resume", "cyan")
+                              + " to pick up where you left off")
+                        print("    • view usage: " + clr("/budget", "cyan"))
             except KeyboardInterrupt:
                 _stop_tool_spinner()
                 flush_response()
@@ -1285,6 +1321,15 @@ def repl(config: dict, initial_prompt: str = None):
             if quiet:
                 print_turn_stats(time.monotonic() - turn_start,
                                  turn_in_tokens, turn_out_tokens)
+            # Budget proximity warnings (≥80% / ≥95%) — heads-up before the hard
+            # stop arrives. Skipped when this turn already hit the cap.
+            if not quota_paused:
+                try:
+                    import quota as _quota
+                    for _level, _msg in _quota.warnings(config.get("_session_id", "default"), config):
+                        (err if _level == "crit" else warn)(f"  ⚠ Budget: {_msg} — /budget to view")
+                except Exception:
+                    pass
             print(clr("╰──────────────────────────────────────────────", "dim"))
             print()
 
@@ -1912,6 +1957,10 @@ def main():
                         help="Show each tool call instead of a per-turn summary")
     parser.add_argument("--thinking", action="store_true",
                         help="Enable extended thinking")
+    parser.add_argument("--budget", metavar="AMOUNT",
+                        help="Session budget cap, e.g. --budget $5 (cost) or "
+                             "--budget 200k (tokens). Auto-saves and prompts to "
+                             "resume / raise when reached.")
     parser.add_argument("--version", action="store_true", help="Print version")
     parser.add_argument("--setup", action="store_true", help="Run interactive setup wizard")
     parser.add_argument("--web", action="store_true",
@@ -1994,6 +2043,15 @@ def main():
         config["quiet"] = False
     if args.thinking:
         config["thinking"] = True
+    if getattr(args, "budget", None):
+        import quota as _quota
+        try:
+            _kind, _val = _quota.parse_budget(args.budget)
+            config[_quota.BUDGET_KEYS[(_kind, "session")]] = _val
+            _shown = _quota.fmt_amount(_val, "usd" if _kind == "cost" else "tok")
+            print(clr(f"  Session {'cost' if _kind == 'cost' else 'token'} budget: {_shown}", "dim"))
+        except ValueError as _e:
+            warn(f"--budget: {_e} (e.g. --budget $5 or --budget 200k); ignoring.")
 
     # ── Setup wizard: --setup flag or first-run auto-trigger ─────────────
     from cc_config import CONFIG_FILE

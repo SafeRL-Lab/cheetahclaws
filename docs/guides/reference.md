@@ -14,6 +14,8 @@ Options:
   --show-tools         Show each tool call instead of a per-turn summary
                        (alias: --no-quiet; default is the compact summary)
   --thinking           Enable Extended Thinking (Claude only)
+  --budget AMOUNT      Session budget cap: --budget $5 (cost) or --budget 200k
+                       (tokens). Auto-saves and prompts to resume / raise on hit.
   --version            Print version and exit
   -h, --help           Show help
 ```
@@ -64,6 +66,7 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/history` | Print full conversation history |
 | `/context` | Visualize context-window usage as a Claude-Code-style cell grid, broken down by category (system prompt, system tools, memory files, skills, messages, free space) with per-category token counts and percentages. Honors a `context_window` override; falls back to `#`/`.` when the terminal isn't UTF-8. |
 | `/cost` | Show token usage and estimated USD cost |
+| `/budget` | View or set token/cost budgets. No args = show usage vs each budget (bars + %). `/budget $5` = session cost cap (USD); `/budget 200k` = session token cap (supports `200k`/`1.5m`); `/budget daily $20` / `/budget daily 2m` = daily caps; `/budget clear` = remove all. **One budget per scope** — a new cap *replaces* the other unit for that scope (so `/budget $5` after `/budget 200k` switches the session cap to cost, it doesn't stack). Enforced before each model call (projects the next request's input + clamps its output, so overshoot stays ≈ 0); warns at ≥80%/95%; on hit, auto-saves the session and prints how to `/resume` or raise the **same** cap (the hint matches the breached unit) and continue. Backed by the `session_token_budget` / `session_cost_budget` / `daily_token_budget` / `daily_cost_budget` config keys. |
 | `/verbose` | Toggle verbose mode (tokens + thinking) |
 | `/quiet` | Toggle compact tool display — hide per-tool execution lines and show one summary line per turn (on by default; `/verbose` overrides it) |
 | `/thinking` | Toggle Extended Thinking (Claude only) |
@@ -330,6 +333,10 @@ Keys are saved to `~/.cheetahclaws/config.json` and loaded automatically on next
   "quiet": true,
   "thinking": false,
   "stream_mode": null,
+  "session_token_budget": null,
+  "session_cost_budget": null,
+  "daily_token_budget": null,
+  "daily_cost_budget": null,
   "qwen_api_key": "sk-...",
   "kimi_api_key": "sk-...",
   "deepseek_api_key": "sk-...",

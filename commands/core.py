@@ -221,6 +221,86 @@ def cmd_cost(_args: str, state, config) -> bool:
     return True
 
 
+def _budget_bar(pct: float | None, width: int = 16) -> str:
+    filled = int(round((pct or 0) / 100 * width))
+    filled = max(0, min(width, filled))
+    return "█" * filled + "░" * (width - filled)
+
+
+def cmd_budget(args: str, state, config) -> bool:
+    """View or set token / cost budgets (session + daily).
+
+    /budget                 show usage vs every budget (bars + %)
+    /budget $5              session cost cap (the $ means USD)
+    /budget 200k            session token cap (supports 200k / 1.5m / 200000)
+    /budget daily $20       daily cost cap   ·   /budget daily 2m  daily tokens
+    /budget clear           remove all caps (unlimited)
+    """
+    import quota as _quota
+    from cc_config import save_config
+
+    arg = args.strip()
+    sid = config.get("_session_id", "default")
+
+    # ── view ────────────────────────────────────────────────────────────────
+    if not arg:
+        rows = _quota.usage_vs_limits(sid, config)
+        print(clr("  Token Budget", "bold"))
+        any_set = False
+        for r in rows:
+            used = _quota.fmt_amount(r["used"], r["unit"])
+            if r["limit"] is None:
+                print(f"  {r['label']:<15} {used:>9}  " + clr("unlimited", "dim"))
+                continue
+            any_set = True
+            lim = _quota.fmt_amount(r["limit"], r["unit"])
+            pct = r["pct"] or 0
+            color = "red" if pct >= 95 else ("yellow" if pct >= 80 else "green")
+            print(f"  {r['label']:<15} {used:>9} / {lim:<9} "
+                  f"{clr(_budget_bar(pct), color)} {pct:4.0f}%")
+        print()
+        if any_set:
+            info("  Change: /budget $5 · /budget 200k · /budget daily $20 · /budget clear")
+        else:
+            info("  No budgets set (unlimited). Set one: /budget $5 · /budget 200k · /budget daily $20")
+        return True
+
+    # ── clear ─────────────────────────────────────────────────────────────────
+    if arg.lower() in ("clear", "off", "none", "reset", "unlimited"):
+        for key in _quota.BUDGET_KEYS.values():
+            config[key] = None
+        save_config(config)
+        ok("All budgets cleared (unlimited).")
+        return True
+
+    # ── set ───────────────────────────────────────────────────────────────────
+    parts = arg.split()
+    scope = "session"
+    if parts[0].lower() in ("session", "daily"):
+        scope, rest = parts[0].lower(), " ".join(parts[1:])
+    else:
+        rest = arg
+    if not rest.strip():
+        err("Usage: /budget [session|daily] <amount>  —  e.g. /budget $5  ·  /budget daily 2m")
+        return True
+    try:
+        kind, value = _quota.parse_budget(rest)
+    except ValueError as e:
+        err(f"{e}. Examples: /budget $5 (cost) · /budget 200k (tokens) · /budget daily $20")
+        return True
+    config[_quota.BUDGET_KEYS[(kind, scope)]] = value
+    # One budget per scope: a new cap replaces the other unit for that scope, so
+    # e.g. setting a $ cap clears a leftover token cap that would still block.
+    config[_quota.BUDGET_KEYS[("tokens" if kind == "cost" else "cost", scope)]] = None
+    save_config(config)
+    shown = _quota.fmt_amount(value, "usd" if kind == "cost" else "tok")
+    ok(f"{scope.capitalize()} budget set to {shown} "
+       f"({'cost' if kind == 'cost' else 'tokens'}).")
+    info(f"Replaces any previous {scope} cap. Checked before each model call; "
+         "auto-saves and shows how to resume when reached.")
+    return True
+
+
 def cmd_compact(args: str, state, config) -> bool:
     """Manually compact conversation history."""
     from compaction import manual_compact

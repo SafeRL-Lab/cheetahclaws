@@ -109,6 +109,7 @@ These commands the **user** can invoke at the REPL prompt — they are NOT tools
 - `/agent` `[start | stop | list | status | templates]` — Autonomous agent loop (task templates)
 - `/agents` — Show background agents
 - `/brainstorm` — Multi-persona AI debate + auto tasks
+- `/budget` `[session | daily | clear]` — View or set token/cost budgets (session + daily)
 - `/checkpoint` `[clear]` — List / restore checkpoints
 - `/circuit` `[status | reset]` — Show / reset per-provider circuit breakers
 - `/clear` — Clear conversation history

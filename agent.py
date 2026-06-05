@@ -57,6 +57,19 @@ class PermissionRequest:
     description: str
     granted: bool = False
 
+@dataclass
+class QuotaPause:
+    """Yielded when a configured budget is reached, instead of making a billable
+    call. The REPL auto-saves the session and tells the user how to resume or
+    raise the budget. ``usage`` is the snapshot from quota.get_usage(); the
+    key/scope/unit/limit identify which cap broke so the hint targets it."""
+    reason: str
+    usage: dict = field(default_factory=dict)
+    key: str | None = None
+    scope: str | None = None
+    unit: str | None = None
+    limit: float | None = None
+
 
 # ── Agent loop ─────────────────────────────────────────────────────────────
 
@@ -149,12 +162,34 @@ def run(
                       removed=_before_len - len(state.messages))
 
         # ── Quota check — before spending tokens ──────────────────────────
+        # Project this request's INPUT so a single large (tool-heavy) call can't
+        # blow past the cap, then clamp the OUTPUT cap to the remaining headroom
+        # so the response can't either — keeping the overshoot near zero.
+        _proj_tokens, _proj_cost = 0, 0.0
+        _call_config = config
+        if any(config.get(k) for k in ("session_token_budget", "session_cost_budget",
+                                       "daily_token_budget", "daily_cost_budget")):
+            try:
+                from compaction import estimate_tokens as _est_tok
+                from providers import calc_cost as _calc_cost
+                _proj_tokens = (_est_tok(state.messages)
+                                + _est_tok([{"role": "system", "content": system_prompt}]))
+                _proj_cost = _calc_cost(config["model"], _proj_tokens, 0)
+            except Exception:
+                _proj_tokens, _proj_cost = 0, 0.0
         try:
-            _quota.check_quota(session_id, config)
+            _quota.check_quota(session_id, config,
+                               projected_tokens=_proj_tokens, projected_cost=_proj_cost)
         except _quota.QuotaExceeded as qe:
             _log.warn("quota_exceeded", session_id=session_id, reason=qe.reason)
-            yield TextChunk(f"\n[Quota exceeded — {qe.reason}]\n")
+            yield QuotaPause(qe.reason, _quota.get_usage(session_id),
+                             key=qe.key, scope=qe.scope, unit=qe.unit, limit=qe.limit)
             break
+        _room = _quota.output_room(session_id, config, _proj_tokens, _proj_cost)
+        if _room is not None:
+            _cur_cap = config.get("max_tokens") or 4096
+            if _room < _cur_cap:
+                _call_config = {**config, "max_tokens": max(256, int(_room))}
 
         # NIM-only: when build.nvidia.com rate-limits a model, cycle to
         # the next free-tier model before consuming a regular retry. Capped
@@ -177,7 +212,7 @@ def run(
                     system=system_prompt,
                     messages=state.messages,
                     tool_schemas=get_tool_schemas(),
-                    config=config,
+                    config=_call_config,
                 ):
                     if isinstance(event, (TextChunk, ThinkingChunk)):
                         yield event
