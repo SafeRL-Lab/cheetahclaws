@@ -146,5 +146,5 @@ A PR claiming this RFC must:
 7. ``include_hidden=False`` (default) excludes dotfiles.
 8. fs_grants denial → fs_denied.
 9. Capability denial → permission_denied.
-10. No file outside ``cc_kernel/``, ``tests/``, ``docs/RFC/``
+10. No file outside ``kernel/``, ``tests/``, ``docs/RFC/``
     modified.

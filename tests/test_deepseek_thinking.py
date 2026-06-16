@@ -1,7 +1,7 @@
 """Regression tests for DeepSeek v4 thinking-mode toggle semantics.
 
 The bug: `providers.py` uses `config.get("thinking") is False` to decide whether
-to inject `extra_body={"thinking":{"type":"disabled"}}`.  If `cc_config.DEFAULTS`
+to inject `extra_body={"thinking":{"type":"disabled"}}`.  If `config.DEFAULTS`
 sets `"thinking": False`, every default user gets thinking disabled — opposite
 of the intended "provider default (ON)" stance.  These tests pin the contract
 so the default cannot regress to a strict bool again.
@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from cc_config import DEFAULTS
+from config import DEFAULTS
 
 
 class TestThinkingDefault:

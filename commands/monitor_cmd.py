@@ -212,7 +212,7 @@ def cmd_monitor(args: str, state, config) -> bool:
         # in REPL are still picked up by the daemon scheduler on its
         # next 60 s poll because both processes read the same SQLite.
         try:
-            from cc_daemon import discovery as _disc
+            from daemon import discovery as _disc
             _live = _disc.locate()
         except Exception:
             _live = None
@@ -229,7 +229,7 @@ def cmd_monitor(args: str, state, config) -> bool:
 
     elif sub == "stop":
         try:
-            from cc_daemon import discovery as _disc
+            from daemon import discovery as _disc
             _live = _disc.locate()
         except Exception:
             _live = None
@@ -294,7 +294,7 @@ def _cmd_monitor_wizard(config: dict) -> None:
     """Full interactive setup wizard — zero prior knowledge required."""
     from monitor.store import list_subscriptions, add_subscription, remove_subscription
     from monitor import scheduler as _sched
-    from cc_config import save_config
+    from config import save_config
 
     _BORDER = clr("─" * 52, "dim")
 
@@ -504,7 +504,7 @@ def _wizard_remove_subscription(config: dict, subs: list) -> None:
 
 def _wizard_configure_notifications(config: dict) -> None:
     """Walk through Telegram / Slack setup."""
-    from cc_config import save_config
+    from config import save_config
 
     print()
     print(clr("  Push notification setup:", "bold"))
@@ -655,7 +655,7 @@ def _cmd_monitor_status(config: dict) -> None:
 
 
 def _cmd_monitor_set(args: str, config: dict) -> None:
-    from cc_config import save_config
+    from config import save_config
 
     parts = args.split()
     if not parts:

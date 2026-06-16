@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.store.KernelStore (CRUD, events, info).
+"""Tests for kernel.store.KernelStore (CRUD, events, info).
 
 Uses tmp_path-scoped kernel.db files; no daemon, no network.
 """
@@ -10,24 +10,24 @@ import time
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     AgentProcess,
     AgentState,
     IllegalTransition,
     KernelStore,
     UnknownPid,
 )
-from cc_kernel.errors import (
+from kernel.errors import (
     KERNEL_ILLEGAL_TRANSITION,
     KERNEL_UNKNOWN_PID,
     InvalidPayload,
 )
-from cc_kernel.schema import (
+from kernel.schema import (
     EXPECTED_SCHEMA_VERSION,
     get_schema_version,
     open_connection,
 )
-from cc_kernel.store import (
+from kernel.store import (
     EV_PROCESS_CREATED,
     EV_PROCESS_RECOVERED,
     EV_PROCESS_TERMINATED,

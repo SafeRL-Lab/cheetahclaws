@@ -390,13 +390,13 @@ def ask_permission_interactive(desc: str, config: dict) -> bool:
 def _proactive_foreign_daemon_running() -> bool:
     """True iff a daemon other than this process owns the discovery file.
 
-    F-5: when one is running, the daemon's :mod:`cc_daemon.proactive_scheduler`
+    F-5: when one is running, the daemon's :mod:`daemon.proactive_scheduler`
     fires the tick events; the REPL's own watcher must step aside so we
     don't double-fire or run on stale local state.
     """
     try:
         import os
-        from cc_daemon import discovery
+        from daemon import discovery
         info_d = discovery.locate()
         if info_d is None:
             return False
@@ -896,7 +896,7 @@ def _start_headless_bridges(config: dict) -> None:
 # ── Main REPL ──────────────────────────────────────────────────────────────
 
 def repl(config: dict, initial_prompt: str = None):
-    from cc_config import HISTORY_FILE
+    from config import HISTORY_FILE
     from context import build_system_prompt
     from agent import AgentState, run, TextChunk, ThinkingChunk, ToolStart, ToolEnd, TurnDone, PermissionRequest, QuotaPause
 
@@ -1918,7 +1918,7 @@ def main():
     # rotate-token).  See docs/RFC/0001-daemon-design-note.md and
     # docs/RFC/0002-daemon-foundation-roadmap.md.
     if len(sys.argv) >= 2 and sys.argv[1] == "serve":
-        from cc_daemon.cli import serve_main as _serve_main
+        from daemon.cli import serve_main as _serve_main
         sys.exit(_serve_main(sys.argv[2:]))
     if len(sys.argv) >= 2 and sys.argv[1] == "daemon":
         from commands.daemon_cmd import dispatch as _daemon_dispatch
@@ -1928,14 +1928,14 @@ def main():
     # existing daemon RPC channel; gracefully reports "not running"
     # when the daemon is absent.
     if len(sys.argv) >= 2 and sys.argv[1] == "kernel":
-        from cc_kernel.cli import dispatch as _kernel_dispatch
+        from kernel.cli import dispatch as _kernel_dispatch
         sys.exit(_kernel_dispatch(sys.argv[2:]))
     # Backward-compat alias for the spike's `cheetahclaws spike-daemon ...`
     # surface (referenced in docs/RFC/0001-spike-notes.md).  Routes through
     # the same paths as `serve` / `daemon <action>` so spike-notes commands
     # keep working unchanged.
     if len(sys.argv) >= 2 and sys.argv[1] == "spike-daemon":
-        from cc_daemon.cli import main as _legacy_main
+        from daemon.cli import main as _legacy_main
         sys.exit(_legacy_main(sys.argv[2:]))
 
     parser = argparse.ArgumentParser(
@@ -1985,7 +1985,7 @@ def main():
         sys.exit(0)
 
     if args.web:
-        from cc_config import load_config as _load_cfg, save_config as _save_cfg
+        from config import load_config as _load_cfg, save_config as _save_cfg
         _cfg = _load_cfg()
         # --model needs to persist: web request handlers reload config from
         # disk per request, so an in-memory override would be ignored.
@@ -2008,7 +2008,7 @@ def main():
         start_web_server(port=args.port, host=args.host, no_auth=args.no_auth)
         sys.exit(0)
 
-    from cc_config import load_config, save_config, has_api_key
+    from config import load_config, save_config, has_api_key
     from providers import detect_provider, PROVIDERS
 
     config = load_config()
@@ -2054,7 +2054,7 @@ def main():
             warn(f"--budget: {_e} (e.g. --budget $5 or --budget 200k); ignoring.")
 
     # ── Setup wizard: --setup flag or first-run auto-trigger ─────────────
-    from cc_config import CONFIG_FILE
+    from config import CONFIG_FILE
     is_first_run = not CONFIG_FILE.exists() or os.path.getsize(CONFIG_FILE) < 5
     if args.setup or (is_first_run and sys.stdin.isatty() and not args.print_mode):
         run_setup_wizard(config)

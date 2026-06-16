@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.runner (RFC 0016) — subprocess agent runner.
+"""Tests for kernel.runner (RFC 0016) — subprocess agent runner.
 
 Spawns real subprocesses via runner_main. POSIX-only (sandbox is
 POSIX); skipped on Windows.
@@ -15,7 +15,7 @@ import time
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     AgentState,
     JsonLineChannel,
     KernelStore,
@@ -36,7 +36,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-RUNNER_ARGV = [sys.executable, "-m", "cc_kernel.runner.runner_main"]
+RUNNER_ARGV = [sys.executable, "-m", "kernel.runner.runner_main"]
 
 
 @pytest.fixture

@@ -5,13 +5,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cc_kernel.runner.llm.provider import (
+from kernel.runner.llm.provider import (
     LlmRequest,
     LlmResponse,
     ProviderInvalidRequest,
     ProviderUnavailable,
 )
-from cc_kernel.runner.llm.litellm_provider import LiteLLMProvider
+from kernel.runner.llm.litellm_provider import LiteLLMProvider
 
 
 def _make_provider_with_fake_litellm(
@@ -109,7 +109,7 @@ class TestLazyImport:
             # Force re-import: pop the cached module from sys.modules.
             import importlib
 
-            import cc_kernel.runner.llm.litellm_provider as mod
+            import kernel.runner.llm.litellm_provider as mod
 
             importlib.reload(mod)
             # Construction must succeed too.
@@ -487,7 +487,7 @@ class TestRegistration:
         """CC_LLM_PROVIDER=litellm must be routable through the
         subprocess runner, otherwise the provider isn't actually
         usable end-to-end."""
-        from cc_kernel.runner.llm import __main__ as runner_main
+        from kernel.runner.llm import __main__ as runner_main
 
         import inspect
 

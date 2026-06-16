@@ -15,15 +15,15 @@ modules); none of the spike code is load-bearing for production.
 
 | File | LoC | Role |
 |---|---|---|
-| `cc_daemon/server.py` | 250 | `ThreadedTCPServer`, `ThreadedUnixServer`, request handler, dispatch, SSE loop |
-| `cc_daemon/rpc.py` | 90 | JSON-RPC 2.0 dispatcher + method registry |
-| `cc_daemon/events.py` | 110 | In-memory ring buffer + pub/sub + SSE frame format |
-| `cc_daemon/auth.py` | 180 | `SO_PEERCRED` (Linux) + bearer token, audit log, brute-force throttle |
-| `cc_daemon/originator.py` | 70 | client_id mint / persist / resume |
-| `cc_daemon/permission.py` | 130 | Pending-request store, originator-only answer, timeout janitor |
-| `cc_daemon/methods.py` | 75 | `echo.ping` / `permission.demo` / `permission.answer` / `permission.refresh_timeout` / `permission.list` |
-| `cc_daemon/cli.py` | 165 | `cheetahclaws spike-daemon {serve, status, stop, rotate-token}` |
-| `cc_daemon/spike_client.py` | 175 | Stdlib-only smoke client (`ping`, `watch`, `request`, `answer`, `list`) |
+| `daemon/server.py` | 250 | `ThreadedTCPServer`, `ThreadedUnixServer`, request handler, dispatch, SSE loop |
+| `daemon/rpc.py` | 90 | JSON-RPC 2.0 dispatcher + method registry |
+| `daemon/events.py` | 110 | In-memory ring buffer + pub/sub + SSE frame format |
+| `daemon/auth.py` | 180 | `SO_PEERCRED` (Linux) + bearer token, audit log, brute-force throttle |
+| `daemon/originator.py` | 70 | client_id mint / persist / resume |
+| `daemon/permission.py` | 130 | Pending-request store, originator-only answer, timeout janitor |
+| `daemon/methods.py` | 75 | `echo.ping` / `permission.demo` / `permission.answer` / `permission.refresh_timeout` / `permission.list` |
+| `daemon/cli.py` | 165 | `cheetahclaws spike-daemon {serve, status, stop, rotate-token}` |
+| `daemon/spike_client.py` | 175 | Stdlib-only smoke client (`ping`, `watch`, `request`, `answer`, `list`) |
 | `tests/test_daemon_spike.py` | 290 | 13 cases (8 covering RFC must-fix matrix + 5 unit) |
 
 `cheetahclaws.py` gets a single 4-line shim that intercepts `spike-daemon` before the main argparse runs. Nothing else in the main code is touched.
@@ -90,7 +90,7 @@ cheetahclaws spike-daemon rotate-token --print-token
 
 ### Talk to it
 
-The smoke client lives at `cc_daemon/spike_client.py`. It reads a token from
+The smoke client lives at `daemon/spike_client.py`. It reads a token from
 `$CHEETAHCLAWS_TOKEN` so you don't have to pass `--token` on every call —
 which also sidesteps argparse's "value starts with `-`" trap on
 URL-safe-base64 tokens.
@@ -99,11 +99,11 @@ URL-safe-base64 tokens.
 export CHEETAHCLAWS_TOKEN="<the token printed by serve>"
 
 # Sync RPC: returns immediately, also fires a ping_received event.
-python -m cc_daemon.spike_client --target tcp://127.0.0.1:8765 \
+python -m daemon.spike_client --target tcp://127.0.0.1:8765 \
     --kind play ping --message hi
 
 # Tail the event stream (heartbeats every 15s).
-python -m cc_daemon.spike_client --target tcp://127.0.0.1:8765 \
+python -m daemon.spike_client --target tcp://127.0.0.1:8765 \
     --kind watcher watch
 ```
 
@@ -120,23 +120,23 @@ structurally impossible.
 ```bash
 # Two distinct clients (alice / bob) get distinct client_ids on first touch.
 rm -f ~/.cheetahclaws/clients/alice.id ~/.cheetahclaws/clients/bob.id
-python -m cc_daemon.spike_client --target tcp://127.0.0.1:8765 --kind alice ping
-python -m cc_daemon.spike_client --target tcp://127.0.0.1:8765 --kind bob   ping
+python -m daemon.spike_client --target tcp://127.0.0.1:8765 --kind alice ping
+python -m daemon.spike_client --target tcp://127.0.0.1:8765 --kind bob   ping
 
 # Alice creates a PermissionRequest (originator = alice's client_id).
-python -m cc_daemon.spike_client --target tcp://127.0.0.1:8765 --kind alice \
+python -m daemon.spike_client --target tcp://127.0.0.1:8765 --kind alice \
     request --tool Bash --input '{"cmd":"rm -rf /tmp/x"}'
 # → result.request_id = pr_<hex16>
 
 export RID="<paste request_id here>"
 
 # Bob tries to answer Alice's request:
-python -m cc_daemon.spike_client --target tcp://127.0.0.1:8765 --kind bob \
+python -m daemon.spike_client --target tcp://127.0.0.1:8765 --kind bob \
     answer --request-id "$RID" --approve
 # → status 403, error.code -32001, "not the originator"
 
 # Alice answers her own:
-python -m cc_daemon.spike_client --target tcp://127.0.0.1:8765 --kind alice \
+python -m daemon.spike_client --target tcp://127.0.0.1:8765 --kind alice \
     answer --request-id "$RID"
 # → status 200, result.answer = {"approve": false}
 ```

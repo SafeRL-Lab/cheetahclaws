@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     Kernel,
     ToolRegistry,
     register_builtin_tools,
 )
-from cc_kernel.tools.registry import dispatch_tool_call
+from kernel.tools.registry import dispatch_tool_call
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────

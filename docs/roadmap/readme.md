@@ -58,7 +58,7 @@ Honest state of the repo.
 - Web terminal bridge over PTY + SSE/WebSocket (`web/server.py`)
 - Multiple model provider adapters (`providers.py`) — Anthropic, OpenAI-compat, DeepSeek, etc.
 - Skills loader (`skill/loader.py`) supporting flat + nested layout
-- MCP integration (`cc_mcp/`)
+- MCP integration (`mcp_client/`)
 - Checkpoint, compaction, session_store modules
 - ~570 tests passing on Linux; 565 + 2 skipped on Windows after PR #66
 - Plugin system (external plugin loader + tests)

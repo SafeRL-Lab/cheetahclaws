@@ -49,7 +49,7 @@ def _foreign_daemon_running() -> bool:
         return False
     try:
         import os
-        from cc_daemon import discovery
+        from daemon import discovery
         info = discovery.locate()
         if info is None:
             return False
@@ -140,7 +140,7 @@ def run_one(topic: str, config: dict, force: bool = False) -> str:
     except Exception:
         pass
     try:
-        from cc_daemon import events as _events
+        from daemon import events as _events
         _events.get_bus().publish(
             "monitor_report",
             {

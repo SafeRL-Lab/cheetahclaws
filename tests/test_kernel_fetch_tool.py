@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.tools.fetch_tool (RFC 0025).
+"""Tests for kernel.tools.fetch_tool (RFC 0025).
 
 Most security-sensitive HTTP boundary the kernel ships. Tests
 focus on: scheme allowlist, capability + DNS + IP gate, redirect
@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     FETCH_TOOL,
     Kernel,
     ToolNetDenied,
@@ -24,7 +24,7 @@ from cc_kernel import (
     register_builtin_tools,
     register_fetch_tool,
 )
-from cc_kernel.tools.fetch_tool import (
+from kernel.tools.fetch_tool import (
     DEFAULT_MAX_BYTES,
     DEFAULT_TIMEOUT_S,
     _is_private_ip,
@@ -35,7 +35,7 @@ from cc_kernel.tools.fetch_tool import (
     _validate_url,
     fetch_handler,
 )
-from cc_kernel.tools.registry import (
+from kernel.tools.registry import (
     ToolContext,
     ToolFailed,
     ToolInvalidArgs,
@@ -190,7 +190,7 @@ def test_timeout_too_high():
 
 
 def test_max_redirects_default():
-    from cc_kernel.tools.fetch_tool import DEFAULT_MAX_REDIRECTS
+    from kernel.tools.fetch_tool import DEFAULT_MAX_REDIRECTS
     assert _validate_max_redirects(None) == DEFAULT_MAX_REDIRECTS
 
 
@@ -390,7 +390,7 @@ def kernel_for_local(monkeypatch):
     the private-IP check (return False so 127.0.0.1 is treated as
     public). Restored automatically."""
     monkeypatch.setattr(
-        "cc_kernel.tools.fetch_tool._is_private_ip",
+        "kernel.tools.fetch_tool._is_private_ip",
         lambda ip: False,
     )
     return _OverrideDnsKernel()
@@ -481,7 +481,7 @@ def test_e2e_redirect_to_private_blocked(http_server, monkeypatch):
     # Allow only the first hop's check; real check on the second.
     call_count = {"n": 0}
     real_is_private = None
-    from cc_kernel.tools.fetch_tool import _is_private_ip as _real
+    from kernel.tools.fetch_tool import _is_private_ip as _real
     real_is_private = _real
 
     def faked(ip):
@@ -490,7 +490,7 @@ def test_e2e_redirect_to_private_blocked(http_server, monkeypatch):
             return False  # let the first hop through
         return real_is_private(ip)
     monkeypatch.setattr(
-        "cc_kernel.tools.fetch_tool._is_private_ip", faked,
+        "kernel.tools.fetch_tool._is_private_ip", faked,
     )
 
     ctx = ToolContext(pid=1, kernel=_OverrideDnsKernel())
@@ -551,7 +551,7 @@ def test_strip_sensitive_headers_unit(http_server, monkeypatch):
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
     monkeypatch.setattr(
-        "cc_kernel.tools.fetch_tool._is_private_ip", lambda ip: False,
+        "kernel.tools.fetch_tool._is_private_ip", lambda ip: False,
     )
     try:
         ctx = ToolContext(pid=1, kernel=_OverrideDnsKernel())
@@ -660,7 +660,7 @@ def test_dispatch_via_supervisor(tmp_path, http_server, monkeypatch):
     """The full kernel + dispatch path with a granted Fetch."""
     port, base = http_server
     monkeypatch.setattr(
-        "cc_kernel.tools.fetch_tool._is_private_ip", lambda ip: False,
+        "kernel.tools.fetch_tool._is_private_ip", lambda ip: False,
     )
     k = Kernel.open(tmp_path / "kernel.db")
     try:

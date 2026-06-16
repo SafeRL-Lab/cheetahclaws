@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.store.recover() — startup recovery semantics.
+"""Tests for kernel.store.recover() — startup recovery semantics.
 
 RFC 0003 §2 "Recovery semantics":
   Stale RUNNING/WAITING rows on daemon startup are coerced to either
@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     AgentState,
     KernelStore,
 )
-from cc_kernel.errors import InvalidPayload
-from cc_kernel.store import (
+from kernel.errors import InvalidPayload
+from kernel.store import (
     EV_PROCESS_RECOVERED,
     RECOVERY_MARK_DEAD,
     RECOVERY_SUSPEND,

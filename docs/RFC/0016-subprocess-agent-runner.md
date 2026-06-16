@@ -21,7 +21,7 @@ ledger surfaces.
 The runner is **purely additive** to existing code. The current
 `agent_runner.py` (autonomous Markdown agent loop) is **not modified**
 and continues to work unchanged. RFC 0016 introduces a parallel,
-kernel-managed runner that lives in a new `cc_kernel/runner/` package.
+kernel-managed runner that lives in a new `kernel/runner/` package.
 A future patch can choose to migrate `agent_runner.py` onto this
 substrate; this RFC does not commit to that migration.
 
@@ -76,7 +76,7 @@ substrate; this RFC does not commit to that migration.
 │ daemon process                                                    │
 │                                                                    │
 │  ┌──────────────┐   ┌─────────────────────────┐                  │
-│  │  cc_daemon   │   │  cc_kernel.runner       │                  │
+│  │  daemon   │   │  kernel.runner       │                  │
 │  │  RPC server  │   │  ┌───────────────────┐   │                  │
 │  └──────┬───────┘   │  │ RunnerSupervisor  │   │                  │
 │         │           │  └─┬─────┬─────┬─────┘   │                  │
@@ -221,7 +221,7 @@ class RunnerSupervisor:
 The supervisor builds the subprocess command line by:
 
 1. If `policy.use_bubblewrap=True`: prepend `bwrap` arguments via
-   `cc_kernel.sandbox.wrap_with_bubblewrap`.
+   `kernel.sandbox.wrap_with_bubblewrap`.
 2. Always: pass `apply_rlimits_in_child(policy)` as `preexec_fn`.
 3. Always: redirect stdin/stdout to pipes; stderr to a pipe the
    supervisor reads with a tail.
@@ -267,7 +267,7 @@ patch.
 ## 8. Backwards compatibility
 
 - No schema change.
-- No file outside `cc_kernel/runner/` (new package), `tests/`, and
+- No file outside `kernel/runner/` (new package), `tests/`, and
   `docs/RFC/` is modified.
 - Existing `agent_runner.py` is not touched. The new runner is a
   parallel surface for kernel-managed agents.
@@ -311,4 +311,4 @@ A PR claiming this RFC must:
 8. Custom `charge` messages from the runner translate to ledger
    charges; first_breach generates a `kernel.runner.first_breach`
    event.
-9. No file outside `cc_kernel/`, `tests/`, `docs/RFC/` modified.
+9. No file outside `kernel/`, `tests/`, `docs/RFC/` modified.

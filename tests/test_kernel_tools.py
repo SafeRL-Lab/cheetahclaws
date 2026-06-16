@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.tools (RFC 0021)."""
+"""Tests for kernel.tools (RFC 0021)."""
 from __future__ import annotations
 
 import json
@@ -8,7 +8,7 @@ import tempfile
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     Kernel,
     SandboxPolicy,
     Tool,
@@ -408,7 +408,7 @@ def test_supervisor_dispatches_echo_via_runner(tmp_path):
         })
         sup.spawn(
             pid=a.pid,
-            argv=[sys.executable, "-m", "cc_kernel.runner.runner_main"],
+            argv=[sys.executable, "-m", "kernel.runner.runner_main"],
             policy=SandboxPolicy(wall_seconds=10),
             env={**os.environ, "CC_RUNNER_BEHAVIOR": f"tool_call={call_body}"},
         )
@@ -438,7 +438,7 @@ def test_supervisor_dispatches_read_with_fs_grant(tmp_path):
                             "args": {"path": str(target)}})
         sup.spawn(
             pid=a.pid,
-            argv=[sys.executable, "-m", "cc_kernel.runner.runner_main"],
+            argv=[sys.executable, "-m", "kernel.runner.runner_main"],
             policy=SandboxPolicy(wall_seconds=10),
             env={**os.environ, "CC_RUNNER_BEHAVIOR": f"tool_call={body}"},
         )
@@ -461,7 +461,7 @@ def test_supervisor_capability_denied_via_runner(tmp_path):
                             "args": {"text": "x"}})
         sup.spawn(
             pid=a.pid,
-            argv=[sys.executable, "-m", "cc_kernel.runner.runner_main"],
+            argv=[sys.executable, "-m", "kernel.runner.runner_main"],
             policy=SandboxPolicy(wall_seconds=10),
             env={**os.environ, "CC_RUNNER_BEHAVIOR": f"tool_call={body}"},
         )
@@ -481,7 +481,7 @@ def test_supervisor_without_registry_returns_tool_not_found(tmp_path):
                             "args": {"text": "x"}})
         sup.spawn(
             pid=a.pid,
-            argv=[sys.executable, "-m", "cc_kernel.runner.runner_main"],
+            argv=[sys.executable, "-m", "kernel.runner.runner_main"],
             policy=SandboxPolicy(wall_seconds=10),
             env={**os.environ, "CC_RUNNER_BEHAVIOR": f"tool_call={body}"},
         )
@@ -506,7 +506,7 @@ def test_supervisor_records_tool_dispatched_event(tmp_path):
                             "args": {"text": "hi"}})
         sup.spawn(
             pid=a.pid,
-            argv=[sys.executable, "-m", "cc_kernel.runner.runner_main"],
+            argv=[sys.executable, "-m", "kernel.runner.runner_main"],
             policy=SandboxPolicy(wall_seconds=10),
             env={**os.environ, "CC_RUNNER_BEHAVIOR": f"tool_call={body}"},
         )
@@ -532,7 +532,7 @@ def test_supervisor_records_tool_denied_event(tmp_path):
                             "args": {"text": "hi"}})
         sup.spawn(
             pid=a.pid,
-            argv=[sys.executable, "-m", "cc_kernel.runner.runner_main"],
+            argv=[sys.executable, "-m", "kernel.runner.runner_main"],
             policy=SandboxPolicy(wall_seconds=10),
             env={**os.environ, "CC_RUNNER_BEHAVIOR": f"tool_call={body}"},
         )

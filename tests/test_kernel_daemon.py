@@ -1,10 +1,10 @@
-"""Integration tests: cc_kernel via the cc_daemon RPC surface.
+"""Integration tests: kernel via the daemon RPC surface.
 
 Pattern lifted from tests/test_daemon_spike.py — spin up a TCP daemon
 on an ephemeral port for each test, drive kernel.* RPC calls through
-HTTP. We register the kernel via ``cc_kernel.register_with_daemon``
+HTTP. We register the kernel via ``kernel.register_with_daemon``
 after the daemon is up; the cli.py --enable-kernel path is exercised
-separately by tests/test_cc_daemon_cli.py-style coverage.
+separately by tests/test_daemon_cli.py-style coverage.
 """
 from __future__ import annotations
 
@@ -18,14 +18,14 @@ from pathlib import Path
 
 import pytest
 
-from cc_daemon import API_VERSION, API_VERSION_HEADER, events
-from cc_daemon.originator import CLIENT_ID_HEADER, CLIENT_KIND_HEADER
-from cc_daemon.server import make_tcp_server
+from daemon import API_VERSION, API_VERSION_HEADER, events
+from daemon.originator import CLIENT_ID_HEADER, CLIENT_KIND_HEADER
+from daemon.server import make_tcp_server
 
-from cc_kernel import register_with_daemon
-from cc_kernel.integration import detach
-from cc_kernel.process import AgentState
-from cc_kernel.store import EV_PROCESS_CREATED, EV_PROCESS_RECOVERED
+from kernel import register_with_daemon
+from kernel.integration import detach
+from kernel.process import AgentState
+from kernel.store import EV_PROCESS_CREATED, EV_PROCESS_RECOVERED
 
 
 def _free_port() -> int:
@@ -36,7 +36,7 @@ def _free_port() -> int:
 
 @pytest.fixture
 def daemon_with_kernel(tmp_path):
-    """TCP daemon + cc_kernel registered. Yields (host, port, token, kernel_db)."""
+    """TCP daemon + kernel registered. Yields (host, port, token, kernel_db)."""
     events.reset_bus_for_tests()
     port = _free_port()
     token = "test-" + uuid.uuid4().hex
@@ -104,7 +104,7 @@ def test_kernel_info_reports_zero_state(daemon_with_kernel):
     info = resp["result"]
     # Track the live schema version rather than pinning a literal —
     # avoids a churn point on every additive schema bump.
-    from cc_kernel import SCHEMA_VERSION
+    from kernel import SCHEMA_VERSION
     assert info["schema_version"] == SCHEMA_VERSION
     assert info["agent_count"] == 0
     assert info["event_count"] == 0
@@ -238,7 +238,7 @@ def test_recovery_runs_at_register_time(tmp_path):
     db = tmp_path / "kernel.db"
 
     # Seed: one RUNNING agent left over from a prior daemon.
-    from cc_kernel import KernelStore
+    from kernel import KernelStore
     seeded = KernelStore.open(db)
     try:
         a = seeded.create(name="x", template="t")

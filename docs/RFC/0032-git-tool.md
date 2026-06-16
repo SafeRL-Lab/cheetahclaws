@@ -126,5 +126,5 @@ Exec already grants fork+exec on any binary the agent has
    commit's first line.
 8. fs_denied raised when agent lacks "r" on repo.
 9. timed_out returns True if op exceeds timeout.
-10. No file outside ``cc_kernel/``, ``tests/``,
+10. No file outside ``kernel/``, ``tests/``,
     ``docs/RFC/`` modified.

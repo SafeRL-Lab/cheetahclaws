@@ -4,8 +4,8 @@ Dispatched from :func:`cheetahclaws.main` when the first positional argv
 is ``daemon``.  All actions read the discovery file written by
 ``cheetahclaws serve``; absence of that file means "no daemon running".
 
-Auth + token storage live in :mod:`cc_daemon.auth`; discovery in
-:mod:`cc_daemon.discovery`.
+Auth + token storage live in :mod:`daemon.auth`; discovery in
+:mod:`daemon.discovery`.
 """
 from __future__ import annotations
 
@@ -20,8 +20,8 @@ import time
 from pathlib import Path
 from typing import Any, Optional, Tuple
 
-from cc_daemon import auth as _auth
-from cc_daemon import discovery as _discovery
+from daemon import auth as _auth
+from daemon import discovery as _discovery
 
 
 LOG_DIR_NAME = "logs"
@@ -30,12 +30,12 @@ DEFAULT_TAIL_LINES = 50
 RPC_TIMEOUT_S = 2.0
 STOP_WAIT_S = 5.0
 
-# Default token path matches cc_daemon.cli.DEFAULT_TOKEN_PATH; resolved
+# Default token path matches daemon.cli.DEFAULT_TOKEN_PATH; resolved
 # lazily via _default_token_path() so unit tests can monkeypatch it.
 
 
 def _default_token_path() -> Path:
-    from cc_daemon.cli import DEFAULT_TOKEN_PATH
+    from daemon.cli import DEFAULT_TOKEN_PATH
     return DEFAULT_TOKEN_PATH
 
 
@@ -211,9 +211,9 @@ def _call_rpc(method: str, params: Any = None) -> Tuple[bool, Any]:
 
     transport = info.get("transport")
     address = info.get("address", "")
-    # cc_daemon's server enforces the API-version header; sending it lets
+    # daemon's server enforces the API-version header; sending it lets
     # the request through the version gate.
-    from cc_daemon import API_VERSION, API_VERSION_HEADER
+    from daemon import API_VERSION, API_VERSION_HEADER
     headers = {"Content-Type": "application/json",
                "Content-Length": str(len(body)),
                "Host": "localhost",
@@ -302,7 +302,7 @@ def _post_unix(sock_path: str, path: str, body: bytes,
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 def _log_path() -> Path:
-    from cc_config import CONFIG_DIR
+    from config import CONFIG_DIR
     return CONFIG_DIR / LOG_DIR_NAME / LOG_FILENAME
 
 

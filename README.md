@@ -420,7 +420,7 @@ Detailed guides live in [`docs/guides/`](docs/guides/) to keep this README focus
 | [**FAQ**](docs/guides/faq.md) | The full FAQ (MCP, models/providers, CLI/scripting, voice) |
 | [**Plugin Authoring**](docs/guides/plugin-authoring.md) · [Example](examples/example-plugin/) | Build a plugin: tools, commands, skills, MCP; starter template |
 | [**Research Lab**](docs/guides/research-lab.md) | `/lab start <topic>` — autonomous multi-agent paper writing with sandboxed experiments |
-| [**Agent OS**](docs/agent-os.md) · [RFC index](docs/RFC/) | The `cc_kernel/` layer + all design notes (RFC 0001-0032) |
+| [**Agent OS**](docs/agent-os.md) · [RFC index](docs/RFC/) | The `kernel/` layer + all design notes (RFC 0001-0032) |
 | [**Contributing**](CONTRIBUTING.md) | Project structure, architecture guide, PR checklist |
 
 ---

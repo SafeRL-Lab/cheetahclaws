@@ -1,11 +1,11 @@
-"""Tests for cc_kernel.ledger (RFC 0006)."""
+"""Tests for kernel.ledger (RFC 0006)."""
 from __future__ import annotations
 
 import threading
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     KernelStore,
     LedgerEntry,
     LedgerExists,

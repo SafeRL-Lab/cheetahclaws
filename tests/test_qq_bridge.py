@@ -28,9 +28,9 @@ def test_config_defaults(monkeypatch, tmp_path):
     """QQ config keys exist in DEFAULTS."""
     monkeypatch.setenv("HOME", str(tmp_path))
     import importlib
-    import cc_config
-    importlib.reload(cc_config)
-    cfg = cc_config.load_config()
+    import config
+    importlib.reload(config)
+    cfg = config.load_config()
     assert "qq_appid" in cfg
     assert "qq_secret" in cfg
     assert cfg["qq_appid"] == ""

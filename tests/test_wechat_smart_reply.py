@@ -854,8 +854,8 @@ def test_contacts_reload_on_mtime_change(tmp_path):
 # ── Config defaults ───────────────────────────────────────────────────────
 
 
-def test_cc_config_defaults_present():
-    from cc_config import DEFAULTS
+def test_config_defaults_present():
+    from config import DEFAULTS
     assert DEFAULTS["wechat_smart_reply"] is False
     assert DEFAULTS["wechat_smart_reply_whitelist"] == []
     assert DEFAULTS["wechat_smart_reply_groups"] is False

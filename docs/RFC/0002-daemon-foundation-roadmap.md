@@ -22,26 +22,26 @@ The "foundation PR" described at the end of [RFC 0001](./0001-daemon-design-note
 
 ## F-1 — daemon skeleton
 
-**Scope.** Adopt the `cc_daemon/` reference scaffolding from
+**Scope.** Adopt the `daemon/` reference scaffolding from
 [`feature/daemon-spike`](https://github.com/SafeRL-Lab/cheetahclaws/tree/feature/daemon-spike)
 (`server`, `auth`, `originator`, `rpc`, `events`, `permission`, `methods`)
 **as-is** — those modules encode the contract the maintainer reviewed in
 PR #74.  Layer the foundation glue on top:
 
-- `cc_daemon/discovery.py` — atomic `~/.cheetahclaws/daemon.json` so
+- `daemon/discovery.py` — atomic `~/.cheetahclaws/daemon.json` so
   REPL / Web / bridge clients can locate the running daemon (transport,
   address, version).  Spike's pid file stays for "is anything running?"
   liveness; discovery answers "where is it?".
-- `cc_daemon/system_methods.py` — registers `system.ping` (returns
+- `daemon/system_methods.py` — registers `system.ping` (returns
   `"pong"`) and `system.shutdown` (sets `DaemonState.shutdown_event`,
   giving us cross-platform graceful exit since Windows can't deliver
   SIGTERM cleanly to another Python process).
-- `cc_daemon/cli.py` — rewritten `serve_main(argv)` that calls
+- `daemon/cli.py` — rewritten `serve_main(argv)` that calls
   `bootstrap()`, pins `log_file` to `<data_dir>/logs/daemon.log`, threads
   the loaded `config` and the `--unauthenticated-metrics` flag through
   `DaemonState`, writes the discovery file on bind, watches the shutdown
   event, and clears discovery on exit.
-- `cc_daemon/server.py` — minimal patch: route `/healthz` `/readyz`
+- `daemon/server.py` — minimal patch: route `/healthz` `/readyz`
   `/metrics` through `health.payload_for(path, config)` instead of
   the spike's stub `{"status": "ok"}`.  Auth-gated by default; opt out
   via `--unauthenticated-metrics`.  Adds Windows guard around
@@ -55,11 +55,11 @@ PR #74.  Layer the foundation glue on top:
 - `health.py` — refactor: extract module-level `healthz_payload(config)`
   / `readyz_payload(config)` / `metrics_payload(config)` /
   `payload_for(path, config)` so both the existing standalone health
-  HTTP server and `cc_daemon/server.py` reuse the same
+  HTTP server and `daemon/server.py` reuse the same
   circuit-breaker / quota / runtime-registry probes.  No behaviour
   change for existing `health_check_port` users.
 - `cheetahclaws.py` — main() short-circuit: `cheetahclaws serve`
-  dispatches to `cc_daemon.cli.serve_main`; `cheetahclaws daemon
+  dispatches to `daemon.cli.serve_main`; `cheetahclaws daemon
   <action>` dispatches to `commands.daemon_cmd.dispatch`.  Replaces the
   spike's `spike-daemon` shim.
 
@@ -86,21 +86,21 @@ PR #74.  Layer the foundation glue on top:
 **Scope.** Seven additive tables in `~/.cheetahclaws/sessions.db`; swap
 the F-1 in-memory event ring for a SQLite-backed channel; migrate
 `jobs.py` JSON storage to SQLite.  **Originator-tracked permission flow
-is already provided by spike's `cc_daemon/originator.py` +
-`cc_daemon/permission.py`** (see PR #80) — this PR doesn't re-do it.
+is already provided by spike's `daemon/originator.py` +
+`daemon/permission.py`** (see PR #80) — this PR doesn't re-do it.
 
 **Tables (additive — `sessions` from `session_store.py` untouched).**
 `schema_meta`, `daemon_events`, `agent_runs`, `agent_iterations`,
 `jobs`, `monitor_subscriptions`, `monitor_reports`, `bridges`.
 
 **Deliverables.**
-- `cc_daemon/schema.py` — DDL + `init_schema(db_path)` (idempotent,
+- `daemon/schema.py` — DDL + `init_schema(db_path)` (idempotent,
   internally locked) + `get_conn()` (thread-local, mirrors
   `session_store` pattern) + `get_schema_version()` accessor; future
   migrations land in `_apply_migrations()`.
-- `cc_daemon/cli.py:cmd_serve` calls `init_schema()` right after
+- `daemon/cli.py:cmd_serve` calls `init_schema()` right after
   `bootstrap()` so tables exist before the first publish.
-- `cc_daemon/events.py` — rewritten: `EventBus.publish` does an INSERT
+- `daemon/events.py` — rewritten: `EventBus.publish` does an INSERT
   into `daemon_events` (id from `AUTOINCREMENT`, monotonic across
   restarts and prunes), still fans out to in-process subscribers for
   live tail; `replay_since(N)` reads from SQLite and emits a synthetic
@@ -116,7 +116,7 @@ is already provided by spike's `cc_daemon/originator.py` +
   Public API unchanged.
 
 **Follow-ups (#fix-f2).**
-- `cc_daemon/schema.py` sets `PRAGMA synchronous=NORMAL` on init and
+- `daemon/schema.py` sets `PRAGMA synchronous=NORMAL` on init and
   on every thread-local connection.  Safe under WAL — only the most
   recent transactions can be lost on hard kernel crash, which for an
   event log already retention-pruned in 24 h windows is an acceptable
@@ -131,12 +131,12 @@ is already provided by spike's `cc_daemon/originator.py` +
 
 **Acceptance.**
 - `init_schema()` is idempotent across daemon restarts and concurrent
-  callers (verified by 12 unit tests in `tests/test_cc_daemon_schema.py`).
+  callers (verified by 12 unit tests in `tests/test_daemon_schema.py`).
 - Spike's 13 contract tests in `tests/test_daemon_spike.py` keep
   passing on the SQLite-backed bus (only the two ring-buffer tests
   needed an in-place rewrite to test retention-based eviction instead
   of the deleted in-memory cap).
-- New `tests/test_cc_daemon_events_sqlite.py` (15 tests) covers
+- New `tests/test_daemon_events_sqlite.py` (15 tests) covers
   persistence, retention by row count + age, gap-on-old-since,
   cross-instance replay (simulated daemon restart), and the
   `reset_bus_for_tests()` truncate path.
@@ -166,25 +166,25 @@ daemon is detected.
   API of the legacy store unchanged.
 - `monitor/scheduler.py` — `run_one()` persists the full report body
   via `save_report` and publishes a `monitor_report` event on
-  `cc_daemon.events.get_bus()` with `{topic, report_id, body, sent_to,
+  `daemon.events.get_bus()` with `{topic, report_id, body, sent_to,
   errors}`.  Loop's idle wait switched from `time.sleep(30)` ×60 to a
   single `Event.wait(60)` so daemon shutdown isn't stalled by the
   scheduler thread napping.
-- `cc_daemon/monitor_methods.py` — registers `monitor.subscribe`,
+- `daemon/monitor_methods.py` — registers `monitor.subscribe`,
   `monitor.unsubscribe`, `monitor.list`, `monitor.run` for external
   clients (Web UI / third-party tools).  `DaemonState.__init__` calls
   `monitor_methods.register` next to `system_methods`.
-- `cc_daemon/cli.py:cmd_serve` — starts the scheduler with
+- `daemon/cli.py:cmd_serve` — starts the scheduler with
   `monitor.scheduler.start(config)` after schema init; the existing
   shutdown watcher calls `monitor.scheduler.stop()` before triggering
   HTTP-server shutdown.
 - `commands/monitor_cmd.py` — `/monitor start` and `/monitor stop`
-  detect a live daemon via `cc_daemon.discovery.locate()` and no-op
+  detect a live daemon via `daemon.discovery.locate()` and no-op
   with a friendly message.  `/monitor subscribe` / `unsubscribe` /
   `list` continue to work in REPL because they hit SQLite directly.
 
 **Follow-ups (#fix-f2).**
-- `cc_daemon/cli.py:cmd_serve` now starts `monitor.scheduler.start(...)`
+- `daemon/cli.py:cmd_serve` now starts `monitor.scheduler.start(...)`
   **after** the listener has bound and the discovery file is on disk
   (PR #101 had it before the bind).  Order matters — if a due
   subscription fires before the daemon is reachable, an LLM/network
@@ -219,7 +219,7 @@ daemon is detected.
 
 **Tests.** `tests/test_monitor_store_sqlite.py` (18), 
 `tests/test_monitor_scheduler_events.py` (7),
-`tests/test_cc_daemon_monitor_methods.py` (12), plus 1 new e2e in
+`tests/test_daemon_monitor_methods.py` (12), plus 1 new e2e in
 `tests/e2e_daemon_skeleton.py` for the survive-restart case.
 
 ## F-4 — agent_runner subprocess
@@ -227,10 +227,10 @@ daemon is detected.
 **Scope.** Each `AgentRunner` is its own subprocess. From #68: *"subprocess-per-agent rather than threads — one leaking/crashing runner shouldn't take down the scheduler and bridges."*
 
 **Deliverables.**
-- `cc_daemon/runner_supervisor.py` — spawn / monitor / restart agent-runner subprocesses.
-- `cc_daemon/runner_ipc.py` — line-delimited JSON over stdin/stdout between supervisor and runner.
+- `daemon/runner_supervisor.py` — spawn / monitor / restart agent-runner subprocesses.
+- `daemon/runner_ipc.py` — line-delimited JSON over stdin/stdout between supervisor and runner.
 - `agent_runner.py` — main entry point usable as `python -m agent_runner --pipe …`; iteration-log writes flow back to the daemon and land in `agent_iterations`.
-- Permission requests from runners routed through supervisor → `cc_daemon/permission.py`.
+- Permission requests from runners routed through supervisor → `daemon/permission.py`.
 
 **Acceptance.**
 - Runner crash (`kill -9 <runner_pid>`) does not kill the daemon; supervisor logs the crash and emits `agent_runner_crash` event.
@@ -246,12 +246,12 @@ unchanged). Files:
 
 | File | LoC | Role |
 |------|-----|------|
-| `cc_daemon/runner_supervisor.py` | ~610 | Lifecycle (`start` / `stop` / `stop_all` / `get` / `list_all`), three-phase stop (IPC `stop` → SIGTERM → SIGKILL, ≤5 s), reader loop, crash classification, SQLite persistence helpers |
-| `cc_daemon/runner_ipc.py` | 33 | Thin re-export of `cc_kernel.runner.ipc.JsonLineChannel` |
-| `cc_daemon/agent_methods.py` | ~100 | `agent.start` / `agent.stop` / `agent.list` / `agent.status` RPCs, registered from `cc_daemon/server.py:DaemonState.__init__` |
+| `daemon/runner_supervisor.py` | ~610 | Lifecycle (`start` / `stop` / `stop_all` / `get` / `list_all`), three-phase stop (IPC `stop` → SIGTERM → SIGKILL, ≤5 s), reader loop, crash classification, SQLite persistence helpers |
+| `daemon/runner_ipc.py` | 33 | Thin re-export of `kernel.runner.ipc.JsonLineChannel` |
+| `daemon/agent_methods.py` | ~100 | `agent.start` / `agent.stop` / `agent.list` / `agent.status` RPCs, registered from `daemon/server.py:DaemonState.__init__` |
 | `agent_runner.py` | +231 | `python -m agent_runner --pipe` subprocess entry, `_PipeAgentRunner` shim that bridges `send_fn` and `iteration_done` to IPC, dispatch in `start_runner` / `stop_runner` |
-| `tests/test_cc_daemon_runner_supervisor.py` | ~430 | 17 unit tests: handshake, graceful stop, SIGKILL escalation on hung runner, crash via external SIGKILL, IPC shim identity, 9 SQLite persistence cases |
-| `tests/test_cc_daemon_agent_methods.py` | ~210 | 10 RPC tests: registration, param validation, list/status when empty, end-to-end list→stop with inline runner |
+| `tests/test_daemon_runner_supervisor.py` | ~430 | 17 unit tests: handshake, graceful stop, SIGKILL escalation on hung runner, crash via external SIGKILL, IPC shim identity, 9 SQLite persistence cases |
+| `tests/test_daemon_agent_methods.py` | ~210 | 10 RPC tests: registration, param validation, list/status when empty, end-to-end list→stop with inline runner |
 
 Acceptance status:
 
@@ -273,7 +273,7 @@ Acceptance status:
 
 1. **Permission routing.** ✅ *Landed (see §F-4.1 below).* The supervisor
    now routes `permission_request` IPC through
-   `cc_daemon/permission.py:PermissionStore` when the runner was started
+   `daemon/permission.py:PermissionStore` when the runner was started
    with `auto_approve=False`. The originator (the client_id that called
    `agent.start`) answers via `permission.answer` and the supervisor
    forwards the response back to the runner as `permission_response`.
@@ -324,9 +324,9 @@ Files touched:
 
 | File | What changed |
 |------|--------------|
-| `cc_daemon/permission.py`        | `PermissionRequest` gains an optional `on_answer(req)` callback; `PermissionStore.create()` accepts it, `answer()` fires it after the store has been mutated (outside the lock), the janitor synthesises `{"approve": False, "timeout": True}` and fires it on expiry. |
-| `cc_daemon/runner_supervisor.py` | `RunnerHandle` gains `originator: str` + `permission_store: Optional`. `start()` takes both as kwargs. `_reader_loop`'s `permission_request` branch now: (a) keeps the auto-approve fast path when `auto_approve=True` *or* no store is wired in (back-compat), (b) otherwise calls `store.create(originator=…, on_answer=…)` and the callback ships `permission_response` back to the runner. |
-| `cc_daemon/agent_methods.py`     | `agent.start` reads `ctx.client_id` for the originator and passes `daemon_state.permissions` as the store. `agent.list` / `agent.status` results now include `originator`. |
+| `daemon/permission.py`        | `PermissionRequest` gains an optional `on_answer(req)` callback; `PermissionStore.create()` accepts it, `answer()` fires it after the store has been mutated (outside the lock), the janitor synthesises `{"approve": False, "timeout": True}` and fires it on expiry. |
+| `daemon/runner_supervisor.py` | `RunnerHandle` gains `originator: str` + `permission_store: Optional`. `start()` takes both as kwargs. `_reader_loop`'s `permission_request` branch now: (a) keeps the auto-approve fast path when `auto_approve=True` *or* no store is wired in (back-compat), (b) otherwise calls `store.create(originator=…, on_answer=…)` and the callback ships `permission_response` back to the runner. |
+| `daemon/agent_methods.py`     | `agent.start` reads `ctx.client_id` for the originator and passes `daemon_state.permissions` as the store. `agent.list` / `agent.status` results now include `originator`. |
 | `agent_runner.py`                | Extracted today's inline PermissionRequest handling into `AgentRunner._handle_permission_request(event) -> rec_status`. `_PipeAgentRunner` overrides it: emit `permission_request` with a fresh correlation id, wait on a `threading.Event` populated by the control-loop's `permission_response` handler (already in place), then set `event.granted` and either continue or stop. |
 
 Semantics:
@@ -336,7 +336,7 @@ Semantics:
 - **`auto_approve=False` and store absent** — the supervisor still grants (treated as the back-compat safety path so a misconfigured caller doesn't lock the runner up). Only RPC-driven flows pass a store.
 - **Timeout** — the store's janitor fires the same callback path with `{"approve": False, "timeout": True}` so the runner unblocks rather than waiting `_PERMISSION_WAIT_S` (30 min) for an IPC frame that's never coming.
 
-Tests live in `tests/test_cc_daemon_runner_permission_routing.py` (10
+Tests live in `tests/test_daemon_runner_permission_routing.py` (10
 new cases — store callback unit, supervisor approve/deny/timeout
 round-trips, non-originator guard, missing-store fallback, and the
 `agent.start` RPC wiring). The existing 17 supervisor tests + 10
@@ -380,7 +380,7 @@ Defaults & semantics:
   the bus; retry policy (if any) belongs to the originator, not the
   supervisor.
 
-Tests live in `tests/test_cc_daemon_runner_notify_routing.py` (3
+Tests live in `tests/test_daemon_runner_notify_routing.py` (3
 cases — single-bridge dispatch, broadcast default, empty-text drop).
 Verifies via an inline `python -c` runner that speaks the IPC
 protocol and a `patch.object(bs, "notify", ...)` so we don't need a
@@ -445,10 +445,10 @@ Files touched:
 
 | File                                                | What changed |
 |-----------------------------------------------------|--------------|
-| `cc_daemon/runner_supervisor.py`                    | Adds `RestartPolicy` dataclass + `RunnerHandle.restart_policy / restart_count / _start_kwargs / _restart_timer / _restart_decided`. `start()` gains kwargs (`restart_policy`, `_restart_count_carry`) and stashes `_start_kwargs` for successor calls. Reader's `finally` invokes `_maybe_schedule_restart()` on crash. `stop()` cancels the pending Timer before the kill ladder. New `_RESTART_SPAWNER` module hook for tests. |
-| `cc_daemon/agent_methods.py`                        | `agent.start` parses `RestartPolicy.from_params(params)` and threads it through. `_handle_to_dict` now reports `restart_count` + flattened `restart_policy` on `agent.list` / `agent.status`. |
-| `tests/test_cc_daemon_runner_restart_policy.py`     | New, 16 cases: 10 pure-function (`next_delay` matrix, `from_params` validation), 3 reader-loop integration (`disabled → no timer`, `on-crash → spawner called with carry+1`, exhaustion publishes the event), 1 `stop()` cancellation, 2 handle serialisation / sanity. |
-| `tests/test_cc_daemon_runner_permission_routing.py` | `_FakeHandle` stub gains `restart_policy` + `restart_count` so `_handle_to_dict` doesn't `AttributeError`. |
+| `daemon/runner_supervisor.py`                    | Adds `RestartPolicy` dataclass + `RunnerHandle.restart_policy / restart_count / _start_kwargs / _restart_timer / _restart_decided`. `start()` gains kwargs (`restart_policy`, `_restart_count_carry`) and stashes `_start_kwargs` for successor calls. Reader's `finally` invokes `_maybe_schedule_restart()` on crash. `stop()` cancels the pending Timer before the kill ladder. New `_RESTART_SPAWNER` module hook for tests. |
+| `daemon/agent_methods.py`                        | `agent.start` parses `RestartPolicy.from_params(params)` and threads it through. `_handle_to_dict` now reports `restart_count` + flattened `restart_policy` on `agent.list` / `agent.status`. |
+| `tests/test_daemon_runner_restart_policy.py`     | New, 16 cases: 10 pure-function (`next_delay` matrix, `from_params` validation), 3 reader-loop integration (`disabled → no timer`, `on-crash → spawner called with carry+1`, exhaustion publishes the event), 1 `stop()` cancellation, 2 handle serialisation / sanity. |
+| `tests/test_daemon_runner_permission_routing.py` | `_FakeHandle` stub gains `restart_policy` + `restart_count` so `_handle_to_dict` doesn't `AttributeError`. |
 
 Events:
 
@@ -466,10 +466,10 @@ Race-safety notes:
 
 Tests:
 
-`pytest tests/test_cc_daemon_runner_restart_policy.py` — 16/16 green in
+`pytest tests/test_daemon_runner_restart_policy.py` — 16/16 green in
 ~3 s. The wider F-4 regression
-(`test_cc_daemon_runner_supervisor.py` + `test_cc_daemon_agent_methods.py` +
-`test_cc_daemon_runner_permission_routing.py`) is 55/55 green in ~13 s,
+(`test_daemon_runner_supervisor.py` + `test_daemon_agent_methods.py` +
+`test_daemon_runner_permission_routing.py`) is 55/55 green in ~13 s,
 plus the F-4.4 e2e (4/4 in ~2 s) was rerun unchanged.
 
 ### §F-4.4 — End-to-end test with the real subprocess (landed)
@@ -527,11 +527,11 @@ e2e).
 
 | File | Role |
 |------|------|
-| `cc_daemon/proactive_state.py`     | `schema_meta`-backed KV for ``proactive.enabled`` / ``proactive.interval_s`` / ``proactive.last_tick_at``. Public surface: `get_state()`, `set_state()`, `disable()`, `tickle()`, `record_tick()`. Survives daemon restarts because it's on the same `sessions.db` the F-2 schema owns. |
-| `cc_daemon/proactive_scheduler.py` | Single background thread (`proactive-scheduler`). Ticks at `TICK_INTERVAL_S = 1.0`, reads `proactive_state`, publishes `proactive_tick` on the SSE bus when the idle threshold is crossed, and resets `last_tick_at` using one `now` reading so the event and the row share a clock. Mirrors F-3's `monitor.scheduler` (`owned_by_daemon`, `_foreign_daemon_running()`, interruptible `Event.wait` so shutdown doesn't stall). |
-| `cc_daemon/proactive_methods.py`   | `proactive.set` / `proactive.get` / `proactive.tickle` RPCs. Same param-validation conventions as `monitor.*`. Registered next to the other method modules in `DaemonState.__init__`. |
-| `cc_daemon/cli.py:cmd_serve`       | Starts the proactive scheduler after bind + discovery (so external clients can subscribe to `proactive_tick` *before* the first tick lands), with `owned_by_daemon=True`. Shutdown watcher stops it alongside `monitor.scheduler`. |
-| `cc_daemon/server.py`              | `DaemonState.__init__` registers `proactive_methods` alongside `system_methods`, `monitor_methods`, and `agent_methods`. |
+| `daemon/proactive_state.py`     | `schema_meta`-backed KV for ``proactive.enabled`` / ``proactive.interval_s`` / ``proactive.last_tick_at``. Public surface: `get_state()`, `set_state()`, `disable()`, `tickle()`, `record_tick()`. Survives daemon restarts because it's on the same `sessions.db` the F-2 schema owns. |
+| `daemon/proactive_scheduler.py` | Single background thread (`proactive-scheduler`). Ticks at `TICK_INTERVAL_S = 1.0`, reads `proactive_state`, publishes `proactive_tick` on the SSE bus when the idle threshold is crossed, and resets `last_tick_at` using one `now` reading so the event and the row share a clock. Mirrors F-3's `monitor.scheduler` (`owned_by_daemon`, `_foreign_daemon_running()`, interruptible `Event.wait` so shutdown doesn't stall). |
+| `daemon/proactive_methods.py`   | `proactive.set` / `proactive.get` / `proactive.tickle` RPCs. Same param-validation conventions as `monitor.*`. Registered next to the other method modules in `DaemonState.__init__`. |
+| `daemon/cli.py:cmd_serve`       | Starts the proactive scheduler after bind + discovery (so external clients can subscribe to `proactive_tick` *before* the first tick lands), with `owned_by_daemon=True`. Shutdown watcher stops it alongside `monitor.scheduler`. |
+| `daemon/server.py`              | `DaemonState.__init__` registers `proactive_methods` alongside `system_methods`, `monitor_methods`, and `agent_methods`. |
 | `commands/core.py:cmd_proactive`   | When a foreign daemon is registered, the slash command routes through the `proactive.set` / `proactive.get` RPCs instead of mutating `RuntimeContext`. On RPC failure, falls back to today's in-process path so a misbehaving daemon doesn't break the REPL UX. |
 | `cheetahclaws.py:_proactive_watcher_loop` | Polls `_proactive_foreign_daemon_running()` and step-asides when a daemon owns the watcher — prevents double-fire across REPL + daemon. |
 
@@ -549,7 +549,7 @@ Consumers (REPL, bridges, future agents) decide what to do with it — typically
 
 ### Tests
 
-- `tests/test_cc_daemon_proactive.py` — 20 cases across:
+- `tests/test_daemon_proactive.py` — 20 cases across:
   - `proactive_state`: defaults, round-trip, validation (rejects 0/negative), `disable()` keeps interval, `tickle()` bumps timestamp, corrupt-row tolerance.
   - `proactive_scheduler`: disabled state silent, idle threshold publishes one event, `owned_by_daemon=True` disables foreign-check, `stop()` joins within 5 s, double-start returns False.
   - `proactive_methods`: round-trip, missing `enabled` rejected, non-int interval rejected, zero rejected, `tickle` bumps `last_tick_at`, `get` reports scheduler-running flag.
@@ -587,12 +587,12 @@ Files:
 
 | File | LoC | Role |
 |------|-----|------|
-| `cc_daemon/bridge_supervisor.py`                 | ~430 | Lifecycle (`start` / `stop` / `stop_all` / `get` / `list_all`), per-kind feature-flag gate (`CHEETAHCLAWS_ENABLE_F6/7/8`), outbound `notify()` mailbox consumed by F-4 #2 + `bridge.send` RPC, `bridges` table upsert/finalize, redacted config snapshots in event payloads. |
-| `cc_daemon/bridge_methods.py`                    | ~135 | `bridge.start` / `bridge.stop` / `bridge.list` / `bridge.send` / `bridge.status` RPCs. Registered from `cc_daemon/server.py:DaemonState.__init__` next to `agent_methods`. |
-| `cc_daemon/server.py`                            | +6   | `DaemonState.__init__` adds `bridge_methods.register`. The methods are exposed unconditionally so `bridge.list` always answers, but `bridge.start` itself enforces the per-kind flag. |
-| `cc_daemon/cli.py`                               | +6   | `_watch_shutdown` calls `bridge_supervisor.stop_all` before triggering the HTTP listener shutdown, so a SIGTERM cleanly tears down bridge worker threads. |
-| `tests/test_cc_daemon_bridge_supervisor.py`      | ~290 | 17 cases across feature flag, lifecycle (start/stop/double-start/dependency-on-F6), outbound `notify` (single + broadcast + empty drop), SQLite persistence (`list_persisted`, DB-failure tolerance), config redaction. |
-| `tests/test_cc_daemon_bridge_methods.py`         | ~210 | 10 RPC cases: registration, param validation across all five methods, start-list-stop round trip with redacted config in response, `bridge.send` outbound dispatch. |
+| `daemon/bridge_supervisor.py`                 | ~430 | Lifecycle (`start` / `stop` / `stop_all` / `get` / `list_all`), per-kind feature-flag gate (`CHEETAHCLAWS_ENABLE_F6/7/8`), outbound `notify()` mailbox consumed by F-4 #2 + `bridge.send` RPC, `bridges` table upsert/finalize, redacted config snapshots in event payloads. |
+| `daemon/bridge_methods.py`                    | ~135 | `bridge.start` / `bridge.stop` / `bridge.list` / `bridge.send` / `bridge.status` RPCs. Registered from `daemon/server.py:DaemonState.__init__` next to `agent_methods`. |
+| `daemon/server.py`                            | +6   | `DaemonState.__init__` adds `bridge_methods.register`. The methods are exposed unconditionally so `bridge.list` always answers, but `bridge.start` itself enforces the per-kind flag. |
+| `daemon/cli.py`                               | +6   | `_watch_shutdown` calls `bridge_supervisor.stop_all` before triggering the HTTP listener shutdown, so a SIGTERM cleanly tears down bridge worker threads. |
+| `tests/test_daemon_bridge_supervisor.py`      | ~290 | 17 cases across feature flag, lifecycle (start/stop/double-start/dependency-on-F6), outbound `notify` (single + broadcast + empty drop), SQLite persistence (`list_persisted`, DB-failure tolerance), config redaction. |
+| `tests/test_daemon_bridge_methods.py`         | ~210 | 10 RPC cases: registration, param validation across all five methods, start-list-stop round trip with redacted config in response, `bridge.send` outbound dispatch. |
 
 Per-bridge flag matrix (per the "Bridge flag" decision):
 
@@ -650,10 +650,10 @@ New files / sections:
 
 | File | Role |
 |------|------|
-| `cc_daemon/session_methods.py` | `session.send(session_id, text, origin?, message_id?)` publishes `session_inbound`. `session.reply(session_id, text, target_bridges?, message_id?)` publishes `session_outbound`. `session.list_recent(limit=20)` reads the in-memory LRU. Permission-routing originator defaults to the RPC caller's `client_id` when no explicit `origin` is supplied. |
-| `cc_daemon/bridge_supervisor.py` | New `BridgeHandle.daemon_phase2` flag + `session_id()` helper (`tg:<chat_id>`, `sl:<channel>`, `wc:<user_id>`). When `daemon_phase2=True`, the worker bypasses the legacy supervisor and runs `_phase2_worker`, which: (a) subscribes to the bus, filters `session_outbound` by session_id + target_bridges, forwards to `handle.sender`; (b) runs a per-kind inbound poller (`_phase2_telegram_inbound`, `_phase2_slack_inbound`, `_phase2_wechat_inbound`) that re-uses the existing HTTP helpers in `bridges/<kind>.py` but publishes `session_inbound` on every new message instead of invoking `session_ctx.run_query`. |
-| `cc_daemon/bridge_methods.py` | `bridge.start` now accepts `daemon_phase2: bool` (default False). The bridge handle response surfaces `daemon_phase2` + `session_id` so the caller can confirm what mode the worker is in. |
-| `cc_daemon/server.py` | Registers `session_methods` on `DaemonState.__init__`. No feature flag — the methods are pure message-passing primitives and are safe on any daemon. |
+| `daemon/session_methods.py` | `session.send(session_id, text, origin?, message_id?)` publishes `session_inbound`. `session.reply(session_id, text, target_bridges?, message_id?)` publishes `session_outbound`. `session.list_recent(limit=20)` reads the in-memory LRU. Permission-routing originator defaults to the RPC caller's `client_id` when no explicit `origin` is supplied. |
+| `daemon/bridge_supervisor.py` | New `BridgeHandle.daemon_phase2` flag + `session_id()` helper (`tg:<chat_id>`, `sl:<channel>`, `wc:<user_id>`). When `daemon_phase2=True`, the worker bypasses the legacy supervisor and runs `_phase2_worker`, which: (a) subscribes to the bus, filters `session_outbound` by session_id + target_bridges, forwards to `handle.sender`; (b) runs a per-kind inbound poller (`_phase2_telegram_inbound`, `_phase2_slack_inbound`, `_phase2_wechat_inbound`) that re-uses the existing HTTP helpers in `bridges/<kind>.py` but publishes `session_inbound` on every new message instead of invoking `session_ctx.run_query`. |
+| `daemon/bridge_methods.py` | `bridge.start` now accepts `daemon_phase2: bool` (default False). The bridge handle response surfaces `daemon_phase2` + `session_id` so the caller can confirm what mode the worker is in. |
+| `daemon/server.py` | Registers `session_methods` on `DaemonState.__init__`. No feature flag — the methods are pure message-passing primitives and are safe on any daemon. |
 
 Acceptance criteria revisited:
 
@@ -661,7 +661,7 @@ Acceptance criteria revisited:
 |----------------------------------------------------------|:------:|
 | Phone message → daemon `session.send` → REPL/Web/another bridge can subscribe to the same session and see events | ✅ via `session_inbound` events on the SSE feed |
 | Bridge survives REPL exit; user can keep texting | ✅ (already from Phase 1; the daemon owns the worker thread) |
-| Permission requests originating from a bridge-driven turn route only to that bridge for answer | ✅ via originator stamping — `session.send` writes `origin=<kind>:<session_id>` (or the explicit `origin` param) onto the event. The agent driver (REPL/Web) uses that string as the `originator` when minting a PermissionRequest; the existing `cc_daemon/permission.py` `PermissionStore` already enforces "only this originator can answer." |
+| Permission requests originating from a bridge-driven turn route only to that bridge for answer | ✅ via originator stamping — `session.send` writes `origin=<kind>:<session_id>` (or the explicit `origin` param) onto the event. The agent driver (REPL/Web) uses that string as the `originator` when minting a PermissionRequest; the existing `daemon/permission.py` `PermissionStore` already enforces "only this originator can answer." |
 
 Bus events:
 
@@ -670,8 +670,8 @@ Bus events:
 
 Tests:
 
-- `tests/test_cc_daemon_session_methods.py` — 13 cases (publish, LRU, param validation across `session.send` / `session.reply` / `session.list_recent`).
-- `tests/test_cc_daemon_bridge_phase2.py` — 7 cases: `session_id()` formatting (3, all three kinds), outbound delivery via `session_outbound` event matching session_id + target_bridges (2), inbound poller publishes `session_inbound` for a new Telegram message (1), `bridge.start` RPC passes `daemon_phase2` through and surfaces it on the response (1).
+- `tests/test_daemon_session_methods.py` — 13 cases (publish, LRU, param validation across `session.send` / `session.reply` / `session.list_recent`).
+- `tests/test_daemon_bridge_phase2.py` — 7 cases: `session_id()` formatting (3, all three kinds), outbound delivery via `session_outbound` event matching session_id + target_bridges (2), inbound poller publishes `session_inbound` for a new Telegram message (1), `bridge.start` RPC passes `daemon_phase2` through and surfaces it on the response (1).
 
 Phase 1 still works unchanged — `daemon_phase2=False` (the default) keeps the legacy `bridges/<kind>.py` supervisor as the worker, preserving the REPL-shaped behaviour for callers that haven't migrated.
 
@@ -698,7 +698,7 @@ in alongside Telegram's. What's new for F-7:
   HTTP code the REPL uses.
 - **`bridges` SQLite row.** Same schema as Telegram's; the
   `bridge.list` RPC merges Slack rows in.
-- **Tests** in `tests/test_cc_daemon_bridge_supervisor.py::TestSlackWorker`
+- **Tests** in `tests/test_daemon_bridge_supervisor.py::TestSlackWorker`
   cover: F-6 dependency error, supervisor invocation with the expected
   `(token, channel, config)` shape, outbound sender wiring.
 
@@ -732,7 +732,7 @@ Files / tests:
 
 - **Feature flag `CHEETAHCLAWS_ENABLE_F8`** (default off; depends on
   F-6 enabled too).
-- **Tests** in `tests/test_cc_daemon_bridge_supervisor.py::TestWechatWorker`:
+- **Tests** in `tests/test_daemon_bridge_supervisor.py::TestWechatWorker`:
   F-6 dependency error, supervisor invocation with `(token, base_url,
   config)`, missing-config clean-exit path, outbound sender wiring.
 
@@ -773,11 +773,11 @@ What landed:
 
 | File | Role |
 |------|------|
-| `cc_daemon/cli.py`              | New module-level `F9_SERVE_BUDGET_DEFAULTS` dict (200k tokens / $2 / 2M tokens / $20) plus `_apply_serve_defaults(config)` — pure function that flips any `None` budget key to its conservative default. Called from `cmd_serve` after `load_config()` and before `_bootstrap`, so the quota module sees the final values on first init. |
-| `cc_daemon/system_methods.py`   | New `system.status` RPC returning `{budgets: {…four keys…}, runners: int, bridges: int}`. The four keys are surfaced verbatim from `daemon_state.config` so `agent.resume`'s mutations are visible the next time someone polls. |
-| `cc_daemon/agent_methods.py`    | New `agent.resume` RPC accepting `budget_overrides: {key: value | null}`. Values are coerced (`int` for token budgets, `float` for cost). `null` resets to unlimited. Unknown keys → `-32602`. |
+| `daemon/cli.py`              | New module-level `F9_SERVE_BUDGET_DEFAULTS` dict (200k tokens / $2 / 2M tokens / $20) plus `_apply_serve_defaults(config)` — pure function that flips any `None` budget key to its conservative default. Called from `cmd_serve` after `load_config()` and before `_bootstrap`, so the quota module sees the final values on first init. |
+| `daemon/system_methods.py`   | New `system.status` RPC returning `{budgets: {…four keys…}, runners: int, bridges: int}`. The four keys are surfaced verbatim from `daemon_state.config` so `agent.resume`'s mutations are visible the next time someone polls. |
+| `daemon/agent_methods.py`    | New `agent.resume` RPC accepting `budget_overrides: {key: value | null}`. Values are coerced (`int` for token budgets, `float` for cost). `null` resets to unlimited. Unknown keys → `-32602`. |
 | `commands/daemon_cmd.py`        | `_status` now calls `system.status` after `system.ping` and prints a `budgets:` block plus live `runners` / `bridges` counts. Backward-compatible: an older daemon that doesn't speak `system.status` falls through silently (the `system.ping` line still appears). |
-| `tests/test_cc_daemon_f9_budgets.py` | 12 cases: `_apply_serve_defaults` (3, pure-function), `system.status` (3, returns budgets + counts, handles unlimited), `agent.resume` (6, merge, null=unlimited, unknown key, non-numeric, non-dict, noop empty). |
+| `tests/test_daemon_f9_budgets.py` | 12 cases: `_apply_serve_defaults` (3, pure-function), `system.status` (3, returns budgets + counts, handles unlimited), `agent.resume` (6, merge, null=unlimited, unknown key, non-numeric, non-dict, noop empty). |
 
 **Per-runner quota-pause hook (landed in second pass):**
 
@@ -798,7 +798,7 @@ Events on the bus:
 
 The pre-iter check is **read-only** — it doesn't write to the quota file or consume tokens. The actual budget enforcement still happens inside `agent.run` on every API call (`record_usage` after each turn, `check_quota` before the next). The runner-side hook just adds a fast-fail check at iteration boundaries so a paused runner can sit cheaply on a `wait_event` instead of repeatedly bouncing off the quota inside `agent.run`.
 
-Tests for the quota-pause hook in `tests/test_cc_daemon_quota_pause.py` (2 cases): full IPC roundtrip (`paused_budget` → supervisor `quota_warn` → `resume` → `resumed` → `agent_runner_resumed`), and `runner_supervisor.resume("no-such-runner")` returns False. Plus 2 new cases in `tests/test_cc_daemon_f9_budgets.py`: `agent.resume(name=…)` calls `runner_supervisor.resume`, and an empty `name` field is rejected with `-32602`.
+Tests for the quota-pause hook in `tests/test_daemon_quota_pause.py` (2 cases): full IPC roundtrip (`paused_budget` → supervisor `quota_warn` → `resume` → `resumed` → `agent_runner_resumed`), and `runner_supervisor.resume("no-such-runner")` returns False. Plus 2 new cases in `tests/test_daemon_f9_budgets.py`: `agent.resume(name=…)` calls `runner_supervisor.resume`, and an empty `name` field is rejected with `-32602`.
 
 Cost-default knobs operators can override:
 
@@ -812,17 +812,17 @@ Cost-default knobs operators can override:
 }
 ```
 
-REPL invariant: `cheetahclaws` (no `serve`) still imports `cc_config`
+REPL invariant: `cheetahclaws` (no `serve`) still imports `config`
 directly, so the four budget keys remain `None` (unlimited) — F-9 only
 fires inside `cmd_serve`. Verified by the existing
-`tests/test_cc_daemon_cli.py` round-trip plus the new `_apply_serve_defaults`
+`tests/test_daemon_cli.py` round-trip plus the new `_apply_serve_defaults`
 unit tests (which don't depend on a daemon being up).
 
 ## Cross-cutting conventions
 
 - **Tests.** Every PR ships unit tests; F-1, F-3, F-4, F-6/7/8 also ship `tests/e2e_daemon_<area>.py`.
 - **Docs.** Every PR updates the relevant section in `docs/architecture.md`. The "Daemon" header is created by F-1; subsequent PRs append.
-- **Config keys.** New keys go in `cc_config.DEFAULTS`; documented in `docs/architecture.md`.
+- **Config keys.** New keys go in `config.DEFAULTS`; documented in `docs/architecture.md`.
 - **Backwards compatibility.** Users who never run `cheetahclaws serve` see no behavior change until the eventual default flip — that flip is out of scope here and tracked in [#68](https://github.com/SafeRL-Lab/cheetahclaws/issues/68) as the "Phase D" item.
 
 ## Updating this document

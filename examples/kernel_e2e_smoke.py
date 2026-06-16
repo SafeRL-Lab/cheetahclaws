@@ -29,17 +29,22 @@ import tempfile
 import time
 from pathlib import Path
 
-import cc_kernel
+import kernel
+# Module-level classes referenced inside _run_demo, where the `kernel`
+# param holds a Kernel *instance* and would otherwise shadow the module.
+from kernel import ScheduleSpec, SandboxPolicy
 
 
 def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "kernel.db"
-        with cc_kernel.Kernel.open(db_path) as kernel:
-            return _run_demo(kernel)
+        # NB: bind to `kern`, not `kernel` — `as kernel` would shadow the
+        # `kernel` module on this same line (UnboundLocalError).
+        with kernel.Kernel.open(db_path) as kern:
+            return _run_demo(kern)
 
 
-def _run_demo(kernel: cc_kernel.Kernel) -> int:
+def _run_demo(kernel: kernel.Kernel) -> int:
     # ── Step 1: create agents ────────────────────────────────────────
     parent = kernel.create_agent(
         name="orchestrator", template="demo/parent",
@@ -100,7 +105,7 @@ def _run_demo(kernel: cc_kernel.Kernel) -> int:
     # ── Step 5: enqueue work for the workers ────────────────────────
     sids = []
     for c in (child_a, child_b):
-        sid = kernel.scheduler.enqueue(cc_kernel.ScheduleSpec(
+        sid = kernel.scheduler.enqueue(ScheduleSpec(
             pid=c.pid,
             priority=1,
             trigger="manual",
@@ -112,9 +117,9 @@ def _run_demo(kernel: cc_kernel.Kernel) -> int:
     # ── Step 6: build worker loop (spawns echo runner) ──────────────
     worker = kernel.make_worker(
         argv_factory=lambda entry: [
-            sys.executable, "-m", "cc_kernel.runner.runner_main",
+            sys.executable, "-m", "kernel.runner.runner_main",
         ],
-        policy_factory=lambda entry: cc_kernel.SandboxPolicy(
+        policy_factory=lambda entry: SandboxPolicy(
             wall_seconds=10,
             cpu_seconds=5,
         ),

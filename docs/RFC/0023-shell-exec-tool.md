@@ -210,7 +210,7 @@ operators can grep the event log for what was run.
 
 ## 6. Backwards compatibility
 
-- Strictly additive new file ``cc_kernel/tools/exec_tool.py``.
+- Strictly additive new file ``kernel/tools/exec_tool.py``.
 - ``register_builtin_tools`` is unchanged; existing setups
   with no Exec capability see no new behaviour.
 - ``register_exec_tool(registry)`` is the explicit opt-in.
@@ -252,5 +252,5 @@ A PR claiming this RFC must:
    with stdout length ≤ 1024.
 9. End-to-end via runner_main + supervisor + dispatched
    audit event present.
-10. No file outside ``cc_kernel/``, ``tests/``,
+10. No file outside ``kernel/``, ``tests/``,
     ``docs/RFC/`` modified.

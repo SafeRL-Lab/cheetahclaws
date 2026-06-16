@@ -10,12 +10,12 @@ import uuid
 
 import pytest
 
-from cc_daemon import API_VERSION, API_VERSION_HEADER, events
-from cc_daemon.originator import CLIENT_KIND_HEADER
-from cc_daemon.server import make_tcp_server
+from daemon import API_VERSION, API_VERSION_HEADER, events
+from daemon.originator import CLIENT_KIND_HEADER
+from daemon.server import make_tcp_server
 
-from cc_kernel import register_with_daemon
-from cc_kernel.integration import detach
+from kernel import register_with_daemon
+from kernel.integration import detach
 
 
 def _free_port() -> int:

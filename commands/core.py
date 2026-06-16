@@ -211,7 +211,7 @@ def cmd_context(_args: str, state, config) -> bool:
 
 
 def cmd_cost(_args: str, state, config) -> bool:
-    from cc_config import calc_cost
+    from config import calc_cost
     cost = calc_cost(config["model"],
                      state.total_input_tokens,
                      state.total_output_tokens)
@@ -237,7 +237,7 @@ def cmd_budget(args: str, state, config) -> bool:
     /budget clear           remove all caps (unlimited)
     """
     import quota as _quota
-    from cc_config import save_config
+    from config import save_config
 
     arg = args.strip()
     sid = config.get("_session_id", "default")
@@ -668,7 +668,7 @@ def cmd_doctor(args: str, state, config) -> bool:
 
 def run_setup_wizard(config: dict) -> None:
     """Interactive first-run setup: pick provider, set API key, verify."""
-    from cc_config import save_config
+    from config import save_config
     from providers import PROVIDERS, detect_provider, get_api_key
 
     print()
@@ -840,7 +840,7 @@ def _proactive_daemon_running() -> bool:
     """
     try:
         import os
-        from cc_daemon import discovery
+        from daemon import discovery
         info_d = discovery.locate()
         if info_d is None:
             return False
@@ -858,7 +858,7 @@ def _proactive_rpc(method: str, params: dict | None = None) -> dict | None:
         import http.client
         import json
         import os
-        from cc_daemon import API_VERSION, API_VERSION_HEADER, discovery
+        from daemon import API_VERSION, API_VERSION_HEADER, discovery
 
         info_d = discovery.locate()
         if info_d is None:

@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.bridge_mirror (RFC 0018)."""
+"""Tests for kernel.bridge_mirror (RFC 0018)."""
 from __future__ import annotations
 
 import threading
@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     BridgeKind,
     BridgeMessage,
     BridgeMirror,
@@ -15,7 +15,7 @@ from cc_kernel import (
     inbound_topic,
     outbound_topic,
 )
-from cc_kernel.bridge_mirror import MESSAGE_KIND
+from kernel.bridge_mirror import MESSAGE_KIND
 
 
 @pytest.fixture

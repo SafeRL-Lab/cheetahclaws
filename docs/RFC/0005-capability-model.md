@@ -299,4 +299,4 @@ A PR claiming this RFC must:
 5. Glob matching covers exact, single-level wildcard, multi-level
    wildcard.
 6. Path matching covers prefix + mode subset.
-7. No file outside `cc_kernel/` and `docs/RFC/` is modified.
+7. No file outside `kernel/` and `docs/RFC/` is modified.

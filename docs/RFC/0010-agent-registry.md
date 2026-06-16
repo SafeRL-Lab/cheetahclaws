@@ -188,4 +188,4 @@ A PR claiming this RFC must:
    returns only entries containing that tag.
 4. `unregister_pid` clears all rows for the given pid.
 5. RPC surface works end-to-end through the daemon.
-6. No file outside `cc_kernel/`, `tests/`, `docs/RFC/` modified.
+6. No file outside `kernel/`, `tests/`, `docs/RFC/` modified.

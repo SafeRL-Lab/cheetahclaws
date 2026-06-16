@@ -55,7 +55,7 @@ def cmd_model(args: str, _state, config) -> bool:
         config["model"] = m
         pname = detect_provider(m)
         ok(f"Model set to {m}  (provider: {pname})")
-        from cc_config import save_config
+        from config import save_config
         save_config(config)
     return True
 
@@ -89,7 +89,7 @@ def _interactive_ollama_picker(config: dict) -> bool:
         if 0 <= idx < len(models):
             new_model = f"ollama/{models[idx]}"
             config["model"] = new_model
-            from cc_config import save_config
+            from config import save_config
             save_config(config)
             ok(f"Model updated to {new_model}")
             return True
@@ -101,7 +101,7 @@ def _interactive_ollama_picker(config: dict) -> bool:
 
 
 def cmd_config(args: str, _state, config) -> bool:
-    from cc_config import save_config
+    from config import save_config
     if not args:
         _SECRETS = {"api_key", "anthropic_api_key", "telegram_token", "wechat_token"}
         display = {k: v for k, v in config.items()
@@ -148,7 +148,7 @@ def cmd_config(args: str, _state, config) -> bool:
 
 
 def cmd_verbose(_args: str, _state, config) -> bool:
-    from cc_config import save_config
+    from config import save_config
     config["verbose"] = not config.get("verbose", False)
     state_str = "ON" if config["verbose"] else "OFF"
     ok(f"Verbose mode: {state_str}")
@@ -157,7 +157,7 @@ def cmd_verbose(_args: str, _state, config) -> bool:
 
 
 def cmd_quiet(_args: str, _state, config) -> bool:
-    from cc_config import save_config
+    from config import save_config
     config["quiet"] = not config.get("quiet", True)
     state_str = "ON" if config["quiet"] else "OFF"
     ok(f"Quiet mode: {state_str}  "
@@ -168,7 +168,7 @@ def cmd_quiet(_args: str, _state, config) -> bool:
 
 
 def cmd_thinking(_args: str, _state, config) -> bool:
-    from cc_config import save_config
+    from config import save_config
     config["thinking"] = not config.get("thinking", False)
     state_str = "ON" if config["thinking"] else "OFF"
     ok(f"Extended thinking: {state_str}")
@@ -177,7 +177,7 @@ def cmd_thinking(_args: str, _state, config) -> bool:
 
 
 def cmd_permissions(args: str, _state, config) -> bool:
-    from cc_config import save_config
+    from config import save_config
     from tools import ask_input_interactive
     modes = ["auto", "accept-all", "manual"]
     mode_desc = {

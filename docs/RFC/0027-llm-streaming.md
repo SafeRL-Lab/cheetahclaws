@@ -96,7 +96,7 @@ emits them as a finished `tool_use` block at the end.)
 
 ## 3. LLM runner integration
 
-In ``cc_kernel/runner/llm/__main__.py``:
+In ``kernel/runner/llm/__main__.py``:
 
 ```python
 stream = bool(payload.get("stream", False))
@@ -149,5 +149,5 @@ A PR claiming this RFC must:
    chunks; final text iteration emits per-delta chunks.
 8. ``info.text`` matches the assembled deltas (same text either
    way).
-9. No file outside ``cc_kernel/``, ``tests/``, ``docs/RFC/``
+9. No file outside ``kernel/``, ``tests/``, ``docs/RFC/``
    modified.

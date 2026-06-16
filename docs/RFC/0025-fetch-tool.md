@@ -197,7 +197,7 @@ def fetch_handler(args, ctx):
 
 ## 5. Backwards compatibility
 
-- New file ``cc_kernel/tools/fetch_tool.py``.
+- New file ``kernel/tools/fetch_tool.py``.
 - ``register_builtin_tools`` is unchanged; Fetch is opt-in via
   ``register_fetch_tool(registry)``.
 - ``ToolNetDenied`` is a new exception in ``registry.py`` —
@@ -239,5 +239,5 @@ A PR claiming this RFC must:
 10. Redirect strips Authorization header (verified by serving
     a redirect that echoes incoming headers).
 11. POST with body works.
-12. No file outside ``cc_kernel/``, ``tests/``, ``docs/RFC/``
+12. No file outside ``kernel/``, ``tests/``, ``docs/RFC/``
     modified.

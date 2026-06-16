@@ -55,7 +55,7 @@ jobs:
           # Top-level modules from pyproject.toml py-modules
           modules = [
               'cheetahclaws', 'agent', 'agent_runner', 'bootstrap',
-              'circuit_breaker', 'cloudsave', 'compaction', 'cc_config',
+              'circuit_breaker', 'cloudsave', 'compaction', 'config',
               'context', 'health', 'jobs', 'logging_utils', 'memory',
               'providers', 'quota', 'runtime', 'skills', 'subagent',
               'tmux_tools', 'tool_registry',
@@ -66,7 +66,7 @@ jobs:
               'tools', 'tools.security', 'tools.fs', 'tools.shell',
               'tools.web', 'tools.notebook', 'tools.diagnostics',
               'tools.interaction',
-              'cc_mcp', 'monitor', 'multi_agent', 'plugin', 'skill', 'task',
+              'mcp_client', 'monitor', 'multi_agent', 'plugin', 'skill', 'task',
               'voice', 'video', 'checkpoint', 'ui', 'bridges', 'commands',
               'modular',
           ]

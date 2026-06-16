@@ -27,7 +27,7 @@ _save_lock = threading.Lock()
 def _get_db_path() -> Path:
     global _DB_PATH
     if _DB_PATH is None:
-        from cc_config import CONFIG_DIR
+        from config import CONFIG_DIR
         _DB_PATH = CONFIG_DIR / "sessions.db"
     return _DB_PATH
 

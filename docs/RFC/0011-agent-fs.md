@@ -319,4 +319,4 @@ A PR claiming this RFC must:
 9. Concurrent writes from N threads to N distinct paths leave all N
    rows present and intact.
 10. RPC surface works end-to-end through the daemon.
-11. No file outside `cc_kernel/`, `tests/`, `docs/RFC/` modified.
+11. No file outside `kernel/`, `tests/`, `docs/RFC/` modified.

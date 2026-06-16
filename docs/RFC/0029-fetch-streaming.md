@@ -95,5 +95,5 @@ A PR claiming this RFC must:
    are emitted; ``truncated=True`` in result.
 8. Bad ``on_chunk`` callback (raises) doesn't break the
    fetch — exception swallowed at the boundary.
-9. No file outside ``cc_kernel/``, ``tests/``,
+9. No file outside ``kernel/``, ``tests/``,
    ``docs/RFC/`` modified.

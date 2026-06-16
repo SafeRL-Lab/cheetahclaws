@@ -1,9 +1,9 @@
-"""Tests for cc_kernel.registry (RFC 0010)."""
+"""Tests for kernel.registry (RFC 0010)."""
 from __future__ import annotations
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     KernelStore,
     RegistryEntry,
     RegistryInvalidName,

@@ -46,7 +46,7 @@ The high-level shape:
         │
         ├──► tool_registry.py ──► tools/  (fs, shell, web, notebook,
         │                                  diagnostics, interaction, …)
-        │                        + memory/, multi_agent/, skill/, cc_mcp/,
+        │                        + memory/, multi_agent/, skill/, mcp_client/,
         │                          task/, checkpoint/hooks, plugins, modular/
         │
         ├──► compaction.py ── snip + LLM-summarize old turns
@@ -87,7 +87,7 @@ responsibility.
 | [`providers.py`](../providers.py) | Provider registry (`PROVIDERS` dict), auto-detection by model prefix, streaming adapters for Anthropic native + OpenAI-compatible APIs |
 | [`tool_registry.py`](../tool_registry.py) | Central `ToolDef` registry, dispatch, output truncation |
 | [`runtime.py`](../runtime.py) | `RuntimeContext` — per-session live state (callbacks, bridge flags, plan-mode state, streaming hooks). **Not** persisted. |
-| [`cc_config.py`](../cc_config.py) | Defaults + `~/.cheetahclaws/config.json` load/save.  Strips `_`-prefixed keys on save. |
+| [`config.py`](../config.py) | Defaults + `~/.cheetahclaws/config.json` load/save.  Strips `_`-prefixed keys on save. |
 | [`quota.py`](../quota.py) | Per-session and daily token/cost budgets.  Checked before every API call. |
 | [`circuit_breaker.py`](../circuit_breaker.py) | Trip-open-after-N-failures protection around provider calls. |
 | [`error_classifier.py`](../error_classifier.py) | Categorize API errors (rate limit / context-too-long / network / transient) so `agent.run()` can pick the right retry strategy. |
@@ -113,7 +113,7 @@ internal structure.
 | [`memory/`](../memory) | Persistent memory across sessions — `store.py` (CRUD), `scan.py`/`context.py` (index + freshness), `consolidator.py` (`/memory consolidate`), `tools.py` (`MemorySave` / `MemoryDelete` / `MemorySearch` / `MemoryList`). |
 | [`multi_agent/`](../multi_agent) | Sub-agent subsystem.  `subagent.py` owns `SubAgentManager` (ThreadPoolExecutor), depth gating, git-worktree isolation; `tools.py` exposes `Agent` / `SendMessage` / `CheckAgentResult` / `ListAgentTasks` / `ListAgentTypes`. |
 | [`skill/`](../skill) | Markdown-based skill templates — `loader.py` parses frontmatter + resolves project→user→built-in precedence, `executor.py` runs a skill inline or in a fork, `builtin.py` ships a few default skills, `tools.py` exposes `Skill` / `SkillList`. |
-| [`cc_mcp/`](../cc_mcp) | MCP (Model Context Protocol) client — `config.py` loads `.mcp.json`, `client.py` speaks stdio/SSE/HTTP JSON-RPC, `tools.py` connects servers and registers each remote tool as `mcp__<server>__<tool>`.  Renamed from `mcp/` to avoid stdlib collision. |
+| [`mcp_client/`](../mcp_client) | MCP (Model Context Protocol) client — `config.py` loads `.mcp.json`, `client.py` speaks stdio/SSE/HTTP JSON-RPC, `tools.py` connects servers and registers each remote tool as `mcp__<server>__<tool>`.  Renamed from `mcp/` to avoid stdlib collision. |
 | [`task/`](../task) | In-session task list — `types.py` (model + status enum), `store.py` (thread-safe CRUD + dependency-edge maintenance), `tools.py` (`TaskCreate` / `TaskUpdate` / `TaskGet` / `TaskList`). |
 | [`checkpoint/`](../checkpoint) | Auto-snapshot of conversation + file state after every turn.  `types.py` data models, `store.py` backup + rewind, `hooks.py` monkey-patches `Write` / `Edit` / `NotebookEdit` to snapshot pre-edit.  Command wiring in `commands/checkpoint_plan.py`. |
 | [`plugin/`](../plugin) | Plugin install / enable / disable / update from git URLs or local paths.  `loader.py` imports user plugins and registers their `TOOL_DEFS` / `COMMAND_DEFS`; `recommend.py` scores plugin marketplace by keyword/tag match. |
@@ -163,7 +163,7 @@ class ToolDef:
    at the bottom of the file).
 2. **Extension packages** — a `_EXTENSION_MODULES` list in
    `tools/__init__.py` (`memory.tools`, `multi_agent.tools`,
-   `skill.tools`, `cc_mcp.tools`, `task.tools`) is imported for side
+   `skill.tools`, `mcp_client.tools`, `task.tools`) is imported for side
    effects; each module calls `register_tool()` at its own import time.
    Failures are swallowed (extensions are best-effort).
 3. **Plugins** — user-installed packages expose a `TOOL_DEFS` list; the
@@ -437,7 +437,7 @@ model can enter/exit plan mode without interactive friction.
 
 Plus two security layers that apply regardless of mode:
 
-- **`allowed_root`** (`cc_config.py` default `None`) — if set to a
+- **`allowed_root`** (`config.py` default `None`) — if set to a
   path, restricts file tools (Read / Write / Edit / Glob / Grep) to
   that subtree.  Null means unrestricted (CLI default).
 - **`shell_policy`** — `allow` (default) / `log` / `deny` for the
@@ -473,7 +473,7 @@ call and records usage after.  Budgets are:
 - `daily_token_budget`, `daily_cost_budget` — aggregated across all
   sessions for today.
 
-All four default to `None` (unlimited) in `cc_config.DEFAULTS`.  When
+All four default to `None` (unlimited) in `config.DEFAULTS`.  When
 exceeded, `agent.run()` yields a `TextChunk("[Quota exceeded — …]")`
 and breaks the loop.  Long-running / autonomous workflows should turn
 these on.
@@ -623,7 +623,7 @@ runs a cheap LLM pass over the current session and saves up to 3
 high-confidence insights without overwriting higher-confidence user
 entries.
 
-### MCP (`cc_mcp/`)
+### MCP (`mcp_client/`)
 
 Standard MCP client.  Supports stdio (subprocess), SSE, and
 streamable HTTP transports.  `.mcp.json` in the project root or
@@ -632,9 +632,9 @@ reconnects.  Every discovered remote tool is registered as
 `mcp__<server>__<tool>` and participates in the normal permission /
 execution flow.
 
-Renamed from `mcp/` to `cc_mcp/` to avoid import-time collision with
+Renamed from `mcp/` to `mcp_client/` to avoid import-time collision with
 Python's stdlib namespace and the `modelcontextprotocol` package.
-**Import from `cc_mcp`, not `mcp`.**
+**Import from `mcp_client`, not `mcp`.**
 
 ### Tasks (`task/`)
 
@@ -725,7 +725,7 @@ Per-iteration behavior:
 `CHEETAHCLAWS_ENABLE_F4=1` or `agent_runner_subprocess: true` flips
 `start_runner` from threading to subprocess-per-runner. Each runner
 becomes a `python -m agent_runner --pipe` child supervised by
-`cc_daemon.runner_supervisor`; iteration boundaries and crashes are
+`daemon.runner_supervisor`; iteration boundaries and crashes are
 observable on the daemon event bus and persisted to the `agent_runs`
 / `agent_iterations` SQLite tables. The threaded path stays the
 default so REPL behaviour is byte-for-byte unchanged. See
@@ -738,7 +738,7 @@ readiness gaps (daemon mode, SQLite session store, cost guardrails).
 The daemon-mode work is tracked in [issue #68](https://github.com/SafeRL-Lab/cheetahclaws/issues/68);
 the IPC / permission-routing / local-auth contract is captured in
 [RFC 0001](RFC/0001-daemon-design-note.md) and validated end-to-end by
-the `cc_daemon/` reference scaffolding ([spike notes](RFC/0001-spike-notes.md)).
+the `daemon/` reference scaffolding ([spike notes](RFC/0001-spike-notes.md)).
 
 ### Modular ecosystem (`modular/`)
 
@@ -769,7 +769,7 @@ The web UI will eventually become a client of the daemon described in
 the next section (per [RFC 0001](RFC/0001-daemon-design-note.md));
 today it stands alone.
 
-### Daemon (`cc_daemon/` + `commands/daemon_cmd.py`)
+### Daemon (`daemon/` + `commands/daemon_cmd.py`)
 
 The headless `cheetahclaws serve` runtime — foundation for the
 "long-running services survive REPL exit" work tracked in
@@ -786,38 +786,38 @@ top.
 
 Pulled in unchanged from the spike (these encode the wire contract):
 
-- `cc_daemon/__init__.py` — `API_VERSION = "0"`, `API_VERSION_HEADER =
+- `daemon/__init__.py` — `API_VERSION = "0"`, `API_VERSION_HEADER =
   "Cheetahclaws-Api-Version"`.
-- `cc_daemon/server.py` — `ThreadedTCPServer` and `ThreadedUnixServer`
+- `daemon/server.py` — `ThreadedTCPServer` and `ThreadedUnixServer`
   (the latter conditional on `socketserver.UnixStreamServer`, so
   Windows skips it cleanly), 256-deep listen backlog, per-connection
   request handler, SSE loop with 15 s heartbeat, `Cheetahclaws-Api-Version`
   gate that returns `426` on mismatch.
-- `cc_daemon/auth.py` — `SO_PEERCRED` peer-cred check (Linux; macOS
+- `daemon/auth.py` — `SO_PEERCRED` peer-cred check (Linux; macOS
   TODO), bearer-token auth for TCP, per-peer brute-force throttle,
   audit-log default-on for both transports.
-- `cc_daemon/originator.py` — `client_id` mint / persist
+- `daemon/originator.py` — `client_id` mint / persist
   (`~/.cheetahclaws/clients/<kind>.id`) / resume so disconnect-and-
   reconnect keeps the originator identity stable.
-- `cc_daemon/rpc.py` — JSON-RPC 2.0 dispatcher.  Application errors
+- `daemon/rpc.py` — JSON-RPC 2.0 dispatcher.  Application errors
   `-32001` (`not_originator`) and `-32002` (`unknown_request`) carry
   HTTP `403` so observers can't answer permission requests they don't
   own.
-- `cc_daemon/events.py` — in-memory ring buffer + per-subscriber Queue;
+- `daemon/events.py` — in-memory ring buffer + per-subscriber Queue;
   emits a `gap` event on overflow so SSE clients know to re-sync.  F-2
   swaps the ring for the `daemon_events` SQLite table without changing
   the channel API.
-- `cc_daemon/permission.py` — pending-request store, originator-only
+- `daemon/permission.py` — pending-request store, originator-only
   `answer`, 30 min default interactive timeout + `permission.refresh_timeout`
   RPC.
-- `cc_daemon/methods.py` — spike's `echo.ping` / `permission.demo` /
+- `daemon/methods.py` — spike's `echo.ping` / `permission.demo` /
   `permission.answer` / `permission.refresh_timeout` / `permission.list`.
-- `cc_daemon/spike_client.py` — stdlib smoke client, useful for manual
+- `daemon/spike_client.py` — stdlib smoke client, useful for manual
   debugging; not a runtime dependency.
 
 Added by the F-1 foundation:
 
-- `cc_daemon/discovery.py` — atomic write/read of
+- `daemon/discovery.py` — atomic write/read of
   `~/.cheetahclaws/daemon.json` (pid, transport, address, started_at,
   schema version, plus an optional `token_path` recorded only when
   `serve --token-path` overrides the default location) so REPL / Web /
@@ -825,12 +825,12 @@ Added by the F-1 foundation:
   themselves — can locate the daemon and the token file it's actually
   using.  Auto-clears stale files when the recorded pid is no longer
   alive.
-- `cc_daemon/system_methods.py` — registers `system.ping` (RFC contract
+- `daemon/system_methods.py` — registers `system.ping` (RFC contract
   name; coexists with spike's `echo.ping`) and `system.shutdown`
   (triggers `DaemonState.shutdown_event`, our cross-platform graceful
   exit since Windows can't deliver SIGTERM cleanly to another Python
   process).
-- `cc_daemon/cli.py` — rewritten `serve_main(argv)` that calls
+- `daemon/cli.py` — rewritten `serve_main(argv)` that calls
   `bootstrap()`, pins `log_file` to `<data_dir>/logs/daemon.log`,
   threads loaded config + `--unauthenticated-metrics` through
   `DaemonState`, writes the discovery file on bind, watches the
@@ -843,14 +843,14 @@ Added by the F-1 foundation:
 - `health.py` — refactored: extracted `healthz_payload(config)` /
   `readyz_payload(config)` / `metrics_payload(config)` /
   `payload_for(path, config)` module-level helpers so both the existing
-  standalone health HTTP server and `cc_daemon/server.py` reuse the
+  standalone health HTTP server and `daemon/server.py` reuse the
   same circuit-breaker / quota / runtime-registry probes without
   starting a second listener.
 
 Added by the F-4 skeleton (subprocess-per-agent — branch `daemon/f-4`,
 [RFC 0002 §F-4](RFC/0002-daemon-foundation-roadmap.md#f-4--agent_runner-subprocess)):
 
-- `cc_daemon/runner_supervisor.py` — owns the lifecycle of one or more
+- `daemon/runner_supervisor.py` — owns the lifecycle of one or more
   `python -m agent_runner --pipe` subprocesses. `start` /
   `stop` / `stop_all` / `get` / `list_all`. Three-phase stop bounded
   ≤ 5 s (IPC `stop` → SIGTERM at 2 s → SIGKILL at 5 s). Per-runner
@@ -860,10 +860,10 @@ Added by the F-4 skeleton (subprocess-per-agent — branch `daemon/f-4`,
   `agent_runner_stopped` / `agent_runner_crash`). All DB writes are
   best-effort; supervisor never crashes on persistence failure. POSIX
   only (`enabled()` returns False on Windows).
-- `cc_daemon/runner_ipc.py` — thin re-export of
-  `cc_kernel.runner.ipc.JsonLineChannel` so both runner families share
+- `daemon/runner_ipc.py` — thin re-export of
+  `kernel.runner.ipc.JsonLineChannel` so both runner families share
   one IPC implementation and one set of bug fixes.
-- `cc_daemon/agent_methods.py` — JSON-RPC handlers `agent.start`,
+- `daemon/agent_methods.py` — JSON-RPC handlers `agent.start`,
   `agent.stop`, `agent.list`, `agent.status`, registered from
   `DaemonState.__init__` alongside `system_methods` / `monitor_methods`.
   Param validation raises `TypeError` so the dispatcher returns the
@@ -947,7 +947,7 @@ left untouched:
   so an operator sees disabled bridges from earlier daemon runs.
 - `schema_meta` — schema version + per-feature migration markers.
 
-`cc_daemon/schema.py:init_schema()` is idempotent (CREATE IF NOT
+`daemon/schema.py:init_schema()` is idempotent (CREATE IF NOT
 EXISTS only) and serialised by an internal lock, so concurrent serve
 attempts can't trip on each other.  Schema version is recorded as
 `schema_meta.schema_version`; future bumps go through
@@ -977,7 +977,7 @@ Behaviour:
 
 - **REPL detects daemon → skips local scheduler.**  When the user types
   `/monitor start` in REPL while a daemon is running,
-  `commands/monitor_cmd.py` calls `cc_daemon.discovery.locate()`, sees
+  `commands/monitor_cmd.py` calls `daemon.discovery.locate()`, sees
   a live daemon, prints "scheduler is owned by the running daemon", and
   no-ops.  Avoids the race of two schedulers fighting over
   `last_run_at` and double-firing subscriptions.  `/monitor stop`
@@ -985,7 +985,7 @@ Behaviour:
 - **`/monitor subscribe` / `unsubscribe` / `list` always work in REPL.**
   These hit SQLite directly through `monitor.store`; the daemon picks
   up the new state on its next 60 s poll.  No RPC round-trip needed.
-- **External clients use RPC.**  `cc_daemon/monitor_methods.py`
+- **External clients use RPC.**  `daemon/monitor_methods.py`
   registers `monitor.subscribe`, `monitor.unsubscribe`, `monitor.list`,
   `monitor.run` for Web UI / third-party tools that don't share the
   process tree.
@@ -1016,13 +1016,13 @@ the remaining acceptance gaps (RFC 0002 §F-4 #1/#2/#3):
 - **§F-4 #1 — permission routing.** When a runner is started with
   `auto_approve=False`, the supervisor routes the runner's
   `permission_request` IPC frame through
-  `cc_daemon/permission.py:PermissionStore`. The originator (the
+  `daemon/permission.py:PermissionStore`. The originator (the
   `client_id` that called `agent.start`) is the only client that can
   answer via `permission.answer`. Timeouts and denials feed back over
   IPC as `permission_response`; the runner unblocks within its
   30-minute wait either way.
 - **§F-4 #2 — bridge `notify` forwarding.** The reader's `notify` IPC
-  branch now calls `cc_daemon/bridge_supervisor.notify(kind, text)` so
+  branch now calls `daemon/bridge_supervisor.notify(kind, text)` so
   a subprocess runner's iteration summary reaches the originating
   bridge (Telegram / Slack / WeChat). The runner can target a specific
   bridge via `msg["bridge"]` or omit it for a `"*"` broadcast.
@@ -1042,7 +1042,7 @@ the remaining acceptance gaps (RFC 0002 §F-4 #1/#2/#3):
 #### Proactive watcher in daemon (F-5)
 
 `_proactive_watcher_loop` from `cheetahclaws.py` is now daemon-owned.
-`cc_daemon/proactive_state.py` persists `proactive.enabled` /
+`daemon/proactive_state.py` persists `proactive.enabled` /
 `proactive.interval_s` / `proactive.last_tick_at` in the F-2
 `schema_meta` table (so the setting survives daemon restarts); a
 single background thread (`proactive-scheduler`) ticks at 1 s,
@@ -1055,7 +1055,7 @@ double-firing across REPL + daemon.
 
 #### Bridges in daemon (F-6 / F-7 / F-8)
 
-`cc_daemon/bridge_supervisor.py` owns the lifecycle of one or more
+`daemon/bridge_supervisor.py` owns the lifecycle of one or more
 daemon-side bridge threads, gated per-kind by feature flags so REPL
 behaviour is byte-for-byte unchanged until the user opts in:
 
@@ -1082,7 +1082,7 @@ Two modes per bridge:
   phone message instead of calling `session_ctx.run_query`.
 
 Wire-level RPCs: `bridge.start`, `bridge.stop`, `bridge.list`,
-`bridge.send`, `bridge.status` (in `cc_daemon/bridge_methods.py`).
+`bridge.send`, `bridge.status` (in `daemon/bridge_methods.py`).
 Persisted state lives in the F-2 `bridges` table (`kind`, `enabled`,
 `config_json`, `last_poll_at`, `last_error`); secrets are redacted
 to last 4 chars before any row write or bus publish (broad pattern:
@@ -1095,7 +1095,7 @@ bridge-driven turn can use this as the PermissionStore originator
 
 #### Session message-passing primitives (F-6 Phase 2 support)
 
-`cc_daemon/session_methods.py` registers three methods that any
+`daemon/session_methods.py` registers three methods that any
 inbound / outbound source can talk:
 
 - **`session.send(session_id, text, origin?, message_id?)`** —
@@ -1152,11 +1152,11 @@ Per-runner quota-pause hook:
 | Pre-iter check | `AgentRunner._run_loop` (top of each iter) | `quota.check_quota` against `_config`; raises `QuotaExceeded` → `_on_quota_exceeded(qe)`. |
 | Base impl | `AgentRunner._on_quota_exceeded` | No-op — REPL path keeps today's behaviour (agent.run catches internally, yields `[Quota exceeded …]` text). |
 | F-4 override | `_PipeAgentRunner._on_quota_exceeded` | Sends `paused_budget` IPC, sets `status='paused_budget'`, blocks on `_resume_event.wait()`. Wakes from `resume` IPC, sends `resumed` IPC, returns. |
-| Supervisor inbound | `cc_daemon/runner_supervisor:_reader_loop` | New `paused_budget` / `resumed` branches: flip `agent_runs.status` in SQLite, publish `quota_warn` / `agent_runner_resumed` on the bus. |
+| Supervisor inbound | `daemon/runner_supervisor:_reader_loop` | New `paused_budget` / `resumed` branches: flip `agent_runs.status` in SQLite, publish `quota_warn` / `agent_runner_resumed` on the bus. |
 | Supervisor outbound | `runner_supervisor.resume(name)` | Sends `resume` IPC to the named runner; called by `agent.resume(name=…)`. |
 | Control loop | `agent_runner._pipe_main:_control_loop` | New `resume` handler sets `_resume_event`. `stop` handler also sets it so a stop arriving while paused unblocks cleanly. |
 
-### Agent OS kernel (`cc_kernel/`)
+### Agent OS kernel (`kernel/`)
 
 Layer above the daemon and below the user-facing CLI/REPL/bridges.
 Turns cheetahclaws into a true single-node agent operating system:
@@ -1172,56 +1172,56 @@ overview at [`docs/agent-os.md`](agent-os.md).
 
 **Module map.**
 
-- `cc_kernel/api.py` — `Kernel` facade. `Kernel.open(...)` opens a
+- `kernel/api.py` — `Kernel` facade. `Kernel.open(...)` opens a
   WAL-mode SQLite store and exposes the `cap` / `ledger` / `sched` /
   `mbox` / `registry` / `fs` / `events` substores. `make_supervisor()`
   constructs a `Supervisor` ready to spawn subprocess agents.
-- `cc_kernel/store.py` + `cc_kernel/schema.py` — single-connection
+- `kernel/store.py` + `kernel/schema.py` — single-connection
   store with forward-only migrations (v1 → v7); a `write_lock`
   serializes mutations across substores.
-- `cc_kernel/capability.py` (RFC 0005) — `tool_grants` / `fs_grants`
+- `kernel/capability.py` (RFC 0005) — `tool_grants` / `fs_grants`
   / `net_grants` / `model_grants` / `sub_agent` capability bag with
   `derive(...)` for sub-agent attenuation.
-- `cc_kernel/ledger.py` (RFC 0006) — per-agent ResourceLedger with
+- `kernel/ledger.py` (RFC 0006) — per-agent ResourceLedger with
   atomic `charge` + `first_breach` signal so the scheduler can
   shed load without polling.
-- `cc_kernel/scheduler.py` (RFC 0007) — priority queue +
+- `kernel/scheduler.py` (RFC 0007) — priority queue +
   admission filter (consults ledger before claim).
-- `cc_kernel/mailbox.py` (RFC 0009) — direct + topic pub/sub
+- `kernel/mailbox.py` (RFC 0009) — direct + topic pub/sub
   with at-least-once delivery semantics.
-- `cc_kernel/registry.py` (RFC 0010) — name → pid lookup for
+- `kernel/registry.py` (RFC 0010) — name → pid lookup for
   service discovery.
-- `cc_kernel/agent_fs.py` (RFC 0011) — VFS unifying memory /
+- `kernel/agent_fs.py` (RFC 0011) — VFS unifying memory /
   checkpoint / skill / task storage.
-- `cc_kernel/sandbox.py` (RFC 0008) — RLIMIT (CPU/AS/FSIZE/
+- `kernel/sandbox.py` (RFC 0008) — RLIMIT (CPU/AS/FSIZE/
   NOFILE) preexec_fn + optional bubblewrap wrapper +
   wall-clock killer thread + `new_session` (own process group).
-- `cc_kernel/contract.py` (RFC 0013) — frozen v1.0 method
+- `kernel/contract.py` (RFC 0013) — frozen v1.0 method
   registry; CI drift guard fails the build if a registered
   RPC method isn't classified `stable`/`experimental`/
   `deprecated`.
-- `cc_kernel/cli.py` — `cheetahclaws kernel <action>` subcommand
+- `kernel/cli.py` — `cheetahclaws kernel <action>` subcommand
   for read-only inspection over the daemon's RPC: `summary`,
   `info`, `agents`, `proc <pid>`, `events`, `queue`, `registry`,
   `methods`, `prometheus`.
-- `cc_kernel/runner/supervisor.py` (RFC 0016/0017) — spawns
+- `kernel/runner/supervisor.py` (RFC 0016/0017) — spawns
   subprocess agents with a JSON-line IPC channel
   (`runner/ipc.py`); processes `init` / `ready` / `tool_call`
   / `chunk` / `iteration_done` / `exit` messages; integrates
   the streaming-chunk substrate (RFC 0026) so callers can
   subscribe to incremental output via `wait(pid,
   on_chunk=...)`.
-- `cc_kernel/runner/llm/` (RFC 0019/0020/0022/0027) — LLM
+- `kernel/runner/llm/` (RFC 0019/0020/0022/0027) — LLM
   agent runner. Provider protocol (callable returning
   `LlmResponse` + optional `stream(req, on_delta)`); Anthropic
   + scripted-mock adapters; multi-iteration tool-calling loop
   with per-iter chunk emission; multi-turn dialogue
   orchestrator.
-- `cc_kernel/runner/bridge_mirror/` (RFC 0018) — mirrors
+- `kernel/runner/bridge_mirror/` (RFC 0018) — mirrors
   bridges' inbound/outbound messages into `kernel.mbox` and
   back without touching `bridges/` source files (BC
   constraint).
-- `cc_kernel/tools/` — tool registry + dispatch + handlers.
+- `kernel/tools/` — tool registry + dispatch + handlers.
   Auto-registered: `Echo`, `Read`, `Write`, `Glob`, `List`,
   `Diff`, `AST`. Opt-in (operator must call
   `register_<tool>`): `Exec`, `Fetch`, `Git` — each with its
@@ -1242,7 +1242,7 @@ sink:
 arrival order; bad callbacks are caught at the boundary so they
 can't break the wait loop.
 
-**Backwards compatibility.** All surface in `cc_kernel/` is
+**Backwards compatibility.** All surface in `kernel/` is
 isolated; the only edits outside the package are one-line opt-in
 hooks in `cheetahclaws.py` (the `cheetahclaws kernel ...`
 subcommand dispatcher). Schema is forward-only — old `kernel.db`
@@ -1421,7 +1421,7 @@ corruption.  Any new file-writing tool must mirror this.
 
 ## Data flow: end-to-end example
 
-User types `Read cc_config.py and change session_daily_limit to 20`
+User types `Read config.py and change session_daily_limit to 20`
 with Claude as the active model.
 
 ```
@@ -1433,7 +1433,7 @@ with Claude as the active model.
  6. providers.stream()         detects "claude-*" → stream_anthropic()
  7. context already built      system prompt = default.md + claude overlay + env
  8. Model responds:            "I'll read it first."
-                              + tool_call[Read(file_path=".../cc_config.py")]
+                              + tool_call[Read(file_path=".../config.py")]
  9. agent._check_permission    Read is read_only → auto-approve
 10. tool_registry.execute_tool Read via tools.fs._read → file content
 11. checkpoint hook: no-op     (Read doesn't mutate, no snapshot)
@@ -1486,9 +1486,13 @@ Sub-agent tests mock `_agent_run` to avoid real API calls.  CI
 
 A collection of non-obvious traps; most bit someone at some point.
 
-- **Renamed modules**: `config.py` → `cc_config.py`; `mcp/` → `cc_mcp/`.
-  Rename was forced by stdlib / package namespace collisions.  Always
-  `import cc_config` / `from cc_mcp import ...`.
+- **`cc_` prefix dropped**: modules once carried a `cc_` prefix
+  (`cc_config.py`, `cc_daemon/`, `cc_kernel/`, `cc_mcp/`); the prefix
+  was removed for readability.  Three of the four reverted to plain
+  names (`config`, `daemon`, `kernel`).  The MCP client could **not**
+  revert to bare `mcp` — that shadows Python's namespace and the
+  `modelcontextprotocol` package — so it is `mcp_client/`.  Always
+  `import config` / `from mcp_client import ...`, never `import mcp`.
 - **`.nano_claude/plans/` vs `~/.cheetahclaws/`**: runtime state is
   under `~/.cheetahclaws/` (underscore), but plan mode writes to
   `.nano_claude/plans/<session>.md` in cwd.  The `.nano_claude` path

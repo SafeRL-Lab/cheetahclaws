@@ -31,7 +31,7 @@ _migration_lock = threading.Lock()
 
 
 def _conn():
-    from cc_daemon.schema import get_conn
+    from daemon.schema import get_conn
     return get_conn()
 
 

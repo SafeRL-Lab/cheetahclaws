@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.sandbox (RFC 0008).
+"""Tests for kernel.sandbox (RFC 0008).
 
 Strategy: spawn real subprocesses that try to violate each enforced
 limit and verify the kernel sandbox catches them. POSIX-only; the whole
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     SANDBOX_DEFAULT,
     SANDBOX_OFF,
     SANDBOX_STRICT,
@@ -36,7 +36,7 @@ from cc_kernel import (
 # preexec_fn but the assertions below assume real enforcement.
 pytestmark = pytest.mark.skipif(
     os.name != "posix",
-    reason="cc_kernel.sandbox tests require POSIX (RLIMIT + setsid)",
+    reason="kernel.sandbox tests require POSIX (RLIMIT + setsid)",
 )
 
 

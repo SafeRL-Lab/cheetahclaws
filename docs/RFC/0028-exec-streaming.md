@@ -170,5 +170,5 @@ A PR claiming this RFC must:
    Exec output reaches the wait()-level callback in real
    time (test asserts at least one chunk arrives before
    process exit).
-10. No file outside ``cc_kernel/``, ``tests/``, ``docs/RFC/``
+10. No file outside ``kernel/``, ``tests/``, ``docs/RFC/``
     modified.

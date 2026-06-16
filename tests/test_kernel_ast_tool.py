@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import pytest
 
-from cc_kernel.tools.ast_tool import (
+from kernel.tools.ast_tool import (
     ALLOWED_KINDS,
     AST_TOOL,
     ast_handler,
 )
-from cc_kernel.tools.registry import (
+from kernel.tools.registry import (
     ToolContext,
     ToolFailed,
     ToolFsDenied,
@@ -219,7 +219,7 @@ def test_path_too_large(tmp_path, monkeypatch):
     f = tmp_path / "big.py"
     f.write_text("x = 1\n")
     monkeypatch.setattr(
-        "cc_kernel.tools.ast_tool.DEFAULT_AST_MAX_FILE_BYTES", 1,
+        "kernel.tools.ast_tool.DEFAULT_AST_MAX_FILE_BYTES", 1,
     )
     ctx = ToolContext(pid=1, kernel=_AllowAll())
     with pytest.raises(ToolFailed):
@@ -230,7 +230,7 @@ def test_path_too_large(tmp_path, monkeypatch):
 
 
 def test_ast_tool_in_register_builtin_tools():
-    from cc_kernel.tools.builtin import register_builtin_tools
+    from kernel.tools.builtin import register_builtin_tools
     reg = ToolRegistry()
     names = register_builtin_tools(reg)
     assert "AST" in names

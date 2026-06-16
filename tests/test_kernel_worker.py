@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.worker (RFC 0017) — WorkerLoop."""
+"""Tests for kernel.worker (RFC 0017) — WorkerLoop."""
 from __future__ import annotations
 
 import os
@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     AgentState,
     KernelStore,
     LedgerStore,
@@ -26,7 +26,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-RUNNER_ARGV = [sys.executable, "-m", "cc_kernel.runner.runner_main"]
+RUNNER_ARGV = [sys.executable, "-m", "kernel.runner.runner_main"]
 
 
 @pytest.fixture

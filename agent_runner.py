@@ -122,7 +122,7 @@ def start_runner(
         # send_fn is ignored in subprocess mode for the skeleton —
         # ``notify`` IPC messages are dropped on the supervisor side
         # until F-6/7/8 wires bridge delivery in.
-        from cc_daemon import runner_supervisor
+        from daemon import runner_supervisor
         return runner_supervisor.start(
             name=name,
             template_name=template_name,
@@ -161,7 +161,7 @@ def stop_runner(name: str) -> bool:
         return True
     # Subprocess mode (F-4): the handle lives in the daemon supervisor.
     try:
-        from cc_daemon import runner_supervisor
+        from daemon import runner_supervisor
     except Exception:
         return False
     return runner_supervisor.stop(name)
@@ -175,7 +175,7 @@ def stop_all() -> int:
         r.stop()
     count = len(runners)
     try:
-        from cc_daemon import runner_supervisor
+        from daemon import runner_supervisor
         count += runner_supervisor.stop_all()
     except Exception:
         pass
@@ -624,9 +624,9 @@ class AgentRunner:
 # When invoked as ``python -m agent_runner --pipe``, this module turns
 # itself into a runner driven by a JSON-line IPC channel on stdin/stdout
 # instead of the in-process thread + send_fn API. The supervisor side lives
-# in ``cc_daemon/runner_supervisor.py``.
+# in ``daemon/runner_supervisor.py``.
 #
-# Protocol (see cc_daemon/runner_ipc.py docstring for the full message
+# Protocol (see daemon/runner_ipc.py docstring for the full message
 # catalogue):
 #   1. Supervisor writes {"op": "init", "payload": {...}} on stdin.
 #   2. We reply {"op": "ready"} on stdout, then run the existing
@@ -642,7 +642,7 @@ def _pipe_main(name_arg: Optional[str] = None) -> int:
     """Subprocess entry point. Returns the process exit code."""
     import argparse
     import sys as _sys
-    from cc_daemon.runner_ipc import IpcReadTimeout, JsonLineChannel
+    from daemon.runner_ipc import IpcReadTimeout, JsonLineChannel
 
     parser = argparse.ArgumentParser(prog="agent_runner")
     parser.add_argument("--pipe", action="store_true",

@@ -77,7 +77,7 @@ py-modules = [
     "circuit_breaker",
     "cloudsave",
     "compaction",
-    "cc_config",
+    "config",
     "context",
     "error_classifier",
     "health",
@@ -101,9 +101,9 @@ py-modules = [
 [tool.setuptools.packages.find]
 include = [
     "tools*",
-    "cc_daemon*",
-    "cc_kernel*",
-    "cc_mcp*",
+    "daemon*",
+    "kernel*",
+    "mcp_client*",
     "memory*",
     "monitor*",
     "multi_agent*",
