@@ -26,7 +26,7 @@ The high-level shape:
                             │
                             ▼
    ┌───────────────────────────────────────────────────────────┐
-   │  cheetahclaws.py  —  REPL, slash dispatch, permission UI   │
+   │  cheetahclaws/cli.py  —  REPL, slash dispatch, permission UI   │
    └────┬──────────────────────────────┬───────────────────────┘
         │                              │
         │    ┌─────────────────────────┴──────────────┐
@@ -61,7 +61,7 @@ The high-level shape:
 ```
 
 **Dependencies flow downward**: nothing in `tools/` or feature packages
-imports from `cheetahclaws.py` or `agent.py` at module load time.
+imports from `cheetahclaws/cli.py` or `agent.py` at module load time.
 Circular references are broken with lazy imports inside functions
 (`multi_agent.subagent` calls back into `agent` this way).
 
@@ -78,25 +78,25 @@ responsibility.
 
 | Module | Role |
 |---|---|
-| [`cheetahclaws.py`](../cheetahclaws.py) | REPL shell, `COMMANDS` dispatch, permission prompt UI, streaming render, entry point (`main()`) |
-| [`bootstrap.py`](../bootstrap.py) | Explicit startup sequence — configure logging, import `tools` (triggers registrations), optionally start health HTTP server.  Idempotent. |
-| [`agent.py`](../agent.py) | Multi-turn agent loop (generator yielding typed events), permission gating, parallel tool execution, retry-with-backoff on API errors |
-| [`agent_runner.py`](../agent_runner.py) | Autonomous loop runner — runs a Markdown agent template (`agent_templates/*.md`) in a background thread, with iteration logging and bridge notifications |
-| [`context.py`](../context.py) | System-prompt assembly (base prompt + env block + memory + tmux/plan fragments) + prompt-injection threat scanner |
-| [`compaction.py`](../compaction.py) | Context-window management: cheap snip layer + LLM-driven summarization layer |
-| [`providers.py`](../providers.py) | Provider registry (`PROVIDERS` dict), auto-detection by model prefix, streaming adapters for Anthropic native + OpenAI-compatible APIs |
-| [`tool_registry.py`](../tool_registry.py) | Central `ToolDef` registry, dispatch, output truncation |
-| [`runtime.py`](../runtime.py) | `RuntimeContext` — per-session live state (callbacks, bridge flags, plan-mode state, streaming hooks). **Not** persisted. |
-| [`config.py`](../config.py) | Defaults + `~/.cheetahclaws/config.json` load/save.  Strips `_`-prefixed keys on save. |
-| [`quota.py`](../quota.py) | Per-session and daily token/cost budgets.  Checked before every API call. |
-| [`circuit_breaker.py`](../circuit_breaker.py) | Trip-open-after-N-failures protection around provider calls. |
-| [`error_classifier.py`](../error_classifier.py) | Categorize API errors (rate limit / context-too-long / network / transient) so `agent.run()` can pick the right retry strategy. |
-| [`logging_utils.py`](../logging_utils.py) | Structured logging facade (info/warn/error with kwargs).  Configured from `config["log_level"]` / `config["log_file"]`. |
-| [`session_store.py`](../session_store.py) | On-disk session history (daily rotation + cap) and `session_latest.json` for `/resume`. |
-| [`jobs.py`](../jobs.py) | Background job bookkeeping used by `/worker` and subscription runs. |
-| [`health.py`](../health.py) | Optional HTTP health endpoint started by bootstrap when `health_check_port` is set. |
-| [`tmux_tools.py`](../tmux_tools.py) | Tmux `TmuxNewSession` / `TmuxSendKeys` / … tool definitions (register at import). |
-| [`auxiliary.py`](../auxiliary.py) | Small helper(s) for an "auxiliary" cheap model (used for compaction summaries and the like). |
+| [`cheetahclaws/cli.py`](../cheetahclaws/cli.py) | REPL shell, `COMMANDS` dispatch, permission prompt UI, streaming render, entry point (`main()`) |
+| [`bootstrap.py`](../cheetahclaws/bootstrap.py) | Explicit startup sequence — configure logging, import `tools` (triggers registrations), optionally start health HTTP server.  Idempotent. |
+| [`agent.py`](../cheetahclaws/agent.py) | Multi-turn agent loop (generator yielding typed events), permission gating, parallel tool execution, retry-with-backoff on API errors |
+| [`agent_runner.py`](../cheetahclaws/agent_runner.py) | Autonomous loop runner — runs a Markdown agent template (`agent_templates/*.md`) in a background thread, with iteration logging and bridge notifications |
+| [`context.py`](../cheetahclaws/context.py) | System-prompt assembly (base prompt + env block + memory + tmux/plan fragments) + prompt-injection threat scanner |
+| [`compaction.py`](../cheetahclaws/compaction.py) | Context-window management: cheap snip layer + LLM-driven summarization layer |
+| [`providers.py`](../cheetahclaws/providers.py) | Provider registry (`PROVIDERS` dict), auto-detection by model prefix, streaming adapters for Anthropic native + OpenAI-compatible APIs |
+| [`tool_registry.py`](../cheetahclaws/tool_registry.py) | Central `ToolDef` registry, dispatch, output truncation |
+| [`runtime.py`](../cheetahclaws/runtime.py) | `RuntimeContext` — per-session live state (callbacks, bridge flags, plan-mode state, streaming hooks). **Not** persisted. |
+| [`config.py`](../cheetahclaws/config.py) | Defaults + `~/.cheetahclaws/config.json` load/save.  Strips `_`-prefixed keys on save. |
+| [`quota.py`](../cheetahclaws/quota.py) | Per-session and daily token/cost budgets.  Checked before every API call. |
+| [`circuit_breaker.py`](../cheetahclaws/circuit_breaker.py) | Trip-open-after-N-failures protection around provider calls. |
+| [`error_classifier.py`](../cheetahclaws/error_classifier.py) | Categorize API errors (rate limit / context-too-long / network / transient) so `agent.run()` can pick the right retry strategy. |
+| [`logging_utils.py`](../cheetahclaws/logging_utils.py) | Structured logging facade (info/warn/error with kwargs).  Configured from `config["log_level"]` / `config["log_file"]`. |
+| [`session_store.py`](../cheetahclaws/session_store.py) | On-disk session history (daily rotation + cap) and `session_latest.json` for `/resume`. |
+| [`jobs.py`](../cheetahclaws/jobs.py) | Background job bookkeeping used by `/worker` and subscription runs. |
+| [`health.py`](../cheetahclaws/health.py) | Optional HTTP health endpoint started by bootstrap when `health_check_port` is set. |
+| [`tmux_tools.py`](../cheetahclaws/tmux_tools.py) | Tmux `TmuxNewSession` / `TmuxSendKeys` / … tool definitions (register at import). |
+| [`auxiliary.py`](../cheetahclaws/auxiliary.py) | Small helper(s) for an "auxiliary" cheap model (used for compaction summaries and the like). |
 
 ### 2. Packages
 
@@ -105,21 +105,21 @@ internal structure.
 
 | Package | What it owns |
 |---|---|
-| [`tools/`](../tools) | All built-in LLM-callable tools.  `tools/__init__.py` holds `TOOL_SCHEMAS`, calls `_register_builtins()`, and imports extension modules.  One file per category: `fs.py`, `shell.py`, `web.py`, `notebook.py`, `diagnostics.py`, `security.py`, `interaction.py`, plus optional `browser.py`, `email.py`, `files.py`. |
-| [`commands/`](../commands) | Slash-command handlers.  `core.py` (help/clear/context/cost/…), `config_cmd.py` (model/config/permissions), `session.py` (save/load/resume), `advanced.py` (brainstorm/worker/ssj/memory/agents/skills/mcp/plugin/tasks — `/brainstorm` runs a lead-moderated multi-round adversarial debate; see [`docs/guides/brainstorm.md`](guides/brainstorm.md)), `checkpoint_plan.py` (checkpoint/rewind/plan), `agent_cmd.py` (/agent), `monitor_cmd.py` (subscribe/monitor). |
-| [`bridges/`](../bridges) | External messaging adapters: `telegram.py`, `wechat.py`, `slack.py`, plus shared `interactive_session.py` and `terminal_runner.py`. |
-| [`ui/`](../ui) | Terminal rendering — `input.py` (prompt_toolkit / readline), `render.py` (rich Markdown, ANSI helpers, spinners, status line). |
-| [`web/`](../web) | Optional self-hosted web UI (FastAPI-style — xterm.js frontend, SQLite session store, per-user auth).  Enabled by `[web]` extra. |
-| [`memory/`](../memory) | Persistent memory across sessions — `store.py` (CRUD), `scan.py`/`context.py` (index + freshness), `consolidator.py` (`/memory consolidate`), `tools.py` (`MemorySave` / `MemoryDelete` / `MemorySearch` / `MemoryList`). |
-| [`multi_agent/`](../multi_agent) | Sub-agent subsystem.  `subagent.py` owns `SubAgentManager` (ThreadPoolExecutor), depth gating, git-worktree isolation; `tools.py` exposes `Agent` / `SendMessage` / `CheckAgentResult` / `ListAgentTasks` / `ListAgentTypes`. |
-| [`skill/`](../skill) | Markdown-based skill templates — `loader.py` parses frontmatter + resolves project→user→built-in precedence, `executor.py` runs a skill inline or in a fork, `builtin.py` ships a few default skills, `tools.py` exposes `Skill` / `SkillList`. |
-| [`mcp_client/`](../mcp_client) | MCP (Model Context Protocol) client — `config.py` loads `.mcp.json`, `client.py` speaks stdio/SSE/HTTP JSON-RPC, `tools.py` connects servers and registers each remote tool as `mcp__<server>__<tool>`.  Renamed from `mcp/` to avoid stdlib collision. |
-| [`task/`](../task) | In-session task list — `types.py` (model + status enum), `store.py` (thread-safe CRUD + dependency-edge maintenance), `tools.py` (`TaskCreate` / `TaskUpdate` / `TaskGet` / `TaskList`). |
-| [`checkpoint/`](../checkpoint) | Auto-snapshot of conversation + file state after every turn.  `types.py` data models, `store.py` backup + rewind, `hooks.py` monkey-patches `Write` / `Edit` / `NotebookEdit` to snapshot pre-edit.  Command wiring in `commands/checkpoint_plan.py`. |
-| [`plugin/`](../plugin) | Plugin install / enable / disable / update from git URLs or local paths.  `loader.py` imports user plugins and registers their `TOOL_DEFS` / `COMMAND_DEFS`; `recommend.py` scores plugin marketplace by keyword/tag match. |
-| [`monitor/`](../monitor) | AI-monitored topic subscriptions — `fetchers.py` (arxiv / stocks / crypto / news), `summarizer.py` (LLM-based), `scheduler.py` (cron-ish), `notifier.py` (Telegram/Slack/stdout), `store.py` (subscription state). |
-| [`prompts/`](../prompts) | System-prompt assets as plain Markdown — `base/default.md` is the shared baseline for every model; `overlays/<family>.md` (claude / gemini / openai-reasoning / qwen) appends short, vendor-documented quirks on top; `fragments/{tmux,plan}.md` are conditional blocks.  `select.py::pick_base_prompt` assembles base + matched overlay; `load_fragment` reads the conditional blocks.  See [`prompts/README.md`](../prompts/README.md) for the overlay-admission policy. |
-| [`modular/`](../modular) | Auto-discovered optional feature modules.  Each subdir exposes `cmd.py::COMMAND_DEFS` and/or `tools.py::TOOL_DEFS`; `modular/__init__.py::load_all_commands` picks them up at startup.  Ships with `modular/voice/`, `modular/video/`, `modular/trading/`. |
+| [`tools/`](../cheetahclaws/tools) | All built-in LLM-callable tools.  `tools/__init__.py` holds `TOOL_SCHEMAS`, calls `_register_builtins()`, and imports extension modules.  One file per category: `fs.py`, `shell.py`, `web.py`, `notebook.py`, `diagnostics.py`, `security.py`, `interaction.py`, plus optional `browser.py`, `email.py`, `files.py`. |
+| [`commands/`](../cheetahclaws/commands) | Slash-command handlers.  `core.py` (help/clear/context/cost/…), `config_cmd.py` (model/config/permissions), `session.py` (save/load/resume), `advanced.py` (brainstorm/worker/ssj/memory/agents/skills/mcp/plugin/tasks — `/brainstorm` runs a lead-moderated multi-round adversarial debate; see [`docs/guides/brainstorm.md`](guides/brainstorm.md)), `checkpoint_plan.py` (checkpoint/rewind/plan), `agent_cmd.py` (/agent), `monitor_cmd.py` (subscribe/monitor). |
+| [`bridges/`](../cheetahclaws/bridges) | External messaging adapters: `telegram.py`, `wechat.py`, `slack.py`, plus shared `interactive_session.py` and `terminal_runner.py`. |
+| [`ui/`](../cheetahclaws/ui) | Terminal rendering — `input.py` (prompt_toolkit / readline), `render.py` (rich Markdown, ANSI helpers, spinners, status line). |
+| [`web/`](../cheetahclaws/web) | Optional self-hosted web UI (FastAPI-style — xterm.js frontend, SQLite session store, per-user auth).  Enabled by `[web]` extra. |
+| [`memory/`](../cheetahclaws/memory) | Persistent memory across sessions — `store.py` (CRUD), `scan.py`/`context.py` (index + freshness), `consolidator.py` (`/memory consolidate`), `tools.py` (`MemorySave` / `MemoryDelete` / `MemorySearch` / `MemoryList`). |
+| [`multi_agent/`](../cheetahclaws/multi_agent) | Sub-agent subsystem.  `subagent.py` owns `SubAgentManager` (ThreadPoolExecutor), depth gating, git-worktree isolation; `tools.py` exposes `Agent` / `SendMessage` / `CheckAgentResult` / `ListAgentTasks` / `ListAgentTypes`. |
+| [`skill/`](../cheetahclaws/skill) | Markdown-based skill templates — `loader.py` parses frontmatter + resolves project→user→built-in precedence, `executor.py` runs a skill inline or in a fork, `builtin.py` ships a few default skills, `tools.py` exposes `Skill` / `SkillList`. |
+| [`mcp_client/`](../cheetahclaws/mcp_client) | MCP (Model Context Protocol) client — `config.py` loads `.mcp.json`, `client.py` speaks stdio/SSE/HTTP JSON-RPC, `tools.py` connects servers and registers each remote tool as `mcp__<server>__<tool>`.  Renamed from `mcp/` to avoid stdlib collision. |
+| [`task/`](../cheetahclaws/task) | In-session task list — `types.py` (model + status enum), `store.py` (thread-safe CRUD + dependency-edge maintenance), `tools.py` (`TaskCreate` / `TaskUpdate` / `TaskGet` / `TaskList`). |
+| [`checkpoint/`](../cheetahclaws/checkpoint) | Auto-snapshot of conversation + file state after every turn.  `types.py` data models, `store.py` backup + rewind, `hooks.py` monkey-patches `Write` / `Edit` / `NotebookEdit` to snapshot pre-edit.  Command wiring in `commands/checkpoint_plan.py`. |
+| [`plugin/`](../cheetahclaws/plugin) | Plugin install / enable / disable / update from git URLs or local paths.  `loader.py` imports user plugins and registers their `TOOL_DEFS` / `COMMAND_DEFS`; `recommend.py` scores plugin marketplace by keyword/tag match. |
+| [`monitor/`](../cheetahclaws/monitor) | AI-monitored topic subscriptions — `fetchers.py` (arxiv / stocks / crypto / news), `summarizer.py` (LLM-based), `scheduler.py` (cron-ish), `notifier.py` (Telegram/Slack/stdout), `store.py` (subscription state). |
+| [`prompts/`](../cheetahclaws/prompts) | System-prompt assets as plain Markdown — `base/default.md` is the shared baseline for every model; `overlays/<family>.md` (claude / gemini / openai-reasoning / qwen) appends short, vendor-documented quirks on top; `fragments/{tmux,plan}.md` are conditional blocks.  `select.py::pick_base_prompt` assembles base + matched overlay; `load_fragment` reads the conditional blocks.  See [`prompts/README.md`](../cheetahclaws/prompts/README.md) for the overlay-admission policy. |
+| [`modular/`](../cheetahclaws/modular) | Auto-discovered optional feature modules.  Each subdir exposes `cmd.py::COMMAND_DEFS` and/or `tools.py::TOOL_DEFS`; `modular/__init__.py::load_all_commands` picks them up at startup.  Ships with `modular/voice/`, `modular/video/`, `modular/trading/`. |
 
 ### 3. Backward-compat shims
 
@@ -130,9 +130,9 @@ surface stable.**
 
 | Shim | Re-exports from |
 |---|---|
-| [`memory.py`](../memory.py) | `memory/` package |
-| [`skills.py`](../skills.py) | `skill/` package |
-| [`subagent.py`](../subagent.py) | `multi_agent/subagent` module |
+| [`memory.py`](../cheetahclaws/memory.py) | `memory/` package |
+| [`skills.py`](../cheetahclaws/skills.py) | `skill/` package |
+| [`subagent.py`](../cheetahclaws/subagent.py) | `multi_agent/subagent` module |
 
 ---
 
@@ -384,7 +384,7 @@ or runtime — Qwen-3 served via DashScope, Ollama, vLLM, or OpenRouter all
 get the same prompt.
 
 Contributor guidance and the overlay-admission policy live in
-[`prompts/README.md`](../prompts/README.md).
+[`prompts/README.md`](../cheetahclaws/prompts/README.md).
 
 `context.py` also runs a regex scan on any CLAUDE.md content before
 inclusion — patterns like "ignore previous instructions", "you are
@@ -530,7 +530,7 @@ multi-user history; the two don't share state today.
 
 ## REPL and slash commands
 
-`cheetahclaws.py::main()` runs the CLI, parses args, calls
+`cheetahclaws/cli.py::main()` runs the CLI, parses args, calls
 `bootstrap(config)`, then enters `repl(config, initial_prompt)`.
 
 The REPL loop:
@@ -545,7 +545,7 @@ The REPL loop:
    stuck I/O).
 
 `COMMANDS` is a flat `{name: callable}` dict built in
-`cheetahclaws.py` by importing every `cmd_*` from `commands/*.py`.
+`cheetahclaws/cli.py` by importing every `cmd_*` from `commands/*.py`.
 Plugins and `modular/` modules can contribute additional entries via
 `_load_external_commands_into(COMMANDS)`.
 
@@ -1041,7 +1041,7 @@ the remaining acceptance gaps (RFC 0002 §F-4 #1/#2/#3):
 
 #### Proactive watcher in daemon (F-5)
 
-`_proactive_watcher_loop` from `cheetahclaws.py` is now daemon-owned.
+`_proactive_watcher_loop` from `cheetahclaws/cli.py` is now daemon-owned.
 `daemon/proactive_state.py` persists `proactive.enabled` /
 `proactive.interval_s` / `proactive.last_tick_at` in the F-2
 `schema_meta` table (so the setting survives daemon restarts); a
@@ -1244,7 +1244,7 @@ can't break the wait loop.
 
 **Backwards compatibility.** All surface in `kernel/` is
 isolated; the only edits outside the package are one-line opt-in
-hooks in `cheetahclaws.py` (the `cheetahclaws kernel ...`
+hooks in `cheetahclaws/cli.py` (the `cheetahclaws kernel ...`
 subcommand dispatcher). Schema is forward-only — old `kernel.db`
 files upgrade in place. The 58-method contract is frozen at
 v1.0 with CI drift guard.
@@ -1366,7 +1366,7 @@ them is always a bug.
 permission mode, API keys, budgets, log level).  `save_config()`
 strips any key starting with `_` before writing.
 
-`RuntimeContext` ([runtime.py](../runtime.py)) is **per-session live
+`RuntimeContext` ([runtime.py](../cheetahclaws/runtime.py)) is **per-session live
 state** — threads, callbacks, bridge flags, plan-mode pointer,
 pending image, streaming hooks.  Keyed by `_session_id`, never
 persisted.
@@ -1425,7 +1425,7 @@ User types `Read config.py and change session_daily_limit to 20`
 with Claude as the active model.
 
 ```
- 1. cheetahclaws.py            reads line via ui.input
+ 1. cheetahclaws/cli.py            reads line via ui.input
  2. repl()                     dispatches to agent.run()
  3. agent.run()                appends user message; config["_depth"]=0
  4. maybe_compact()            messages well under 70% limit — no-op
@@ -1443,7 +1443,7 @@ with Claude as the active model.
                               + tool_call[Edit(file_path=..., old="10", new="20")]
 15. agent._check_permission    Edit is not read_only, permission_mode=auto
                               → PermissionRequest yielded
-16. cheetahclaws.py renders    prompt [y/N/a]; user types y → req.granted=True
+16. cheetahclaws/cli.py renders    prompt [y/N/a]; user types y → req.granted=True
 17. checkpoint hook fires      captures pre-edit file copy in snapshot dir
 18. tool_registry.execute_tool Edit runs, returns unified diff
 19. ui.render                  shows the diff in red/green
@@ -1531,7 +1531,7 @@ A collection of non-obvious traps; most bit someone at some point.
   for vendor-documented quirks only.  Two regression tests
   (`test_dead_family_base_files_are_gone`, `test_overlay_cites_source`)
   prevent silent drift back to the old shape.  See
-  [`prompts/README.md`](../prompts/README.md) for the admission policy.
+  [`prompts/README.md`](../cheetahclaws/prompts/README.md) for the admission policy.
 
 ---
 

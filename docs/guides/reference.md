@@ -4,7 +4,7 @@
 
 ```
 cheetahclaws [OPTIONS] [PROMPT]
-# or: python cheetahclaws.py [OPTIONS] [PROMPT]
+# or: python -m cheetahclaws [OPTIONS] [PROMPT]
 
 Options:
   -p, --print          Non-interactive: run prompt and exit
