@@ -130,7 +130,7 @@ def _default_call_llm(*, role_name: str, model: str,
     t_out = int(getattr(last_turn, "tokens_out", 0) or 0)
     cost = 0
     try:
-        from cc_config import calc_cost
+        from config import calc_cost
         cost = int(round(calc_cost(model, t_in, t_out) * 100))
     except Exception:
         pass

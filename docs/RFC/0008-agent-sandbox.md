@@ -31,7 +31,7 @@ The design is layered:
    `SIGKILL`s the process group on expiry.
 
 This RFC ships as a **purely additive** helper module
-(`cc_kernel/sandbox.py`). No existing code is touched. F-4 (subprocess
+(`kernel/sandbox.py`). No existing code is touched. F-4 (subprocess
 agent runner, separate PR) will adopt it; until then the module is
 exercised only by tests.
 
@@ -234,7 +234,7 @@ descendants behind. Default `new_session=True` is therefore load-bearing.
 ## 4. Public API
 
 ```python
-# cc_kernel/sandbox.py
+# kernel/sandbox.py
 
 def detect_isolation_tools() -> dict[str, str | None]:
     """Return {'bubblewrap': '/usr/bin/bwrap' or None,
@@ -285,7 +285,7 @@ without telling the caller).
 
 ## 6. Backwards compatibility
 
-This module is a brand-new file in `cc_kernel/`. Nothing else in the
+This module is a brand-new file in `kernel/`. Nothing else in the
 codebase changes. F-4 (subprocess agent runner) will be the first
 consumer; until F-4 lands, the only callers are tests.
 
@@ -293,14 +293,14 @@ The kernel sandbox **does not** replace `research/lab/sandbox.py`. That
 module is a one-shot Python-code-execution helper tightly coupled to
 the lab's experiment workflow; it has its own threat model and its own
 defaults. A future RFC can refactor lab/sandbox to layer on top of
-`cc_kernel.sandbox` once F-4 has proven the API. Until then the two
+`kernel.sandbox` once F-4 has proven the API. Until then the two
 coexist with no shared code.
 
 ## 7. Acceptance criteria
 
 A PR claiming this RFC must:
 
-1. Run `pytest tests/` green on Linux. The cc_kernel.sandbox tests
+1. Run `pytest tests/` green on Linux. The kernel.sandbox tests
    spawn real subprocesses and verify each enforced limit by
    provoking it.
 2. Verify with bubblewrap installed: filesystem bind isolation works

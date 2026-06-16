@@ -12,7 +12,7 @@ These tests pin two related invariants:
    without prompting for an API key.
 
 The wizard is interactive, so we mock ``input``, ``urllib.request.urlopen``,
-``providers.list_ollama_models``, and ``cc_config.save_config`` to keep
+``providers.list_ollama_models``, and ``config.save_config`` to keep
 the test fully offline.
 """
 from __future__ import annotations
@@ -90,8 +90,9 @@ def _run_wizard(monkeypatch, inputs: list[str], config: dict,
                              raising=False)
 
     # Don't write to ~/.cheetahclaws/config.json from a test.
-    import cc_config
-    monkeypatch.setattr(cc_config, "save_config", lambda *_a, **_kw: None)
+    # NB: alias the module so it doesn't shadow the `config` dict param.
+    import config as _config_mod
+    monkeypatch.setattr(_config_mod, "save_config", lambda *_a, **_kw: None)
 
     _core.run_setup_wizard(config)
     return config

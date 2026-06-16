@@ -62,7 +62,7 @@ For v1.0, **every kernel.* method is stable**. The
 
 ## 3. Frozen method list (v1.0)
 
-These methods, registered by `cc_kernel.register_with_daemon`, are
+These methods, registered by `kernel.register_with_daemon`, are
 the v1.0 stable kernel API surface.
 
 ```
@@ -150,7 +150,7 @@ kernel.api.version_info
 `tests/test_kernel_api_contract.py`:
 
 ```python
-from cc_kernel.contract import (
+from kernel.contract import (
     STABLE_METHODS, EXPERIMENTAL_METHODS, DEPRECATED_METHODS,
     verify_contract,
 )
@@ -210,7 +210,7 @@ When a method becomes obsolete:
    pid=originator pid and `payload={"method": "..."}`. The
    supervisor / web UI can surface this to the user.
 4. **Next minor version**: PR removes the method registration from
-   `cc_kernel/<module>.py::register()` and removes the entry from
+   `kernel/<module>.py::register()` and removes the entry from
    `DEPRECATED_METHODS`.
 5. Clients that were ignoring the deprecation now see
    `METHOD_NOT_FOUND` (-32601) on call.
@@ -251,4 +251,4 @@ the minimum.
 5. `kernel.api.version_info` returns the documented shape.
 6. The contract test fails if a developer adds a method to a kernel
    module's `register()` without updating `contract.py`.
-7. No file outside `cc_kernel/`, `tests/`, `docs/RFC/` modified.
+7. No file outside `kernel/`, `tests/`, `docs/RFC/` modified.

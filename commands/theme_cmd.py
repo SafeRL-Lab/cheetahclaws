@@ -53,7 +53,7 @@ def cmd_theme(args: str, _state, config) -> bool:
 
     config["theme"] = name
     try:
-        from cc_config import save_config
+        from config import save_config
         save_config(config)
     except Exception as e:
         warn(f"Theme applied but could not be saved: {e}")

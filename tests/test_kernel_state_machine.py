@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.process — the state machine alone.
+"""Tests for kernel.process — the state machine alone.
 
 Pure unit tests; no SQLite, no daemon. The state machine is the single
 most important invariant in RFC 0003, so we exhaustively cover both
@@ -6,7 +6,7 @@ legal and illegal transitions.
 """
 from __future__ import annotations
 
-from cc_kernel.process import (
+from kernel.process import (
     ALLOWED_TRANSITIONS,
     AgentProcess,
     AgentState,

@@ -1094,7 +1094,7 @@ def stream_openai_compat(
     _prov = detect_provider(model)
 
     # DeepSeek v4: thinking is ON by default and controlled via extra_body.
-    # `thinking` is tri-state in DEFAULTS (cc_config.py): None = unset (let
+    # `thinking` is tri-state in DEFAULTS (config.py): None = unset (let
     # provider default stand → ON for v4), True = explicit ON (also default),
     # False = explicit OFF (user toggled via /thinking).  Only the explicit-OFF
     # case injects the disable toggle.  `is False` is intentional: distinguishes

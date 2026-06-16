@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.mailbox (RFC 0009)."""
+"""Tests for kernel.mailbox (RFC 0009)."""
 from __future__ import annotations
 
 import threading
@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     KernelStore,
     Mailbox,
     MailboxAlreadyExists,

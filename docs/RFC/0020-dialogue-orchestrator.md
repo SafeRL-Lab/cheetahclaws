@@ -26,7 +26,7 @@ Each turn is **its own subprocess**. A long conversation is
 N subprocess spawns, each charged separately to the ledger, each
 sandboxed independently.
 
-This RFC ships **purely additive** code in `cc_kernel/orchestrator/`,
+This RFC ships **purely additive** code in `kernel/orchestrator/`,
 plus two **backwards-compatible** extensions:
 
 - `LlmRequest` gets an optional `messages: list[dict]` field
@@ -127,7 +127,7 @@ class DialogueOrchestrator:
         system:       str    = "",
         max_tokens:   int    = 1024,
         temperature: float   = 0.7,
-        runner_argv:  Sequence[str] | None = None,   # default: cc_kernel.runner.llm
+        runner_argv:  Sequence[str] | None = None,   # default: kernel.runner.llm
         runner_policy: SandboxPolicy | None = None,
         runner_env:   Mapping[str, str] | None = None,
         history_path: str | None = None,             # default: /conversations/<pid>/history.json
@@ -294,7 +294,7 @@ to "".
 - AgentFS: no schema change; orchestrator writes through the
   existing `kernel.fs.write` API.
 
-The new `cc_kernel/orchestrator/` package is purely additive.
+The new `kernel/orchestrator/` package is purely additive.
 
 ## 9. Open questions
 
@@ -331,4 +331,4 @@ A PR claiming this RFC must:
 6. Daemon restart simulation: re-instantiate the orchestrator with
    the same `agent_pid`; the next `turn()` includes prior history.
 7. `reset()` clears history (file is overwritten).
-8. No file outside `cc_kernel/`, `tests/`, `docs/RFC/` modified.
+8. No file outside `kernel/`, `tests/`, `docs/RFC/` modified.

@@ -15,16 +15,16 @@ from pathlib import Path
 
 import pytest
 
-from cc_daemon import API_VERSION, API_VERSION_HEADER, events
-from cc_daemon.events import EventBus
-from cc_daemon.originator import (
+from daemon import API_VERSION, API_VERSION_HEADER, events
+from daemon.events import EventBus
+from daemon.originator import (
     CLIENT_ID_HEADER, CLIENT_KIND_HEADER, OriginatorStore,
 )
-from cc_daemon.permission import (
+from daemon.permission import (
     PermissionStore, NotOriginator, UnknownRequest,
     DEFAULT_TIMEOUT_INTERACTIVE_S,
 )
-from cc_daemon.server import make_tcp_server
+from daemon.server import make_tcp_server
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -268,7 +268,7 @@ def test_sse_heartbeat_arrives(daemon_tcp):
     """
     host, port, token, _ = daemon_tcp
     # Speed up heartbeats for the test so it doesn't take 15s.
-    from cc_daemon import server as _srv
+    from daemon import server as _srv
     original = _srv.HEARTBEAT_INTERVAL_S
     _srv.HEARTBEAT_INTERVAL_S = 0.5
     try:

@@ -45,7 +45,7 @@ If you remember only one thing, remember this flow:
 - `context.py` — system prompt assembly entry point (`build_system_prompt`); injects env block + memory + tmux/plan fragments around the base prompt.
 - `prompts/` — system prompt assets as plain Markdown.  `base/default.md` is the shared baseline for every model; `overlays/<family>.md` (claude / gemini / openai-reasoning / qwen) appends short, vendor-documented quirks; `fragments/{tmux,plan}.md` are conditional blocks.  `select.py::pick_base_prompt` assembles base + matched overlay.  See `prompts/README.md` for the overlay-admission policy.
 - `compaction.py` — context window management (`snip_old_tool_results` + `compact_messages`).
-- `cc_config.py` — defaults + persistent config file handling.
+- `config.py` — defaults + persistent config file handling.
 
 ---
 
@@ -120,13 +120,13 @@ Use this package for snapshot policies, backup strategies, file restore behavior
 
 Use this package for STT backend changes, audio capture behavior, and prompt-boosting vocabulary logic.
 
-## Agent OS kernel (`cc_kernel/`)
-- `cc_kernel/api.py` — `Kernel.open(...)` facade: SQLite-backed substores for capability, ledger, scheduler, mailbox, registry, AgentFS, events.
-- `cc_kernel/contract.py` — frozen v1.0 RPC method registry (CI drift guard).
-- `cc_kernel/runner/supervisor.py` — subprocess agent spawn + JSON-line IPC + streaming chunk relay.
-- `cc_kernel/runner/llm/` — LLM agent runner (Anthropic + scripted-mock providers, multi-turn dialogue, tool-calling loop, token streaming).
-- `cc_kernel/tools/` — tool registry + dispatch; auto-registered (Echo, Read, Write, Glob, List, Diff, AST) and opt-in (Exec, Fetch, Git).
-- `cc_kernel/cli.py` — `cheetahclaws kernel <action>` subcommand (read-only inspection over the daemon RPC).
+## Agent OS kernel (`kernel/`)
+- `kernel/api.py` — `Kernel.open(...)` facade: SQLite-backed substores for capability, ledger, scheduler, mailbox, registry, AgentFS, events.
+- `kernel/contract.py` — frozen v1.0 RPC method registry (CI drift guard).
+- `kernel/runner/supervisor.py` — subprocess agent spawn + JSON-line IPC + streaming chunk relay.
+- `kernel/runner/llm/` — LLM agent runner (Anthropic + scripted-mock providers, multi-turn dialogue, tool-calling loop, token streaming).
+- `kernel/tools/` — tool registry + dispatch; auto-registered (Echo, Read, Write, Glob, List, Diff, AST) and opt-in (Exec, Fetch, Git).
+- `kernel/cli.py` — `cheetahclaws kernel <action>` subcommand (read-only inspection over the daemon RPC).
 - Activated only when daemon runs with `--enable-kernel`. Default REPL/bridges path is byte-for-byte unchanged.
 
 Use this package for agent isolation, capability/quota policy, scheduler tuning, AgentFS storage, sandbox primitives, or new built-in tools. Every behavioural change MUST land with an RFC under `docs/RFC/` (acceptance criteria + BC story); see [`docs/agent-os.md`](agent-os.md) for the index of all 27 shipped RFCs.
@@ -144,10 +144,10 @@ Use this package for agent isolation, capability/quota policy, scheduler tuning,
 
 ### Add a new kernel tool (under `--enable-kernel`)
 1. Write a one-page RFC under `docs/RFC/00NN-<name>-tool.md` (problem, args, capability/fs/net checks, output shape, BC story, acceptance criteria).
-2. Add `cc_kernel/tools/<name>_tool.py` with a `<NAME>_TOOL` `Tool` instance (fields: `name`, `description`, `handler`, `requires_capability`, `requires_fs`).
-3. Auto-register (zero-side-effect inspectors only) by adding to `cc_kernel/tools/builtin.py::register_builtin_tools` AND to its return list. Otherwise expose `register_<name>_tool(registry)` and document it as **opt-in**.
-4. Re-export from `cc_kernel/tools/__init__.py` `__all__`.
-5. Append the RFC number to `cc_kernel/contract.py::RFCS_IMPLEMENTED`.
+2. Add `kernel/tools/<name>_tool.py` with a `<NAME>_TOOL` `Tool` instance (fields: `name`, `description`, `handler`, `requires_capability`, `requires_fs`).
+3. Auto-register (zero-side-effect inspectors only) by adding to `kernel/tools/builtin.py::register_builtin_tools` AND to its return list. Otherwise expose `register_<name>_tool(registry)` and document it as **opt-in**.
+4. Re-export from `kernel/tools/__init__.py` `__all__`.
+5. Append the RFC number to `kernel/contract.py::RFCS_IMPLEMENTED`.
 6. Add tests under `tests/test_kernel_<name>_tool.py` covering args validation, capability/fs gates, success path, and the acceptance criteria from the RFC.
 7. If the tool emits incremental output, route it through `ctx.on_chunk(payload)` so `Supervisor.wait(on_chunk=...)` callers see it (RFC 0028 substrate).
 

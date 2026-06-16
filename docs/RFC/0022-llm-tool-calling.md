@@ -238,5 +238,5 @@ A PR claiming this RFC must:
    hits max_iterations → exit failed.
 6. The supervisor's tool dispatch invariants from RFC 0021
    still apply (cap + fs check, audit events).
-7. No file outside `cc_kernel/`, `tests/`, `docs/RFC/`
+7. No file outside `kernel/`, `tests/`, `docs/RFC/`
    modified.

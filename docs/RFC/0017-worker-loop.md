@@ -105,7 +105,7 @@ These are caller-supplied because:
 - The kernel doesn't know what command to run for an arbitrary
   agent. The orchestrator owns that mapping.
 - The default factory (`lambda entry: [sys.executable, "-m",
-  "cc_kernel.runner.runner_main"]`) suffices for tests.
+  "kernel.runner.runner_main"]`) suffices for tests.
 - Policy / env can vary per agent — different sandboxes, different
   budgets — and the orchestrator decides.
 
@@ -182,7 +182,7 @@ _run_one(entry, argv, policy, env):
 
 - No schema change.
 - No new RPC method.
-- No file outside `cc_kernel/`, `tests/`, `docs/RFC/` modified.
+- No file outside `kernel/`, `tests/`, `docs/RFC/` modified.
 
 ## 7. Open questions
 
@@ -212,4 +212,4 @@ A PR claiming this RFC must:
    `complete(exit_kind="cancelled")` (or "crashed").
 5. Background `start()` keeps draining the queue without explicit
    tick calls until `stop()`.
-6. No file outside `cc_kernel/`, `tests/`, `docs/RFC/` modified.
+6. No file outside `kernel/`, `tests/`, `docs/RFC/` modified.

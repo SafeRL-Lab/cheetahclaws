@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.cli — `cheetahclaws kernel ...` subcommands."""
+"""Tests for kernel.cli — `cheetahclaws kernel ...` subcommands."""
 from __future__ import annotations
 
 import io
@@ -13,13 +13,13 @@ from pathlib import Path
 
 import pytest
 
-from cc_daemon import discovery as _discovery
-from cc_daemon import events as _events
-from cc_daemon.server import make_tcp_server
+from daemon import discovery as _discovery
+from daemon import events as _events
+from daemon.server import make_tcp_server
 
-from cc_kernel import register_with_daemon
-from cc_kernel.cli import dispatch as kernel_dispatch
-from cc_kernel.integration import detach
+from kernel import register_with_daemon
+from kernel.cli import dispatch as kernel_dispatch
+from kernel.integration import detach
 
 
 def _free_port() -> int:
@@ -227,7 +227,7 @@ def test_cli_queue_empty(running_kernel):
 def test_cli_queue_with_entries(running_kernel):
     ds = running_kernel["server"].daemon_state
     a = ds.kernel_store.create(name="x", template="t")
-    from cc_kernel import ScheduleSpec
+    from kernel import ScheduleSpec
     sid = ds.scheduler_store.enqueue(ScheduleSpec(pid=a.pid, priority=5))
     rc, out, err = _run_cli("queue")
     assert rc == 0

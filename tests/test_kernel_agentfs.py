@@ -1,11 +1,11 @@
-"""Tests for cc_kernel.agentfs (RFC 0011)."""
+"""Tests for kernel.agentfs (RFC 0011)."""
 from __future__ import annotations
 
 import threading
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     AgentFSStore,
     DEFAULT_MAX_OBJECT_BYTES,
     FsAlreadyExists,

@@ -178,7 +178,7 @@ def _ensure_migrated() -> None:
     global _migration_done_in_process
     if _migration_done_in_process:
         return
-    from cc_daemon.schema import get_conn
+    from daemon.schema import get_conn
     conn = get_conn()
     row = conn.execute(
         "SELECT value FROM schema_meta WHERE key=?", (_MIGRATION_KEY,)
@@ -229,7 +229,7 @@ def _row_to_job(row) -> Job:
 def _persist(job: Job, conn=None) -> None:
     """INSERT or UPDATE the row for *job*.  Caller passes *conn* during
     migration to avoid re-entering ``get_conn`` from inside a transaction."""
-    from cc_daemon.schema import get_conn
+    from daemon.schema import get_conn
     c = conn if conn is not None else get_conn()
     c.execute(
         "INSERT INTO jobs (id, title, prompt, source, status, created_at, "
@@ -256,7 +256,7 @@ def _persist(job: Job, conn=None) -> None:
 
 def _prune_to_max(conn=None) -> None:
     """Keep only the most-recent ``_MAX_JOBS`` rows."""
-    from cc_daemon.schema import get_conn
+    from daemon.schema import get_conn
     c = conn if conn is not None else get_conn()
     excess = c.execute(
         "SELECT COUNT(*) FROM jobs"
@@ -274,7 +274,7 @@ def _prune_to_max(conn=None) -> None:
 
 def _get_all() -> list[Job]:
     _ensure_migrated()
-    from cc_daemon.schema import get_conn
+    from daemon.schema import get_conn
     rows = get_conn().execute(
         "SELECT * FROM jobs ORDER BY created_at"
     ).fetchall()
@@ -421,7 +421,7 @@ def cancel(job_id: str) -> None:
 
 def get(job_id: str) -> Optional[Job]:
     _ensure_migrated()
-    from cc_daemon.schema import get_conn
+    from daemon.schema import get_conn
     row = get_conn().execute(
         "SELECT * FROM jobs WHERE id=?", (job_id,)
     ).fetchone()
@@ -431,7 +431,7 @@ def get(job_id: str) -> Optional[Job]:
 def list_recent(n: int = 10) -> list[Job]:
     """Return last N jobs, newest first."""
     _ensure_migrated()
-    from cc_daemon.schema import get_conn
+    from daemon.schema import get_conn
     rows = get_conn().execute(
         "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (n,)
     ).fetchall()
@@ -440,7 +440,7 @@ def list_recent(n: int = 10) -> list[Job]:
 
 def list_running() -> list[Job]:
     _ensure_migrated()
-    from cc_daemon.schema import get_conn
+    from daemon.schema import get_conn
     rows = get_conn().execute(
         "SELECT * FROM jobs WHERE status='running' ORDER BY started_at"
     ).fetchall()

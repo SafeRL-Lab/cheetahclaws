@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import monitor.store as store
 import monitor.scheduler as scheduler
-from cc_daemon import events, schema
+from daemon import events, schema
 
 
 @pytest.fixture(autouse=True)

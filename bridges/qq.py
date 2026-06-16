@@ -1115,7 +1115,7 @@ def cmd_qq(args: str, _state, config) -> bool:
     """
     global _qq_thread, _qq_stop
     import os as _os
-    from cc_config import save_config
+    from config import save_config
     from bridges import resolve_bridge_token, scrub_token_from_history
 
     parts = args.strip().split()

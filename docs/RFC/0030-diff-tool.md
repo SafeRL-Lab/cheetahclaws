@@ -92,5 +92,5 @@ unified diff would exceed that, it's truncated with a
 8. Diff > 2 MB → truncated flag + truncation marker.
 9. ``register_builtin_tools`` includes "Diff" in its return
    list.
-10. No file outside ``cc_kernel/``, ``tests/``,
+10. No file outside ``kernel/``, ``tests/``,
     ``docs/RFC/`` modified.

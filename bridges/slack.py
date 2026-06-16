@@ -615,7 +615,7 @@ def cmd_slack(args: str, _state, config) -> bool:
     """
     global _slack_thread, _slack_stop
     import os as _os
-    from cc_config import save_config
+    from config import save_config
     from bridges import resolve_bridge_token, scrub_token_from_history
 
     parts = args.strip().split()

@@ -47,7 +47,7 @@ _sess_cost:    dict[str, float] = {}   # session_id → total cost (USD)
 # ── Daily file helpers ─────────────────────────────────────────────────────
 
 def _quota_dir() -> Path:
-    from cc_config import CONFIG_DIR
+    from config import CONFIG_DIR
     d = CONFIG_DIR / "quota"
     d.mkdir(parents=True, exist_ok=True)
     return d

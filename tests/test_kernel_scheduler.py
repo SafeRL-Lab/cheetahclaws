@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.scheduler (RFC 0007)."""
+"""Tests for kernel.scheduler (RFC 0007)."""
 from __future__ import annotations
 
 import threading
@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     AgentState,
     KernelStore,
     LedgerStore,

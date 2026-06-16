@@ -2,7 +2,7 @@
 
 These tests guard against API drift. When a developer adds a new
 kernel.* method to a module's register() function, they MUST also
-add it to one of the three tier sets in cc_kernel/contract.py — or
+add it to one of the three tier sets in kernel/contract.py — or
 this test fails.
 
 Conversely, when a method is removed from register() without going
@@ -17,10 +17,10 @@ import uuid
 
 import pytest
 
-from cc_daemon import events
-from cc_daemon.server import make_tcp_server
+from daemon import events
+from daemon.server import make_tcp_server
 
-from cc_kernel import (
+from kernel import (
     ALL_KNOWN_METHODS,
     DEPRECATED_METHODS,
     EXPERIMENTAL_METHODS,
@@ -31,7 +31,7 @@ from cc_kernel import (
     register_with_daemon,
     verify_contract,
 )
-from cc_kernel.integration import detach
+from kernel.integration import detach
 
 
 def _free_port() -> int:

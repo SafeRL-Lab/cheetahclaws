@@ -120,5 +120,5 @@ A PR claiming this RFC must:
 5. Callback raising → next chunks still delivered + tuple
    still appended.
 6. Existing tests with no chunks involvement keep passing.
-7. No file outside ``cc_kernel/``, ``tests/``, ``docs/RFC/``
+7. No file outside ``kernel/``, ``tests/``, ``docs/RFC/``
    modified.

@@ -106,5 +106,5 @@ count + a structured failure rather than an opaque
 9. Path mode without "r" fs grant raises fs_denied.
 10. ``register_builtin_tools`` includes "AST" in its return
     list.
-11. No file outside ``cc_kernel/``, ``tests/``,
+11. No file outside ``kernel/``, ``tests/``,
     ``docs/RFC/`` modified.

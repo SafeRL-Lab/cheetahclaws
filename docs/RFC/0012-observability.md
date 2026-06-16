@@ -24,7 +24,7 @@ Four primitives ship in this RFC:
 3. **Metrics** — Prometheus exposition format text that the daemon's
    existing `/metrics` endpoint surfaces alongside its current
    payload. No new HTTP endpoint; just additional content.
-4. **Chaos primitives** — a small `cc_kernel/chaos.py` module for
+4. **Chaos primitives** — a small `kernel/chaos.py` module for
    tests, with `ChaosMonkey.kill_random_agent`, `simulate_disk_full`,
    etc. Real chaos suite expansion (network partition, time skew,
    process tree fault) is a v1.1 deliverable; this RFC ships the
@@ -249,7 +249,7 @@ kernel metrics through the RPC channel (or via a future text passthrough).
 
 ## 6. Chaos primitives
 
-A new module `cc_kernel/chaos.py`, intended for use **only by
+A new module `kernel/chaos.py`, intended for use **only by
 tests**. Production code paths must not import from it.
 
 ```python
@@ -319,4 +319,4 @@ A PR claiming this RFC must:
 5. `ChaosMonkey.kill_random_agent` is deterministic given a seed.
 6. The smoke test demonstrates a daemon survives 3 chaos operations
    without crashing.
-7. No file outside `cc_kernel/`, `tests/`, `docs/RFC/` modified.
+7. No file outside `kernel/`, `tests/`, `docs/RFC/` modified.

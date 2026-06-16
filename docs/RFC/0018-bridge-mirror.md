@@ -10,7 +10,7 @@ This RFC defines how existing bridges (Telegram, WeChat, Slack, …)
 expose their inbound / outbound message streams through the kernel
 mailbox primitive. It does **not** touch any bridge code under
 `bridges/`. The deliverable is a small helper module
-(`cc_kernel/bridge_mirror.py`) that:
+(`kernel/bridge_mirror.py`) that:
 
 1. Defines a **canonical topic naming scheme** so any agent in the
    system can subscribe to bridge traffic without knowing which
@@ -195,7 +195,7 @@ A bridge wrapper for Telegram would:
 ## 6. Backwards compatibility
 
 - Bridge code in `bridges/` is **not** touched by this RFC.
-- The `cc_kernel/bridge_mirror.py` module is purely additive.
+- The `kernel/bridge_mirror.py` module is purely additive.
 - Existing tests for bridges keep passing (they don't use the
   mirror).
 - The mirror requires only the existing `kernel.mbox` primitives;
@@ -233,4 +233,4 @@ A PR claiming this RFC must:
    leak if `start()` is never called.
 5. Custom (non-`BridgeKind.KNOWN`) kinds work, e.g. `"matrix"`.
 6. Validation rejects upper-case kinds and reserved characters.
-7. No file outside `cc_kernel/`, `tests/`, `docs/RFC/` modified.
+7. No file outside `kernel/`, `tests/`, `docs/RFC/` modified.

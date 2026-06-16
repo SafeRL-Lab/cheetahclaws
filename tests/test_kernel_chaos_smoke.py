@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     AgentState,
     AgentFSStore,
     CapabilityStore,
@@ -58,7 +58,7 @@ def test_chaos_kill_random_agent_is_deterministic(stores):
     # For a stricter assertion: two ChaosMonkeys with the same seed
     # picking from the SAME population pick the same victim.
     # We'll use a fresh DB to make populations identical.
-    from cc_kernel import KernelStore as _KS
+    from kernel import KernelStore as _KS
     import tempfile, pathlib
     with tempfile.TemporaryDirectory() as d:
         ks2 = _KS.open(pathlib.Path(d) / "k.db")

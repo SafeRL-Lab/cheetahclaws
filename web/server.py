@@ -933,7 +933,7 @@ def _handle_chat_websocket(sock: socket.socket, extra: bytes,
             pass
 
     from web.api import get_chat_session
-    from cc_config import load_config
+    from config import load_config
     chat_session = get_chat_session(session_id, user_id, load_config())
     if not chat_session:
         try:
@@ -1483,7 +1483,7 @@ def _handle_connection(sock: socket.socket, addr: tuple) -> None:
         if path.startswith("/api/lab"):
             try:
                 from web.lab_api import dispatch as _lab_dispatch
-                from cc_config import load_config as _load_cfg
+                from config import load_config as _load_cfg
                 from urllib.parse import parse_qs
                 q_dict = {k: v[0] for k, v in parse_qs(query).items()}
                 status, ctype, raw = _lab_dispatch(
@@ -1508,7 +1508,7 @@ def _handle_connection(sock: socket.socket, addr: tuple) -> None:
             if uid is None:
                 return
             from web.api import create_chat_session, get_chat_session
-            from cc_config import load_config
+            from config import load_config
             sid = body_json.get("session_id", "")
             chat_sess = (get_chat_session(sid, uid, load_config())
                          if sid else None)
@@ -1623,7 +1623,7 @@ def _handle_connection(sock: socket.socket, addr: tuple) -> None:
             if uid is None:
                 return
             from web.api import get_chat_session
-            from cc_config import load_config
+            from config import load_config
             sid = body_json.get("session_id", "")
             granted = body_json.get("granted", False)
             chat_sess = get_chat_session(sid, uid, load_config())
@@ -1718,7 +1718,7 @@ def _handle_connection(sock: socket.socket, addr: tuple) -> None:
                                   batch_remove_chat_sessions,
                                   batch_export_chat_sessions_markdown,
                                   move_session_to_folder)
-            from cc_config import load_config
+            from config import load_config
             # POST /api/sessions/batch_delete  body: {ids: [...]}
             if path == "/api/sessions/batch_delete" and method == "POST":
                 ids = body_json.get("ids") or []
@@ -1860,7 +1860,7 @@ def _handle_connection(sock: socket.socket, addr: tuple) -> None:
             if uid is None:
                 return
             from web.api import get_chat_session
-            from cc_config import load_config
+            from config import load_config
             sid = body_json.get("session_id", "") or \
                   (query.split("sid=")[1].split("&")[0]
                    if "sid=" in query else "")

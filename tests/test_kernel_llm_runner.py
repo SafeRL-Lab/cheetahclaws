@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.runner.llm (RFC 0019)."""
+"""Tests for kernel.runner.llm (RFC 0019)."""
 from __future__ import annotations
 
 import json
@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     Kernel,
     LedgerStore,
     RunnerSupervisor,
@@ -17,7 +17,7 @@ from cc_kernel import (
     ScheduleSpec,
     WorkerLoop,
 )
-from cc_kernel.runner.llm import (
+from kernel.runner.llm import (
     LlmRequest,
     LlmResponse,
     MockProvider,
@@ -32,7 +32,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-LLM_RUNNER_ARGV = [sys.executable, "-m", "cc_kernel.runner.llm"]
+LLM_RUNNER_ARGV = [sys.executable, "-m", "kernel.runner.llm"]
 
 
 # ── Dataclass round-trip ────────────────────────────────────────────────
@@ -152,7 +152,7 @@ def test_mock_provider_echo():
 
 
 def _run_llm_runner(*, init_payload: dict, env: dict) -> dict:
-    """Spawn `python -m cc_kernel.runner.llm`, send init, collect
+    """Spawn `python -m kernel.runner.llm`, send init, collect
     all stdout lines, return parsed dict {exit_code, lines, stderr}."""
     proc = subprocess.Popen(
         LLM_RUNNER_ARGV,
@@ -418,21 +418,21 @@ def test_worker_loop_runs_llm_job(stack):
 
 def test_anthropic_provider_lazy_imports():
     """Importing the module must NOT trigger the SDK import."""
-    from cc_kernel.runner.llm import anthropic_provider as ap_mod
+    from kernel.runner.llm import anthropic_provider as ap_mod
     # Class is importable without the SDK.
     assert hasattr(ap_mod, "AnthropicProvider")
 
 
 def test_anthropic_provider_construction_doesnt_import_sdk():
     """Instantiation alone doesn't import anthropic; the call does."""
-    from cc_kernel.runner.llm.anthropic_provider import AnthropicProvider
+    from kernel.runner.llm.anthropic_provider import AnthropicProvider
     p = AnthropicProvider(api_key="dummy")
     # Client still None — not constructed yet.
     assert p._client is None
 
 
 def test_anthropic_provider_no_api_key_raises():
-    from cc_kernel.runner.llm.anthropic_provider import AnthropicProvider
+    from kernel.runner.llm.anthropic_provider import AnthropicProvider
     p = AnthropicProvider(api_key=None)
     # Save and clear ANTHROPIC_API_KEY so the unavailable check fires.
     saved = os.environ.pop("ANTHROPIC_API_KEY", None)

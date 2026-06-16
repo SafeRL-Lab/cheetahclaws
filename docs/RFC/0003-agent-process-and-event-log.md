@@ -410,7 +410,7 @@ opened, and no `kernel.*` RPC methods are registered. The daemon
 behaviour is byte-for-byte identical to the pre-RFC build.
 
 When present:
-- `cc_kernel/` is imported.
+- `kernel/` is imported.
 - `kernel.db` is opened (created on first run).
 - Recovery runs (§2 "Recovery semantics").
 - `kernel.*` methods join the RPC registry.
@@ -425,10 +425,10 @@ modifier; default is `suspend` (the safer choice).
 
 ### Existing tests
 
-This RFC does not modify any existing module under `cc_daemon/` — the
+This RFC does not modify any existing module under `daemon/` — the
 sole CLI patch is one argparse argument and a conditional call to
-`cc_kernel.register_with_daemon()`. Existing tests
-(`test_cc_daemon_cli.py`, `test_cc_daemon_system_methods.py`,
+`kernel.register_with_daemon()`. Existing tests
+(`test_daemon_cli.py`, `test_daemon_system_methods.py`,
 `test_daemon_spike.py`, `e2e_daemon_skeleton.py`) must continue to pass
 with no changes to their assertions; the flag is off in their setup.
 
@@ -504,5 +504,5 @@ For a PR claiming to implement this RFC:
 
 ---
 
-Once accepted, the implementation lives in `cc_kernel/` (new package).
-No code outside `cc_kernel/` and `cc_daemon/cli.py` is modified.
+Once accepted, the implementation lives in `kernel/` (new package).
+No code outside `kernel/` and `daemon/cli.py` is modified.

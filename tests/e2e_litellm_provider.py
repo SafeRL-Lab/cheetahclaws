@@ -60,7 +60,7 @@ def provider():
     # import). Catch the ProviderUnavailable raised on first SDK use
     # so we skip — rather than fail — when CC_LITELLM_E2E is set on a
     # box that doesn't actually have litellm installed.
-    from cc_kernel.runner.llm.litellm_provider import LiteLLMProvider
+    from kernel.runner.llm.litellm_provider import LiteLLMProvider
     p = LiteLLMProvider()
     try:
         p._ensure_litellm()
@@ -70,7 +70,7 @@ def provider():
 
 
 def test_basic_call(provider):
-    from cc_kernel.runner.llm.provider import LlmRequest
+    from kernel.runner.llm.provider import LlmRequest
 
     req = LlmRequest(model=_MODEL, user="What is 2+2? Reply with just the number.",
                      max_tokens=10)
@@ -83,7 +83,7 @@ def test_basic_call(provider):
 
 
 def test_streaming_emits_deltas(provider):
-    from cc_kernel.runner.llm.provider import LlmRequest
+    from kernel.runner.llm.provider import LlmRequest
 
     received: list[str] = []
     req = LlmRequest(
@@ -100,7 +100,7 @@ def test_streaming_emits_deltas(provider):
 
 
 def test_system_prompt_steers_reply(provider):
-    from cc_kernel.runner.llm.provider import LlmRequest
+    from kernel.runner.llm.provider import LlmRequest
 
     req = LlmRequest(
         model=_MODEL,

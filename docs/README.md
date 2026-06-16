@@ -8,7 +8,7 @@ start with the [top-level README](../README.md).
 | Path | What |
 |------|------|
 | [`news.md`](news.md) | Full release notes (the top-level README has one-line summaries linking here) |
-| [`agent-os.md`](agent-os.md) | Agent-OS layer (`cc_kernel/`) reference |
+| [`agent-os.md`](agent-os.md) | Agent-OS layer (`kernel/`) reference |
 | [`architecture.md`](architecture.md) | System architecture deep dive |
 | [`contributor_guide.md`](contributor_guide.md) | How to set up dev environment and submit PRs |
 | [`guides/`](guides/) | User-facing how-to guides (Web UI, bridges, trading, research lab, plugin authoring, voice/video, recipes, reference, Docker, advanced) |

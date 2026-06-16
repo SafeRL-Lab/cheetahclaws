@@ -33,8 +33,8 @@ The MVP scope is intentionally narrow:
 The runner ships as a parallel `__main__` entry point:
 
 ```
-python -m cc_kernel.runner.runner_main      # echo runner (existing)
-python -m cc_kernel.runner.llm               # LLM runner (this RFC)
+python -m kernel.runner.runner_main      # echo runner (existing)
+python -m kernel.runner.llm               # LLM runner (this RFC)
 ```
 
 WorkerLoop / RunnerSupervisor are unchanged — they don't care which
@@ -53,7 +53,7 @@ protocol from RFC 0016.
 3. **Provider portability.** A Provider is a thin protocol; new
    providers (OpenAI, Gemini, Ollama) plug in by writing one file
    that implements `__call__(LlmRequest) -> LlmResponse`.
-4. **Defensive imports.** Importing `cc_kernel.runner.llm` on a
+4. **Defensive imports.** Importing `kernel.runner.llm` on a
    machine without `anthropic` installed must NOT fail.
 5. **Reproducible tests without API keys.** `MockProvider` reads
    its response shape from an env var so the subprocess pipeline
@@ -184,13 +184,13 @@ deterministically without network or API keys.
 
 ## 6. Backwards compatibility
 
-- New file `cc_kernel/runner/llm/__init__.py` and submodules.
-  No file outside `cc_kernel/`, `tests/`, `docs/RFC/` is touched.
+- New file `kernel/runner/llm/__init__.py` and submodules.
+  No file outside `kernel/`, `tests/`, `docs/RFC/` is touched.
 - The existing `runner_main.py` is unchanged; tests using it stay
   green.
 - `anthropic` is already a project dependency (`requirements.txt`),
-  but its import in `cc_kernel.runner.llm.anthropic_provider`
-  happens lazily — only on first call — so `from cc_kernel import
+  but its import in `kernel.runner.llm.anthropic_provider`
+  happens lazily — only on first call — so `from kernel import
   *` works on machines without the SDK.
 
 ## 7. Failure modes
@@ -227,7 +227,7 @@ A PR claiming this RFC must:
 1. `MockProvider` constructed with a frozen response returns it
    verbatim on every call.
 2. `LlmRequest` / `LlmResponse` round-trip via dataclass.
-3. `python -m cc_kernel.runner.llm` with `CC_LLM_PROVIDER=mock`
+3. `python -m kernel.runner.llm` with `CC_LLM_PROVIDER=mock`
    and a fixed `CC_LLM_MOCK_RESPONSE_JSON` exits 0, sends ready,
    sends `charge` messages for tokens + cost_micro, sends `exit`
    with `completed`.
@@ -236,7 +236,7 @@ A PR claiming this RFC must:
 5. End-to-end via WorkerLoop: enqueue an LLM job, worker spawns,
    ledger gets charged, scheduler entry → completed.
 6. AnthropicProvider import is lazy: importing
-   `cc_kernel.runner.llm` works without anthropic SDK installed.
+   `kernel.runner.llm` works without anthropic SDK installed.
 7. CC_LLM_PROVIDER unset → runner exits 2, supervisor sees
    crashed/failed with non-zero exit code.
-8. No file outside `cc_kernel/`, `tests/`, `docs/RFC/` modified.
+8. No file outside `kernel/`, `tests/`, `docs/RFC/` modified.

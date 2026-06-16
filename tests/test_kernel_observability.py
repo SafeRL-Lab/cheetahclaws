@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.observability (RFC 0012)."""
+"""Tests for kernel.observability (RFC 0012)."""
 from __future__ import annotations
 
 import re
@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     AgentFSStore,
     AgentState,
     CapabilityStore,
@@ -18,7 +18,7 @@ from cc_kernel import (
     SchedulerStore,
     ScheduleSpec,
 )
-from cc_kernel.errors import InvalidPayload, UnknownPid
+from kernel.errors import InvalidPayload, UnknownPid
 
 
 @pytest.fixture
@@ -258,7 +258,7 @@ def test_prometheus_text_passes_basic_regex_contract(stores):
 
 def test_prometheus_text_label_escaping():
     """Make sure label-value escaping handles backslashes and quotes."""
-    from cc_kernel.observability import _esc_label
+    from kernel.observability import _esc_label
     assert _esc_label('plain') == 'plain'
     assert _esc_label('with"quote') == 'with\\"quote'
     assert _esc_label('with\\back') == 'with\\\\back'

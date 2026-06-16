@@ -665,7 +665,7 @@ _EXTENSION_MODULES = [
     "memory.tools",
     "multi_agent.tools",
     "skill.tools",
-    "cc_mcp.tools",
+    "mcp_client.tools",
     "task.tools",
 ]
 

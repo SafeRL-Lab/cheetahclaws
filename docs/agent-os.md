@@ -1,7 +1,7 @@
-# Agent OS — `cc_kernel/`
+# Agent OS — `kernel/`
 
 CheetahClaws ships a **single-node agent operating system** under
-`cc_kernel/`. It's the substrate that turns the legacy REPL/bridge
+`kernel/`. It's the substrate that turns the legacy REPL/bridge
 into a long-running, multi-agent kernel: process table, capability
 model, quota ledger, scheduler, mailbox/registry, virtual filesystem,
 observability, and a stable JSON-RPC contract — backed by a single
@@ -14,7 +14,7 @@ and CLI users see no difference.
 
 ## Why this exists
 
-Before `cc_kernel/`, cheetahclaws was an *agent runtime/middleware*:
+Before `kernel/`, cheetahclaws was an *agent runtime/middleware*:
 single-user REPL → tool dispatch → LLM. There was no place to:
 
 - Run multiple agents concurrently with isolation between them.
@@ -31,7 +31,7 @@ the legacy single-process REPL path intact.
 ## Layout
 
 ```
-cc_kernel/
+kernel/
   api.py             # `Kernel` facade — open(...), make_supervisor(), …
   store.py           # SQLite WAL store, single shared connection
   schema.py          # Forward-only migrations v1 → v7
@@ -76,7 +76,7 @@ cheetahclaws kernel prometheus          # Prometheus exposition text
 ```
 
 Without `--enable-kernel`, the daemon serves the same surface as
-before and `cc_kernel/` code is dormant.
+before and `kernel/` code is dormant.
 
 ## RFC roadmap
 
@@ -177,7 +177,7 @@ sequence post-exit.
 - Kernel SQLite schema is forward-only (versioned migrations
   `v1 → v7`). Old kernel.db files upgrade in place.
 - The v1.0 RPC contract (58 stable methods) has CI drift guard
-  via `cc_kernel/contract.py` — accidental method removal fails
+  via `kernel/contract.py` — accidental method removal fails
   the build.
 - Tests: 1771 passing, zero regressions on the legacy code paths.
 

@@ -11,7 +11,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import monitor.store as store
-from cc_daemon import schema
+from daemon import schema
 
 
 @pytest.fixture(autouse=True)

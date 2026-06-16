@@ -349,4 +349,4 @@ A PR claiming this RFC must:
 7. Admission filter skips entries whose owner has any over-limit
    ledger row, but does not modify the queue state.
 8. `kernel.sched.*` RPCs work end-to-end through the daemon.
-9. No file outside `cc_kernel/`, `tests/`, and `docs/RFC/` is modified.
+9. No file outside `kernel/`, `tests/`, and `docs/RFC/` is modified.

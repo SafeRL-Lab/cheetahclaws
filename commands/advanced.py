@@ -2240,10 +2240,10 @@ def cmd_skills(_args: str, _state, config) -> bool:
 
 def cmd_mcp(args: str, _state, config) -> bool:
     """Show MCP server status, or manage servers."""
-    from cc_mcp.client import get_mcp_manager
-    from cc_mcp.config import (load_mcp_configs, add_server_to_user_config,
+    from mcp_client.client import get_mcp_manager
+    from mcp_client.config import (load_mcp_configs, add_server_to_user_config,
                                 remove_server_from_user_config, list_config_files)
-    from cc_mcp.tools import initialize_mcp, reload_mcp, refresh_server
+    from mcp_client.tools import initialize_mcp, reload_mcp, refresh_server
 
     parts = args.split() if args.strip() else []
     subcmd = parts[0].lower() if parts else ""

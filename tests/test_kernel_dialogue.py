@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.orchestrator.dialogue (RFC 0020) +
+"""Tests for kernel.orchestrator.dialogue (RFC 0020) +
 extensions to LlmRequest.messages and RunnerExitInfo.text/metadata."""
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     AgentState,
     DialogueOrchestrator,
     DialogueQuotaBreached,
@@ -18,7 +18,7 @@ from cc_kernel import (
     SandboxPolicy,
     UnknownPid,
 )
-from cc_kernel.runner.llm import (
+from kernel.runner.llm import (
     LlmRequest,
     LlmResponse,
     MockProvider,
@@ -137,7 +137,7 @@ def _spawn_llm(kernel: Kernel, response: dict, *,
     sup = kernel.make_supervisor()
     sup.spawn(
         pid=a.pid,
-        argv=[sys.executable, "-m", "cc_kernel.runner.llm"],
+        argv=[sys.executable, "-m", "kernel.runner.llm"],
         policy=SandboxPolicy(wall_seconds=15),
         init_payload={"model": "m", "user": user_msg},
         env={**os.environ, "CC_LLM_PROVIDER": "mock",
@@ -179,7 +179,7 @@ def test_existing_runner_text_defaults_empty(tmp_path):
         sup = k.make_supervisor()
         sup.spawn(
             pid=a.pid,
-            argv=[sys.executable, "-m", "cc_kernel.runner.runner_main"],
+            argv=[sys.executable, "-m", "kernel.runner.runner_main"],
             policy=SandboxPolicy(wall_seconds=10),
         )
         info = sup.wait(a.pid, timeout=15)

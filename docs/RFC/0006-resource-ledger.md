@@ -291,4 +291,4 @@ A PR claiming this RFC must:
    over-again).
 5. `list_breached` returns only currently-over-limit rows.
 6. RPC error codes match table in §4.
-7. No file outside `cc_kernel/` and `docs/RFC/` is modified.
+7. No file outside `kernel/` and `docs/RFC/` is modified.

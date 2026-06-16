@@ -8,8 +8,8 @@ import threading
 
 import pytest
 
-from cc_kernel.tools.fetch_tool import fetch_handler
-from cc_kernel.tools.registry import ToolContext, ToolInvalidArgs
+from kernel.tools.fetch_tool import fetch_handler
+from kernel.tools.registry import ToolContext, ToolInvalidArgs
 
 
 # ── Local HTTP server fixture ───────────────────────────────────────
@@ -82,7 +82,7 @@ class _AllowAllKernel:
 @pytest.fixture
 def kernel_for_local(monkeypatch):
     monkeypatch.setattr(
-        "cc_kernel.tools.fetch_tool._is_private_ip",
+        "kernel.tools.fetch_tool._is_private_ip",
         lambda ip: False,
     )
     return _AllowAllKernel()

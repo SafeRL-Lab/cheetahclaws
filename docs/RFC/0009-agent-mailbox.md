@@ -280,7 +280,7 @@ kernel.mbox.gc_expired
 - No existing module modified.
 - No existing test changes required (unlike when SCHEMA_VERSION
   literal was hardcoded — past slices already swapped to
-  `cc_kernel.SCHEMA_VERSION`).
+  `kernel.SCHEMA_VERSION`).
 
 ## 7. Open questions
 
@@ -316,4 +316,4 @@ A PR claiming this RFC must:
 7. Concurrent send: 4 threads × 25 sends → 100 distinct `msg_id`s
    with no losses.
 8. RPC surface works end-to-end through the daemon.
-9. No file outside `cc_kernel/`, `tests/`, `docs/RFC/` modified.
+9. No file outside `kernel/`, `tests/`, `docs/RFC/` modified.

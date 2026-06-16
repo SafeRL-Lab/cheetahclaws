@@ -99,8 +99,8 @@ def test_warnings_thresholds(cost, level):
 
 @pytest.fixture
 def cmd(monkeypatch):
-    import cc_config
-    monkeypatch.setattr(cc_config, "save_config", lambda cfg: None)
+    import config
+    monkeypatch.setattr(config, "save_config", lambda cfg: None)
     from commands.core import cmd_budget
     return cmd_budget
 

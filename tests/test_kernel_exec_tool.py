@@ -1,4 +1,4 @@
-"""Tests for cc_kernel.tools.exec_tool (RFC 0023).
+"""Tests for kernel.tools.exec_tool (RFC 0023).
 
 The most security-sensitive tool the kernel ships. Tests focus on
 the safety boundary: no shell expansion, env scrubbing, RLIMIT,
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     EXEC_TOOL,
     Kernel,
     SandboxPolicy,
@@ -25,7 +25,7 @@ from cc_kernel import (
     register_builtin_tools,
     register_exec_tool,
 )
-from cc_kernel.tools.exec_tool import (
+from kernel.tools.exec_tool import (
     DEFAULT_MAX_OUTPUT_BYTES,
     DEFAULT_TIMEOUT_S,
     MAX_TIMEOUT_S,
@@ -35,7 +35,7 @@ from cc_kernel.tools.exec_tool import (
     _validate_timeout,
     exec_handler,
 )
-from cc_kernel.tools.registry import (
+from kernel.tools.registry import (
     ToolContext,
     ToolFailed,
     ToolFsDenied,

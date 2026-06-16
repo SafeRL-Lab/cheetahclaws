@@ -292,4 +292,4 @@ A PR claiming this RFC must:
    error=tool_failed`, runner doesn't crash.
 6. Audit events `tool.call.dispatched` / `tool.call.denied`
    land in the event log.
-7. No file outside `cc_kernel/`, `tests/`, `docs/RFC/` modified.
+7. No file outside `kernel/`, `tests/`, `docs/RFC/` modified.

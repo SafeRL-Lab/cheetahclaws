@@ -1,9 +1,9 @@
-"""Tests for cc_kernel.capability (RFC 0005)."""
+"""Tests for kernel.capability (RFC 0005)."""
 from __future__ import annotations
 
 import pytest
 
-from cc_kernel import (
+from kernel import (
     AgentState,
     Capability,
     CapabilityDerivationError,
@@ -119,7 +119,7 @@ def test_create_round_trip(stores):
 
 def test_create_unknown_pid(stores):
     _, cs = stores
-    from cc_kernel import UnknownPid
+    from kernel import UnknownPid
     with pytest.raises(UnknownPid):
         cs.create(pid=9999, tool_grants=["Read"])
 

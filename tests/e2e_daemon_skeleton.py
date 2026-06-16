@@ -99,7 +99,7 @@ def daemon_proc(tmp_path):
 
 def _post_rpc(address: str, token: str, method: str,
               params=None, *, timeout=3.0):
-    from cc_daemon import API_VERSION, API_VERSION_HEADER
+    from daemon import API_VERSION, API_VERSION_HEADER
     host, port_s = address.rsplit(":", 1)
     body_obj = {"jsonrpc": "2.0", "id": 1, "method": method}
     if params is not None:
@@ -125,7 +125,7 @@ def _get(address: str, path: str, *, token: str | None = None,
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
     if api_version:
-        from cc_daemon import API_VERSION, API_VERSION_HEADER
+        from daemon import API_VERSION, API_VERSION_HEADER
         headers[API_VERSION_HEADER] = API_VERSION
     conn = http.client.HTTPConnection(host, int(port_s), timeout=timeout)
     try:
@@ -214,7 +214,7 @@ def test_healthz_with_token_returns_real_payload(daemon_proc):
     assert payload["status"] == "ok"
     assert "uptime_s" in payload
     assert "active_sessions" in payload
-    assert "model" in payload  # health.py reads from cc_config
+    assert "model" in payload  # health.py reads from config
 
 
 def test_metrics_with_token_returns_real_payload(daemon_proc):
@@ -230,7 +230,7 @@ def test_metrics_with_token_returns_real_payload(daemon_proc):
 # ── SSE ────────────────────────────────────────────────────────────────────
 
 def test_events_stream_emits_heartbeat(daemon_proc):
-    from cc_daemon import API_VERSION, API_VERSION_HEADER
+    from daemon import API_VERSION, API_VERSION_HEADER
     _proc, _home, address, token = daemon_proc
     host, port_s = address.rsplit(":", 1)
     conn = http.client.HTTPConnection(host, int(port_s), timeout=25.0)
@@ -421,7 +421,7 @@ def test_events_persist_in_sqlite_across_daemon_restart(tmp_path):
     This is the headline F-2 user-visible win for SSE clients
     (Web UI / future bridges) that survive daemon restarts.
     """
-    from cc_daemon import API_VERSION, API_VERSION_HEADER
+    from daemon import API_VERSION, API_VERSION_HEADER
 
     # Boot A, publish a few events via echo.ping.
     proc1, addr1, token1 = _start_daemon(tmp_path)

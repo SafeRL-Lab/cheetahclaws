@@ -929,7 +929,7 @@ def cmd_telegram(args: str, _state, config) -> bool:
            /telegram status                        — show current status
     """
     global _telegram_thread, _telegram_stop
-    from cc_config import save_config
+    from config import save_config
     from bridges import resolve_bridge_token, scrub_token_from_history
 
     parts = args.strip().split()

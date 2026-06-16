@@ -267,7 +267,7 @@ def _wx_typing_loop(user_id: str, stop_event: threading.Event, config: dict) -> 
 
 def _wx_qr_login(config: dict, bot_type: str = _ILINK_DEFAULT_BOT_TYPE,
                  timeout_seconds: int = 480) -> bool:
-    from cc_config import save_config
+    from config import save_config
     import time as _time
 
     info("Fetching WeChat QR code from iLink...")
@@ -394,7 +394,7 @@ def _wx_poll_loop(token: str, base_url: str, config: dict) -> str:
                     print(clr("\n  ⚠ WeChat: session expired — re-authenticate with /wechat login", "yellow"))
                     config.pop("wechat_token", None)
                     config.pop("wechat_base_url", None)
-                    from cc_config import save_config
+                    from config import save_config
                     save_config(config)
                     _log.warn("bridge_auth_error", bridge="wechat", ret=ret, errcode=errcode)
                     session_ctx.wx_send = None
@@ -425,7 +425,7 @@ def _wx_poll_loop(token: str, base_url: str, config: dict) -> str:
                         and not from_uid.endswith("@chatroom")):
                     config["wechat_self_uid"] = from_uid
                     try:
-                        from cc_config import save_config
+                        from config import save_config
                         save_config(config)
                     except Exception:
                         pass
@@ -1022,7 +1022,7 @@ def cmd_wechat(args: str, _state, config) -> bool:
       /wechat logout     — clear saved credentials
     """
     global _wechat_thread, _wechat_stop
-    from cc_config import save_config
+    from config import save_config
 
     sub = args.strip().split()[0].lower() if args.strip() else ""
 

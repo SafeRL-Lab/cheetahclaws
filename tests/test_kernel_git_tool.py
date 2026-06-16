@@ -7,12 +7,12 @@ import subprocess
 
 import pytest
 
-from cc_kernel.tools.git_tool import (
+from kernel.tools.git_tool import (
     GIT_TOOL,
     git_handler,
     register_git_tool,
 )
-from cc_kernel.tools.registry import (
+from kernel.tools.registry import (
     ToolContext,
     ToolFsDenied,
     ToolInvalidArgs,
@@ -261,7 +261,7 @@ def test_fs_denied_on_repo(repo):
 
 def test_git_not_in_register_builtin_tools():
     """Git is opt-in — must not be auto-registered."""
-    from cc_kernel.tools.builtin import register_builtin_tools
+    from kernel.tools.builtin import register_builtin_tools
     reg = ToolRegistry()
     register_builtin_tools(reg)
     assert not reg.has("Git")
