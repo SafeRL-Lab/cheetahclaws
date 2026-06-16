@@ -25,12 +25,12 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from research.lab import storage as _storage
-from research.lab import convergence as _conv
-from research.lab import verifier as _verifier
-from research.lab import roles as _roles
-from research.lab import orchestrator as _orch
-from research.lab import output as _output
+from cheetahclaws.research.lab import storage as _storage
+from cheetahclaws.research.lab import convergence as _conv
+from cheetahclaws.research.lab import verifier as _verifier
+from cheetahclaws.research.lab import roles as _roles
+from cheetahclaws.research.lab import orchestrator as _orch
+from cheetahclaws.research.lab import output as _output
 
 
 # ── Storage ────────────────────────────────────────────────────────────────
@@ -71,7 +71,7 @@ def test_verify_citations_per_citation_hard_timeout(monkeypatch):
     """If verify_one hangs, the wall-clock cap must kick in and mark the
     citation skipped — not block the whole stage forever (we observed
     11 minutes of hang on a slow-loris arxiv socket in the field)."""
-    from research.lab.verifier import (
+    from cheetahclaws.research.lab.verifier import (
         verify_citations, Citation, CitationVerification,
     )
 
@@ -79,7 +79,7 @@ def test_verify_citations_per_citation_hard_timeout(monkeypatch):
         time.sleep(120)
         return CitationVerification(citation=args[0], status="verified")
 
-    monkeypatch.setattr("research.lab.verifier.verify_one", _hangs_forever)
+    monkeypatch.setattr("cheetahclaws.research.lab.verifier.verify_one", _hangs_forever)
 
     cits = [Citation(key=f"hung{i}", title=f"hung paper #{i}", authors=[]) for i in range(2)]
     t0 = time.time()
@@ -99,7 +99,7 @@ def test_verify_citations_per_citation_hard_timeout(monkeypatch):
 def test_verify_citations_stage_budget(monkeypatch):
     """If the stage runs out of total wall time, remaining citations get
     marked skipped without being attempted."""
-    from research.lab.verifier import verify_citations, Citation, CitationVerification
+    from cheetahclaws.research.lab.verifier import verify_citations, Citation, CitationVerification
 
     call_log = []
     def _slow(citation, *, timeout_s=10.0):
@@ -107,7 +107,7 @@ def test_verify_citations_stage_budget(monkeypatch):
         time.sleep(0.4)   # each call eats some of the stage budget
         return CitationVerification(citation=citation, status="not_found")
 
-    monkeypatch.setattr("research.lab.verifier.verify_one", _slow)
+    monkeypatch.setattr("cheetahclaws.research.lab.verifier.verify_one", _slow)
 
     cits = [Citation(key=f"p{i}", title=f"paper {i}", authors=[]) for i in range(10)]
     result = verify_citations(
@@ -127,9 +127,9 @@ def test_verify_citations_stage_budget(monkeypatch):
 
 
 def test_verify_citations_progress_callback(monkeypatch):
-    from research.lab.verifier import verify_citations, Citation, CitationVerification
+    from cheetahclaws.research.lab.verifier import verify_citations, Citation, CitationVerification
     monkeypatch.setattr(
-        "research.lab.verifier.verify_one",
+        "cheetahclaws.research.lab.verifier.verify_one",
         lambda c, **_: CitationVerification(citation=c, status="verified"),
     )
     cits = [Citation(key=f"k{i}", title=f"p{i}", authors=[]) for i in range(3)]
@@ -145,7 +145,7 @@ def test_verify_citations_progress_callback(monkeypatch):
 
 
 def test_slugify_basic():
-    from research.lab.storage import _slugify
+    from cheetahclaws.research.lab.storage import _slugify
     assert _slugify("Post-Transformer architectures: SSM vs Mamba 2026") \
         == "post-transformer-architectures-ssm-vs-mamba-2026"
     assert _slugify("  hello, world!!  ") == "hello-world"
@@ -153,7 +153,7 @@ def test_slugify_basic():
 
 
 def test_slugify_truncates_at_word_boundary():
-    from research.lab.storage import _slugify
+    from cheetahclaws.research.lab.storage import _slugify
     long_topic = "comparative analysis of state space models linear attention mixture of experts retentive networks 2026"
     s = _slugify(long_topic, max_len=60)
     assert len(s) <= 60
@@ -163,14 +163,14 @@ def test_slugify_truncates_at_word_boundary():
 
 
 def test_slugify_chinese_falls_back_to_untitled():
-    from research.lab.storage import _slugify
+    from cheetahclaws.research.lab.storage import _slugify
     assert _slugify("后 transformer 时代") == "transformer"   # "transformer" is ASCII
     assert _slugify("纯中文话题") == "untitled"
     assert _slugify("") == "untitled"
 
 
 def test_human_dir_name_format():
-    from research.lab.storage import human_dir_name
+    from cheetahclaws.research.lab.storage import human_dir_name
     import datetime as _dt
     # Fixed timestamp: 2026-05-07 18:15:00 local
     ts = _dt.datetime(2026, 5, 7, 18, 15).timestamp()
@@ -187,7 +187,7 @@ def test_human_dir_name_format():
 
 def test_human_dir_name_uniqueness_via_run_id_suffix():
     """Two runs with the same topic + minute must NOT collide."""
-    from research.lab.storage import human_dir_name
+    from cheetahclaws.research.lab.storage import human_dir_name
     import datetime as _dt
     ts = _dt.datetime(2026, 5, 7, 18, 15).timestamp()
     a = human_dir_name(run_id="lab_aaaaaaaaaaaa", topic="same topic",
@@ -200,7 +200,7 @@ def test_human_dir_name_uniqueness_via_run_id_suffix():
 
 
 def test_output_dir_for_uses_human_format(tmp_path):
-    from research.lab.storage import output_dir_for
+    from cheetahclaws.research.lab.storage import output_dir_for
     import datetime as _dt
     ts = _dt.datetime(2026, 5, 7, 18, 15).timestamp()
     p = output_dir_for(
@@ -702,7 +702,7 @@ def test_write_markdown_report_assembles_artifacts(tmp_path):
 
     # Build a minimal LabRun shim; output.write_markdown_report just needs
     # state.run_id, state.topic, storage.
-    from research.lab.orchestrator import LabState, LabRun, Stage
+    from cheetahclaws.research.lab.orchestrator import LabState, LabRun, Stage
     state = LabState(run_id=rec.run_id, topic="My topic", stage=Stage.FINALIZATION)
     run = LabRun(state=state, storage=storage,
                   roles=_roles.build_default_assignment({}),
@@ -715,7 +715,7 @@ def test_write_markdown_report_assembles_artifacts(tmp_path):
     # Output dir is now <date>_<time>_<slug>_<short> (human-readable),
     # not the legacy `lab_xxx` path. Resolve via the helper so the test
     # follows whatever scheme the production code uses.
-    from research.lab.storage import output_dir_for
+    from cheetahclaws.research.lab.storage import output_dir_for
     paper_dir = output_dir_for(
         rec.run_id, rec.topic, rec.created_at,
         root=tmp_path / "papers",
@@ -741,7 +741,7 @@ def test_format_bibtex_handles_not_found():
 
 
 def test_extract_python_block_basic():
-    from research.lab import sandbox as sb
+    from cheetahclaws.research.lab import sandbox as sb
     text = "Here's the script:\n\n```python\nprint(42)\n```\n"
     code = sb.extract_python_block(text)
     assert code is not None
@@ -749,7 +749,7 @@ def test_extract_python_block_basic():
 
 
 def test_extract_python_block_no_lang_fallback():
-    from research.lab import sandbox as sb
+    from cheetahclaws.research.lab import sandbox as sb
     text = "```\nprint('hi')\n```"
     code = sb.extract_python_block(text)
     assert code is not None
@@ -757,12 +757,12 @@ def test_extract_python_block_no_lang_fallback():
 
 
 def test_extract_python_block_returns_none_when_absent():
-    from research.lab import sandbox as sb
+    from cheetahclaws.research.lab import sandbox as sb
     assert sb.extract_python_block("just prose") is None
 
 
 def test_sandbox_runs_simple_script(tmp_path):
-    from research.lab import sandbox as sb
+    from cheetahclaws.research.lab import sandbox as sb
     ws = tmp_path / "ws"
     res = sb.run_python_in_sandbox(
         "print('hello')\nimport sys; sys.exit(0)",
@@ -775,7 +775,7 @@ def test_sandbox_runs_simple_script(tmp_path):
 
 
 def test_sandbox_captures_nonzero_exit(tmp_path):
-    from research.lab import sandbox as sb
+    from cheetahclaws.research.lab import sandbox as sb
     res = sb.run_python_in_sandbox(
         "import sys; sys.exit(7)",
         workspace_dir=tmp_path / "ws", timeout_s=10,
@@ -785,7 +785,7 @@ def test_sandbox_captures_nonzero_exit(tmp_path):
 
 
 def test_sandbox_captures_stderr(tmp_path):
-    from research.lab import sandbox as sb
+    from cheetahclaws.research.lab import sandbox as sb
     res = sb.run_python_in_sandbox(
         "import sys; print('bad', file=sys.stderr); sys.exit(1)",
         workspace_dir=tmp_path / "ws", timeout_s=10,
@@ -795,7 +795,7 @@ def test_sandbox_captures_stderr(tmp_path):
 
 
 def test_sandbox_timeout(tmp_path):
-    from research.lab import sandbox as sb
+    from cheetahclaws.research.lab import sandbox as sb
     res = sb.run_python_in_sandbox(
         "import time; time.sleep(20)",
         workspace_dir=tmp_path / "ws", timeout_s=1,
@@ -805,7 +805,7 @@ def test_sandbox_timeout(tmp_path):
 
 
 def test_sandbox_collects_artifacts(tmp_path):
-    from research.lab import sandbox as sb
+    from cheetahclaws.research.lab import sandbox as sb
     ws = tmp_path / "ws"
     code = (
         "with open('output.txt', 'w') as f:\n"
@@ -823,7 +823,7 @@ def test_sandbox_collects_artifacts(tmp_path):
 
 
 def test_sandbox_format_result_for_prompt():
-    from research.lab.sandbox import SandboxResult, format_result_for_prompt
+    from cheetahclaws.research.lab.sandbox import SandboxResult, format_result_for_prompt
     res = SandboxResult(
         exit_code=0, stdout="hello\nworld\n", stderr="",
         duration_s=0.42, timed_out=False, workspace=Path("/tmp"),
@@ -990,7 +990,7 @@ def test_lab_api_start_run_returns_id(tmp_path, monkeypatch):
         def start(self): started["n"] += 1
     monkeypatch.setattr(_th, "Thread", _NoopThread)
 
-    from web import lab_api
+    from cheetahclaws.web import lab_api
     monkeypatch.setattr(lab_api, "_run_threads", {})
     monkeypatch.setattr(lab_api, "_cancel_flags", {})
     # The dispatcher uses threading.Thread internally — it imports `threading`
@@ -1015,7 +1015,7 @@ def test_lab_api_list_runs(tmp_path, monkeypatch):
     s.create_run(topic="alpha")
     s.create_run(topic="beta")
     s.close()
-    from web import lab_api
+    from cheetahclaws.web import lab_api
     status, ctype, body = lab_api.dispatch(
         "/api/lab/runs", "GET", {}, {}, {})
     assert status == 200
@@ -1026,7 +1026,7 @@ def test_lab_api_list_runs(tmp_path, monkeypatch):
 
 def test_lab_api_run_detail_404_unknown(tmp_path, monkeypatch):
     monkeypatch.setattr(_storage, "DEFAULT_DB_PATH", tmp_path / "lab.db")
-    from web import lab_api
+    from cheetahclaws.web import lab_api
     status, _, body = lab_api.dispatch(
         "/api/lab/runs/lab_doesnotexist", "GET", {}, {}, {})
     assert status == 404
@@ -1040,7 +1040,7 @@ def test_lab_api_messages_endpoint(tmp_path, monkeypatch):
                      role="pi", kind="decision",
                      content="hi from PI")
     s.close()
-    from web import lab_api
+    from cheetahclaws.web import lab_api
     status, _, body = lab_api.dispatch(
         f"/api/lab/runs/{rec.run_id}/messages", "GET", {}, {}, {})
     assert status == 200
@@ -1054,7 +1054,7 @@ def test_lab_api_report_falls_back_to_404(tmp_path, monkeypatch):
     s = _storage.LabStorage(tmp_path / "lab.db")
     rec = s.create_run(topic="t")
     s.close()
-    from web import lab_api
+    from cheetahclaws.web import lab_api
     status, _, _ = lab_api.dispatch(
         f"/api/lab/runs/{rec.run_id}/report", "GET", {}, {}, {})
     assert status == 404
@@ -1069,7 +1069,7 @@ def test_lab_api_artifact_serves_file(tmp_path, monkeypatch):
     ws = tmp_path / "papers" / rec.run_id / "workspace"
     ws.mkdir(parents=True)
     (ws / "fig.png").write_bytes(b"PNGDATA")
-    from web import lab_api
+    from cheetahclaws.web import lab_api
     status, ctype, body = lab_api.dispatch(
         f"/api/lab/runs/{rec.run_id}/artifacts/fig.png",
         "GET", {}, {}, {})
@@ -1080,7 +1080,7 @@ def test_lab_api_artifact_serves_file(tmp_path, monkeypatch):
 
 def test_lab_api_artifact_path_traversal_blocked(tmp_path, monkeypatch):
     monkeypatch.setattr(_storage, "DEFAULT_OUTPUT_DIR", tmp_path / "papers")
-    from web import lab_api
+    from cheetahclaws.web import lab_api
     status, _, body = lab_api.dispatch(
         "/api/lab/runs/lab_abcdef0123456789/artifacts/..%2Fpasswd",
         "GET", {}, {}, {})
@@ -1089,14 +1089,14 @@ def test_lab_api_artifact_path_traversal_blocked(tmp_path, monkeypatch):
 
 
 def test_lab_api_abort_unknown_run(tmp_path, monkeypatch):
-    from web import lab_api
+    from cheetahclaws.web import lab_api
     status, _, body = lab_api.dispatch(
         "/api/lab/runs/lab_abcdef0123456789/abort", "POST", {}, {}, {})
     assert status == 404
 
 
 def test_lab_api_unknown_endpoint_404():
-    from web import lab_api
+    from cheetahclaws.web import lab_api
     status, _, _ = lab_api.dispatch(
         "/api/lab/garbage", "GET", {}, {}, {})
     assert status == 404
@@ -1105,7 +1105,7 @@ def test_lab_api_unknown_endpoint_404():
 def test_lab_html_file_exists():
     """The frontend page must ship with the package."""
     from pathlib import Path
-    p = Path(__file__).resolve().parent.parent / "web" / "lab.html"
+    p = Path(__file__).resolve().parent.parent / "cheetahclaws" / "web" / "lab.html"
     assert p.exists()
     text = p.read_text()
     assert "research lab" in text.lower()

@@ -8,14 +8,14 @@ import sys
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     Kernel,
     LedgerStore,
     SandboxPolicy,
     ToolRegistry,
     register_builtin_tools,
 )
-from kernel.runner.llm import (
+from cheetahclaws.kernel.runner.llm import (
     LlmRequest,
     LlmResponse,
     MockProvider,
@@ -238,7 +238,7 @@ def test_runner_tool_use_then_final(tmp_path):
         ]
         sup.spawn(
             pid=a.pid,
-            argv=[sys.executable, "-m", "kernel.runner.llm"],
+            argv=[sys.executable, "-m", "cheetahclaws.kernel.runner.llm"],
             policy=SandboxPolicy(wall_seconds=15),
             init_payload={
                 "model": "m",
@@ -270,7 +270,7 @@ def test_runner_tool_use_no_tools_field_falls_back_to_text(tmp_path):
         sup = k.make_supervisor()
         sup.spawn(
             pid=a.pid,
-            argv=[sys.executable, "-m", "kernel.runner.llm"],
+            argv=[sys.executable, "-m", "cheetahclaws.kernel.runner.llm"],
             policy=SandboxPolicy(wall_seconds=15),
             init_payload={"model": "m", "user": "hi"},
             env=_scripted_env([
@@ -305,7 +305,7 @@ def test_runner_max_iterations_cap(tmp_path):
         ]
         sup.spawn(
             pid=a.pid,
-            argv=[sys.executable, "-m", "kernel.runner.llm"],
+            argv=[sys.executable, "-m", "cheetahclaws.kernel.runner.llm"],
             policy=SandboxPolicy(wall_seconds=20),
             init_payload={
                 "model": "m", "user": "x",
@@ -352,7 +352,7 @@ def test_runner_tool_denied_continues_loop(tmp_path):
         ]
         sup.spawn(
             pid=a.pid,
-            argv=[sys.executable, "-m", "kernel.runner.llm"],
+            argv=[sys.executable, "-m", "cheetahclaws.kernel.runner.llm"],
             policy=SandboxPolicy(wall_seconds=15),
             init_payload={
                 "model": "m", "user": "do echo",
@@ -394,7 +394,7 @@ def test_runner_charges_accumulate_across_iterations(tmp_path):
         ]
         sup.spawn(
             pid=a.pid,
-            argv=[sys.executable, "-m", "kernel.runner.llm"],
+            argv=[sys.executable, "-m", "cheetahclaws.kernel.runner.llm"],
             policy=SandboxPolicy(wall_seconds=15),
             init_payload={"model": "m", "user": "go",
                            "tools": [{"name": "Echo", "description": "x",
@@ -416,7 +416,7 @@ def test_runner_charges_accumulate_across_iterations(tmp_path):
 def test_anthropic_provider_messages_with_tools_doesnt_import_sdk():
     """We can construct LlmRequest with tools without anthropic
     SDK installed — the import is lazy on __call__."""
-    from kernel.runner.llm.anthropic_provider import AnthropicProvider
+    from cheetahclaws.kernel.runner.llm.anthropic_provider import AnthropicProvider
     p = AnthropicProvider(api_key="dummy")
     # Just construct a request — provider call would fail without SDK,
     # but we don't call it.

@@ -18,14 +18,14 @@ from pathlib import Path
 
 import pytest
 
-from daemon import API_VERSION, API_VERSION_HEADER, events
-from daemon.originator import CLIENT_ID_HEADER, CLIENT_KIND_HEADER
-from daemon.server import make_tcp_server
+from cheetahclaws.daemon import API_VERSION, API_VERSION_HEADER, events
+from cheetahclaws.daemon.originator import CLIENT_ID_HEADER, CLIENT_KIND_HEADER
+from cheetahclaws.daemon.server import make_tcp_server
 
-from kernel import register_with_daemon
-from kernel.integration import detach
-from kernel.process import AgentState
-from kernel.store import EV_PROCESS_CREATED, EV_PROCESS_RECOVERED
+from cheetahclaws.kernel import register_with_daemon
+from cheetahclaws.kernel.integration import detach
+from cheetahclaws.kernel.process import AgentState
+from cheetahclaws.kernel.store import EV_PROCESS_CREATED, EV_PROCESS_RECOVERED
 
 
 def _free_port() -> int:
@@ -104,7 +104,7 @@ def test_kernel_info_reports_zero_state(daemon_with_kernel):
     info = resp["result"]
     # Track the live schema version rather than pinning a literal —
     # avoids a churn point on every additive schema bump.
-    from kernel import SCHEMA_VERSION
+    from cheetahclaws.kernel import SCHEMA_VERSION
     assert info["schema_version"] == SCHEMA_VERSION
     assert info["agent_count"] == 0
     assert info["event_count"] == 0
@@ -238,7 +238,7 @@ def test_recovery_runs_at_register_time(tmp_path):
     db = tmp_path / "kernel.db"
 
     # Seed: one RUNNING agent left over from a prior daemon.
-    from kernel import KernelStore
+    from cheetahclaws.kernel import KernelStore
     seeded = KernelStore.open(db)
     try:
         a = seeded.create(name="x", template="t")

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     EXEC_TOOL,
     Kernel,
     SandboxPolicy,
@@ -25,7 +25,7 @@ from kernel import (
     register_builtin_tools,
     register_exec_tool,
 )
-from kernel.tools.exec_tool import (
+from cheetahclaws.kernel.tools.exec_tool import (
     DEFAULT_MAX_OUTPUT_BYTES,
     DEFAULT_TIMEOUT_S,
     MAX_TIMEOUT_S,
@@ -35,7 +35,7 @@ from kernel.tools.exec_tool import (
     _validate_timeout,
     exec_handler,
 )
-from kernel.tools.registry import (
+from cheetahclaws.kernel.tools.registry import (
     ToolContext,
     ToolFailed,
     ToolFsDenied,

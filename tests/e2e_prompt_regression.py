@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-import context as _context
+from cheetahclaws import context as _context
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "golden_default_prompt.txt"
 

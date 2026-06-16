@@ -54,8 +54,8 @@ _PAUSE_RESUME_RUNNER = textwrap.dedent("""
 class TestQuotaPauseIPC(unittest.TestCase):
 
     def setUp(self):
-        from daemon import schema
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import schema
+        from cheetahclaws.daemon import runner_supervisor as rs
         self._tmpdir = tempfile.TemporaryDirectory()
         self._db_path = Path(self._tmpdir.name) / "test.db"
         schema.set_db_path(self._db_path)
@@ -64,8 +64,8 @@ class TestQuotaPauseIPC(unittest.TestCase):
             rs._handles.clear()
 
     def tearDown(self):
-        from daemon import schema
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import schema
+        from cheetahclaws.daemon import runner_supervisor as rs
         for h in list(rs._handles.values()):
             try:
                 h.proc.kill()
@@ -83,8 +83,8 @@ class TestQuotaPauseIPC(unittest.TestCase):
         self._tmpdir.cleanup()
 
     def _spawn(self, name, source):
-        from daemon import runner_supervisor as rs
-        from daemon.runner_ipc import JsonLineChannel
+        from cheetahclaws.daemon import runner_supervisor as rs
+        from cheetahclaws.daemon.runner_ipc import JsonLineChannel
 
         proc = subprocess.Popen(
             [sys.executable, "-u", "-c", source],
@@ -110,7 +110,7 @@ class TestQuotaPauseIPC(unittest.TestCase):
 
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_paused_budget_then_resume_roundtrip(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
 
         # Capture bus events so we can assert quota_warn fired.
         events: list[tuple[str, dict]] = []
@@ -176,7 +176,7 @@ class TestQuotaPauseIPC(unittest.TestCase):
 
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_resume_unknown_runner_returns_false(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         self.assertFalse(rs.resume("no-such-runner"))
 
 

@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from multi_agent.subagent import SubAgentManager, SubAgentTask, _extract_final_text
+from cheetahclaws.multi_agent.subagent import SubAgentManager, SubAgentTask, _extract_final_text
 
 
 # ── Mock for _agent_run ──────────────────────────────────────────────────
@@ -38,7 +38,7 @@ def _make_slow_mock(sleep_per_iter=0.2, iters=10):
 def manager(monkeypatch):
     """Create a SubAgentManager with mocked _agent_run."""
     mock = _make_mock_agent_run()
-    monkeypatch.setattr("multi_agent.subagent._agent_run", mock)
+    monkeypatch.setattr("cheetahclaws.multi_agent.subagent._agent_run", mock)
     mgr = SubAgentManager(max_concurrent=3, max_depth=3)
     yield mgr
     mgr.shutdown()
@@ -48,7 +48,7 @@ def manager(monkeypatch):
 def slow_manager(monkeypatch):
     """Create a SubAgentManager with a slow mock for cancel testing."""
     mock = _make_slow_mock()
-    monkeypatch.setattr("multi_agent.subagent._agent_run", mock)
+    monkeypatch.setattr("cheetahclaws.multi_agent.subagent._agent_run", mock)
     mgr = SubAgentManager(max_concurrent=3, max_depth=3)
     yield mgr
     mgr.shutdown()

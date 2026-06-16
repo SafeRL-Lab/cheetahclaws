@@ -27,7 +27,7 @@ import pytest
 # ─── 1. types ──────────────────────────────────────────────────────────────
 
 def test_result_defaults():
-    from research.types import Result
+    from cheetahclaws.research.types import Result
     r = Result(source="x", title="t", url="https://x")
     assert r.engagement_raw == 0
     assert r.engagement_score == 0.0
@@ -36,7 +36,7 @@ def test_result_defaults():
 
 
 def test_brief_by_domain_groups_and_sorts():
-    from research.types import Brief, Result
+    from cheetahclaws.research.types import Brief, Result
     rs = [
         Result(source="a", title="t1", url="u1", domain="tech", engagement_score=0.2),
         Result(source="b", title="t2", url="u2", domain="academic", engagement_score=0.9),
@@ -58,18 +58,18 @@ def test_brief_by_domain_groups_and_sorts():
     ("breaking news today on AI regulation", "news"),
 ])
 def test_classifier_routes_obvious_topics(topic, want_top):
-    from research.classifier import classify
+    from cheetahclaws.research.classifier import classify
     assert classify(topic)[0] == want_top
 
 
 def test_classifier_empty_topic_returns_web():
-    from research.classifier import classify
+    from cheetahclaws.research.classifier import classify
     assert classify("") == ["web"]
     assert classify("   ") == ["web"]
 
 
 def test_classifier_never_empty():
-    from research.classifier import classify
+    from cheetahclaws.research.classifier import classify
     # Gibberish should still yield a nonempty list
     assert classify("zxqvn mrtwk pfj") != []
 
@@ -77,8 +77,8 @@ def test_classifier_never_empty():
 # ─── 3. ranker ─────────────────────────────────────────────────────────────
 
 def test_ranker_normalizes_engagement():
-    from research.ranker import rank
-    from research.types import Result
+    from cheetahclaws.research.ranker import rank
+    from cheetahclaws.research.types import Result
     rs = [
         Result(source="hackernews", title="a", url="u1", engagement_raw=100),
         Result(source="hackernews", title="b", url="u2", engagement_raw=5000),
@@ -98,8 +98,8 @@ def test_ranker_normalizes_engagement():
 
 def test_ranker_recency_bonus_for_fresh_results():
     from datetime import datetime, timezone
-    from research.ranker import rank
-    from research.types import Result
+    from cheetahclaws.research.ranker import rank
+    from cheetahclaws.research.types import Result
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     old = "2020-01-01T00:00:00Z"
     rs = [
@@ -113,8 +113,8 @@ def test_ranker_recency_bonus_for_fresh_results():
 
 
 def test_ranker_dedupe_keeps_highest_engagement():
-    from research.ranker import dedupe
-    from research.types import Result
+    from cheetahclaws.research.ranker import dedupe
+    from cheetahclaws.research.types import Result
     rs = [
         Result(source="a", title="x", url="https://same.com/p", engagement_raw=10),
         Result(source="b", title="x dup", url="https://same.com/p/", engagement_raw=500),
@@ -129,8 +129,8 @@ def test_ranker_dedupe_keeps_highest_engagement():
 # ─── 4. cache ──────────────────────────────────────────────────────────────
 
 def test_cache_roundtrip(tmp_path, monkeypatch):
-    from research import cache
-    from research.types import Result
+    from cheetahclaws.research import cache
+    from cheetahclaws.research.types import Result
     monkeypatch.setattr(cache, "_db_path", lambda: tmp_path / "c.db")
 
     rs = [Result(source="s", title="t", url="u", engagement_raw=7)]
@@ -142,8 +142,8 @@ def test_cache_roundtrip(tmp_path, monkeypatch):
 
 
 def test_cache_expires(tmp_path, monkeypatch):
-    from research import cache
-    from research.types import Result
+    from cheetahclaws.research import cache
+    from cheetahclaws.research.types import Result
     monkeypatch.setattr(cache, "_db_path", lambda: tmp_path / "c.db")
 
     rs = [Result(source="s", title="t", url="u")]
@@ -154,7 +154,7 @@ def test_cache_expires(tmp_path, monkeypatch):
 
 
 def test_cache_miss_returns_none(tmp_path, monkeypatch):
-    from research import cache
+    from cheetahclaws.research import cache
     monkeypatch.setattr(cache, "_db_path", lambda: tmp_path / "c.db")
     assert cache.get("s", "nope", 10) is None
 
@@ -165,19 +165,19 @@ def _patch_http_get(monkeypatch, payload):
     """Replace research.http.get with a function returning `payload`."""
     def fake_get(url, params=None, headers=None, **kw):
         return payload
-    monkeypatch.setattr("research.http.get", fake_get, raising=False)
+    monkeypatch.setattr("cheetahclaws.research.http.get", fake_get, raising=False)
     # Sources import get directly — patch the imported reference too
     return fake_get
 
 
 def test_hackernews_parses_algolia():
-    from research.sources import hackernews
+    from cheetahclaws.research.sources import hackernews
     fixture = {"hits": [{
         "title": "Test story", "url": "https://example.com/p",
         "points": 420, "num_comments": 33, "author": "alice",
         "created_at": "2026-04-01T12:00:00Z", "objectID": "9999",
     }]}
-    with mock.patch("research.sources.hackernews.get", return_value=fixture):
+    with mock.patch("cheetahclaws.research.sources.hackernews.get", return_value=fixture):
         rs = hackernews.search("test", 5)
     assert len(rs) == 1
     assert rs[0].engagement_raw == 420 + 16   # 33 // 2
@@ -185,7 +185,7 @@ def test_hackernews_parses_algolia():
 
 
 def test_semantic_scholar_parses_tldr():
-    from research.sources import semantic_scholar as ss
+    from cheetahclaws.research.sources import semantic_scholar as ss
     fixture = {"data": [{
         "title": "A paper",
         "abstract": "Long abstract...",
@@ -198,7 +198,7 @@ def test_semantic_scholar_parses_tldr():
         "externalIds": {},
         "openAccessPdf": {"url": "https://arxiv.org/pdf/x.pdf"},
     }]}
-    with mock.patch("research.sources.semantic_scholar.get", return_value=fixture):
+    with mock.patch("cheetahclaws.research.sources.semantic_scholar.get", return_value=fixture):
         rs = ss.search("test", 5)
     assert len(rs) == 1
     assert rs[0].engagement_raw == 42
@@ -207,7 +207,7 @@ def test_semantic_scholar_parses_tldr():
 
 
 def test_reddit_builds_permalink_url():
-    from research.sources import reddit as rd
+    from cheetahclaws.research.sources import reddit as rd
     fixture = {"data": {"children": [{"data": {
         "title": "Reddit post",
         "subreddit": "programming",
@@ -217,7 +217,7 @@ def test_reddit_builds_permalink_url():
         "author": "redditor",
         "created_utc": 1714000000,
     }}]}}
-    with mock.patch("research.sources.reddit.get", return_value=fixture):
+    with mock.patch("cheetahclaws.research.sources.reddit.get", return_value=fixture):
         rs = rd.search("test", 5)
     assert len(rs) == 1
     assert rs[0].url.endswith("/r/programming/comments/abc/x/")
@@ -225,7 +225,7 @@ def test_reddit_builds_permalink_url():
 
 
 def test_github_splits_repos_and_issues():
-    from research.sources import github as gh
+    from cheetahclaws.research.sources import github as gh
     repo_fixture = {"items": [{
         "full_name": "foo/bar",
         "html_url": "https://github.com/foo/bar",
@@ -257,14 +257,14 @@ def test_github_splits_repos_and_issues():
             return repo_fixture
         return issue_fixture
 
-    with mock.patch("research.sources.github.get", side_effect=fake_get):
+    with mock.patch("cheetahclaws.research.sources.github.get", side_effect=fake_get):
         rs = gh.search("test", 10)
     assert any("foo/bar" in r.title for r in rs)
     assert any(r.title.startswith("[issue]") for r in rs)
 
 
 def test_arxiv_parses_atom_feed(monkeypatch):
-    from research.sources import arxiv
+    from cheetahclaws.research.sources import arxiv
     feed = b"""<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <entry>
@@ -285,7 +285,7 @@ def test_arxiv_parses_atom_feed(monkeypatch):
         def __exit__(self, *a): return False
 
     monkeypatch.setattr(
-        "research.sources.arxiv.urllib.request.urlopen",
+        "cheetahclaws.research.sources.arxiv.urllib.request.urlopen",
         lambda req, timeout=None: FakeResp(feed),
     )
     rs = arxiv.search("test", 3)
@@ -295,7 +295,7 @@ def test_arxiv_parses_atom_feed(monkeypatch):
 
 
 def test_google_news_parses_rss(monkeypatch):
-    from research.sources import google_news
+    from cheetahclaws.research.sources import google_news
     rss = b"""<?xml version="1.0"?>
 <rss version="2.0"><channel>
   <item>
@@ -314,7 +314,7 @@ def test_google_news_parses_rss(monkeypatch):
         def __exit__(self, *a): return False
 
     monkeypatch.setattr(
-        "research.sources.google_news.urllib.request.urlopen",
+        "cheetahclaws.research.sources.google_news.urllib.request.urlopen",
         lambda req, timeout=None: FakeResp(rss),
     )
     rs = google_news.search("test", 5)
@@ -324,7 +324,7 @@ def test_google_news_parses_rss(monkeypatch):
 
 
 def test_openalex_reconstructs_inverted_abstract():
-    from research.sources import openalex
+    from cheetahclaws.research.sources import openalex
     # Abstract: "The quick brown fox"
     fixture = {"results": [{
         "title": "X",
@@ -336,13 +336,13 @@ def test_openalex_reconstructs_inverted_abstract():
             "The": [0], "quick": [1], "brown": [2], "fox": [3],
         },
     }]}
-    with mock.patch("research.sources.openalex.get", return_value=fixture):
+    with mock.patch("cheetahclaws.research.sources.openalex.get", return_value=fixture):
         rs = openalex.search("x", 1)
     assert rs[0].snippet == "The quick brown fox"
 
 
 def test_stackoverflow_strips_html_in_body():
-    from research.sources import stackoverflow as so
+    from cheetahclaws.research.sources import stackoverflow as so
     fixture = {"items": [{
         "title": "Q title",
         "link": "https://stackoverflow.com/q/1",
@@ -354,27 +354,27 @@ def test_stackoverflow_strips_html_in_body():
         "last_activity_date": 1714000000,
         "is_answered": True,
     }]}
-    with mock.patch("research.sources.stackoverflow.get", return_value=fixture):
+    with mock.patch("cheetahclaws.research.sources.stackoverflow.get", return_value=fixture):
         rs = so.search("t", 1)
     assert rs[0].snippet == "Some code here."
 
 
 def test_tavily_skips_without_key(monkeypatch):
-    from research.sources import SourceSkipped, tavily
+    from cheetahclaws.research.sources import SourceSkipped, tavily
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     with pytest.raises(SourceSkipped):
         tavily.search("q", 5, {})
 
 
 def test_brave_skips_without_key(monkeypatch):
-    from research.sources import SourceSkipped, brave
+    from cheetahclaws.research.sources import SourceSkipped, brave
     monkeypatch.delenv("BRAVE_API_KEY", raising=False)
     with pytest.raises(SourceSkipped):
         brave.search("q", 5, {})
 
 
 def test_sec_edgar_builds_filing_url():
-    from research.sources import sec_edgar
+    from cheetahclaws.research.sources import sec_edgar
     fixture = {"hits": {"hits": [{
         "_id": "0000320193-26-000001:0001",
         "_source": {
@@ -386,7 +386,7 @@ def test_sec_edgar_builds_filing_url():
             "adsh": "0000320193-26-000001",
         },
     }]}}
-    with mock.patch("research.sources.sec_edgar.get", return_value=fixture):
+    with mock.patch("cheetahclaws.research.sources.sec_edgar.get", return_value=fixture):
         rs = sec_edgar.search("apple", 1)
     assert len(rs) == 1
     assert "APPLE INC" in rs[0].author
@@ -394,7 +394,7 @@ def test_sec_edgar_builds_filing_url():
 
 
 def test_polymarket_filters_by_substring():
-    from research.sources import polymarket
+    from cheetahclaws.research.sources import polymarket
     # Gamma returns [] or market list
     fixture = [
         {"question": "Will NVIDIA top $200b revenue by EOY?",
@@ -405,7 +405,7 @@ def test_polymarket_filters_by_substring():
          "slug": "cat-meme", "volume": 1000, "liquidity": 100,
          "outcomes": "[\"Yes\", \"No\"]", "outcomePrices": "[\"0.1\", \"0.9\"]"},
     ]
-    with mock.patch("research.sources.polymarket.get", return_value=fixture):
+    with mock.patch("cheetahclaws.research.sources.polymarket.get", return_value=fixture):
         rs = polymarket.search("nvidia revenue", 5)
     assert len(rs) == 1
     assert "NVIDIA" in rs[0].title
@@ -415,9 +415,9 @@ def test_polymarket_filters_by_substring():
 # ─── 6. aggregator ─────────────────────────────────────────────────────────
 
 def test_aggregator_fans_out_and_returns_brief(monkeypatch):
-    from research import aggregator
-    from research.sources import SOURCES
-    from research.types import Result
+    from cheetahclaws.research import aggregator
+    from cheetahclaws.research.sources import SOURCES
+    from cheetahclaws.research.types import Result
 
     # Replace all source .search functions with a deterministic mock that
     # only returns 1 result tagged with the source name.
@@ -442,8 +442,8 @@ def test_aggregator_fans_out_and_returns_brief(monkeypatch):
 
 
 def test_aggregator_reports_source_failures(monkeypatch):
-    from research import aggregator
-    from research.sources import SOURCES
+    from cheetahclaws.research import aggregator
+    from cheetahclaws.research.sources import SOURCES
 
     def boom(q, l, c=None):
         raise RuntimeError("scripted failure")
@@ -460,9 +460,9 @@ def test_aggregator_reports_source_failures(monkeypatch):
 
 
 def test_aggregator_caches_results(tmp_path, monkeypatch):
-    from research import aggregator, cache
-    from research.sources import SOURCES
-    from research.types import Result
+    from cheetahclaws.research import aggregator, cache
+    from cheetahclaws.research.sources import SOURCES
+    from cheetahclaws.research.types import Result
 
     monkeypatch.setattr(cache, "_db_path", lambda: tmp_path / "c.db")
 
@@ -490,8 +490,8 @@ def test_aggregator_caches_results(tmp_path, monkeypatch):
 # ─── 7. synthesizer ────────────────────────────────────────────────────────
 
 def test_synthesizer_fallback_without_model():
-    from research.synthesizer import synthesize
-    from research.types import Brief, Result
+    from cheetahclaws.research.synthesizer import synthesize
+    from cheetahclaws.research.types import Brief, Result
     brief = Brief(
         topic="x",
         domains=["tech"],
@@ -505,8 +505,8 @@ def test_synthesizer_fallback_without_model():
 
 
 def test_synthesizer_citation_numbering():
-    from research.synthesizer import render_citations
-    from research.types import Brief, Result
+    from cheetahclaws.research.synthesizer import render_citations
+    from cheetahclaws.research.types import Brief, Result
     rs = [
         Result(source="arxiv", title="Paper A", url="https://a"),
         Result(source="hackernews", title="Post B", url="https://b",
@@ -521,7 +521,7 @@ def test_synthesizer_citation_numbering():
 # ─── 8. HTTP helper resilience ─────────────────────────────────────────────
 
 def test_http_get_retries_on_5xx(monkeypatch):
-    from research import http
+    from cheetahclaws.research import http
     import urllib.error
 
     calls = {"n": 0}
@@ -540,8 +540,8 @@ def test_http_get_retries_on_5xx(monkeypatch):
                                          io.BytesIO(b""))
         return FakeResp(b'{"ok": true}')
 
-    monkeypatch.setattr("research.http.urllib.request.urlopen", fake_urlopen)
-    monkeypatch.setattr("research.http.time.sleep", lambda s: None)
+    monkeypatch.setattr("cheetahclaws.research.http.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("cheetahclaws.research.http.time.sleep", lambda s: None)
 
     data = http.get("https://example.com/api")
     assert data == {"ok": True}
@@ -549,13 +549,13 @@ def test_http_get_retries_on_5xx(monkeypatch):
 
 
 def test_http_get_fails_after_retries_exhausted(monkeypatch):
-    from research import http
+    from cheetahclaws.research import http
 
     def fake_urlopen(req, timeout=None):
         raise TimeoutError("slow")
 
-    monkeypatch.setattr("research.http.urllib.request.urlopen", fake_urlopen)
-    monkeypatch.setattr("research.http.time.sleep", lambda s: None)
+    monkeypatch.setattr("cheetahclaws.research.http.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("cheetahclaws.research.http.time.sleep", lambda s: None)
 
     with pytest.raises(TimeoutError):
         http.get("https://example.com/api", retries=2)
@@ -564,9 +564,9 @@ def test_http_get_fails_after_retries_exhausted(monkeypatch):
 # ─── 9. tools/research.py integration ──────────────────────────────────────
 
 def test_research_tool_returns_brief_markdown(monkeypatch):
-    from research.sources import SOURCES
-    from research.types import Result
-    from tools.research import _research
+    from cheetahclaws.research.sources import SOURCES
+    from cheetahclaws.research.types import Result
+    from cheetahclaws.tools.research import _research
 
     for spec in SOURCES.values():
         spec.search = lambda q, l, c=None, _s=spec: [
@@ -584,7 +584,7 @@ def test_research_tool_returns_brief_markdown(monkeypatch):
 # ─── 10. HuggingFace / alphaXiv / Zhihu / Twitter ──────────────────────────
 
 def test_huggingface_filters_by_topic_substring():
-    from research.sources import huggingface_papers as hf
+    from cheetahclaws.research.sources import huggingface_papers as hf
     fixture = [
         {
             "paper": {
@@ -604,7 +604,7 @@ def test_huggingface_filters_by_topic_substring():
             "numComments": 1,
         },
     ]
-    with mock.patch("research.sources.huggingface_papers.get", return_value=fixture):
+    with mock.patch("cheetahclaws.research.sources.huggingface_papers.get", return_value=fixture):
         rs = hf.search("transformer", 5)
     assert len(rs) == 1
     assert rs[0].title == "A Transformer Study"
@@ -612,15 +612,15 @@ def test_huggingface_filters_by_topic_substring():
 
 
 def test_huggingface_empty_query_still_filters():
-    from research.sources import huggingface_papers as hf
-    with mock.patch("research.sources.huggingface_papers.get", return_value=[]):
+    from cheetahclaws.research.sources import huggingface_papers as hf
+    with mock.patch("cheetahclaws.research.sources.huggingface_papers.get", return_value=[]):
         rs = hf.search("x", 5)
     assert rs == []
 
 
 def test_alphaxiv_wraps_arxiv_and_generates_discussion_urls(monkeypatch):
-    from research.sources import alphaxiv
-    from research.types import Result
+    from cheetahclaws.research.sources import alphaxiv
+    from cheetahclaws.research.types import Result
 
     fake_arxiv_hits = [
         Result(source="arxiv", title="Paper A", url="http://arxiv.org/abs/2401.12345v2",
@@ -628,7 +628,7 @@ def test_alphaxiv_wraps_arxiv_and_generates_discussion_urls(monkeypatch):
         Result(source="arxiv", title="Paper B", url="http://arxiv.org/abs/1706.03762",
                snippet="attention", author="Y", published="2017-06-12", domain="academic"),
     ]
-    with mock.patch("research.sources.arxiv.search", return_value=fake_arxiv_hits):
+    with mock.patch("cheetahclaws.research.sources.arxiv.search", return_value=fake_arxiv_hits):
         rs = alphaxiv.search("test", 5)
     assert len(rs) == 2
     assert all(r.source == "alphaxiv" for r in rs)
@@ -638,14 +638,14 @@ def test_alphaxiv_wraps_arxiv_and_generates_discussion_urls(monkeypatch):
 
 
 def test_zhihu_skips_without_cookie(monkeypatch):
-    from research.sources import SourceSkipped, zhihu
+    from cheetahclaws.research.sources import SourceSkipped, zhihu
     monkeypatch.delenv("ZHIHU_COOKIE", raising=False)
     with pytest.raises(SourceSkipped):
         zhihu.search("q", 5, {})
 
 
 def test_zhihu_parses_answer_type(monkeypatch):
-    from research.sources import zhihu
+    from cheetahclaws.research.sources import zhihu
     monkeypatch.setenv("ZHIHU_COOKIE", "d_c0=abc; z_c0=xyz")
     fixture = {"data": [{
         "type": "search_result",
@@ -660,7 +660,7 @@ def test_zhihu_parses_answer_type(monkeypatch):
             "author": {"name": "张三"},
         },
     }]}
-    with mock.patch("research.sources.zhihu.get", return_value=fixture):
+    with mock.patch("cheetahclaws.research.sources.zhihu.get", return_value=fixture):
         rs = zhihu.search("x", 3, {})
     assert len(rs) == 1
     r = rs[0]
@@ -671,7 +671,7 @@ def test_zhihu_parses_answer_type(monkeypatch):
 
 
 def test_zhihu_parses_article_type(monkeypatch):
-    from research.sources import zhihu
+    from cheetahclaws.research.sources import zhihu
     monkeypatch.setenv("ZHIHU_COOKIE", "cookie_val")
     fixture = {"data": [{
         "object": {
@@ -683,14 +683,14 @@ def test_zhihu_parses_article_type(monkeypatch):
             "author": {"name": "李四"},
         }
     }]}
-    with mock.patch("research.sources.zhihu.get", return_value=fixture):
+    with mock.patch("cheetahclaws.research.sources.zhihu.get", return_value=fixture):
         rs = zhihu.search("x", 3, {})
     assert rs[0].url == "https://zhuanlan.zhihu.com/p/123"
     assert "[article]" in rs[0].title
 
 
 def test_twitter_skips_without_token(monkeypatch):
-    from research.sources import SourceSkipped, twitter
+    from cheetahclaws.research.sources import SourceSkipped, twitter
     monkeypatch.delenv("X_API_BEARER_TOKEN", raising=False)
     monkeypatch.delenv("TWITTER_BEARER_TOKEN", raising=False)
     with pytest.raises(SourceSkipped):
@@ -698,7 +698,7 @@ def test_twitter_skips_without_token(monkeypatch):
 
 
 def test_twitter_parses_v2_response(monkeypatch):
-    from research.sources import twitter
+    from cheetahclaws.research.sources import twitter
     monkeypatch.setenv("X_API_BEARER_TOKEN", "bearer-xyz")
     fixture = {
         "data": [{
@@ -712,7 +712,7 @@ def test_twitter_parses_v2_response(monkeypatch):
         "includes": {"users": [{"id": "11", "username": "alice",
                                 "name": "Alice", "verified": True}]},
     }
-    with mock.patch("research.sources.twitter.get", return_value=fixture):
+    with mock.patch("cheetahclaws.research.sources.twitter.get", return_value=fixture):
         rs = twitter.search("hello", 5)
     assert len(rs) == 1
     r = rs[0]
@@ -725,8 +725,8 @@ def test_twitter_parses_v2_response(monkeypatch):
 # ─── 11. Heat table renderer ───────────────────────────────────────────────
 
 def test_format_heat_table_shows_counts_and_domains():
-    from research.synthesizer import format_heat_table
-    from research.types import Brief, Result, SourceStatus
+    from cheetahclaws.research.synthesizer import format_heat_table
+    from cheetahclaws.research.types import Brief, Result, SourceStatus
 
     brief = Brief(
         topic="x",
@@ -759,8 +759,8 @@ def test_format_heat_table_shows_counts_and_domains():
 
 
 def test_format_heat_table_escapes_pipes_in_labels():
-    from research.synthesizer import format_heat_table
-    from research.types import Brief, Result, SourceStatus
+    from cheetahclaws.research.synthesizer import format_heat_table
+    from cheetahclaws.research.types import Brief, Result, SourceStatus
     brief = Brief(
         topic="x", domains=["tech"],
         results=[Result(source="s", title="t", url="u", domain="tech",
@@ -772,7 +772,7 @@ def test_format_heat_table_escapes_pipes_in_labels():
 
 
 def test_heat_table_age_formatting():
-    from research.synthesizer import _fmt_age
+    from cheetahclaws.research.synthesizer import _fmt_age
     assert _fmt_age(0.2) == "4h"
     assert _fmt_age(1.0) == "1d"
     assert _fmt_age(27.0) == "27d"
@@ -783,7 +783,7 @@ def test_heat_table_age_formatting():
 # ─── 12. TimeRange parsing ─────────────────────────────────────────────────
 
 def test_time_range_preset_tokens():
-    from research.time_range import parse_range
+    from cheetahclaws.research.time_range import parse_range
     tr = parse_range("30d")
     assert tr.is_bounded
     assert tr.since is not None
@@ -791,34 +791,34 @@ def test_time_range_preset_tokens():
 
 
 def test_time_range_natural_language():
-    from research.time_range import parse_range
+    from cheetahclaws.research.time_range import parse_range
     tr = parse_range("6months")
     assert tr.is_bounded
     assert tr.since is not None
 
 
 def test_time_range_all_means_unbounded():
-    from research.time_range import parse_range
+    from cheetahclaws.research.time_range import parse_range
     tr = parse_range("all")
     assert not tr.is_bounded
     assert tr.since is None and tr.until is None
 
 
 def test_time_range_bad_token_raises():
-    from research.time_range import parse_range
+    from cheetahclaws.research.time_range import parse_range
     with pytest.raises(ValueError):
         parse_range("zorp")
 
 
 def test_time_range_iso_date_parsed():
-    from research.time_range import parse_iso
+    from cheetahclaws.research.time_range import parse_iso
     dt = parse_iso("2024-01-15")
     assert dt.year == 2024 and dt.month == 1 and dt.day == 15
     assert dt.tzinfo is not None
 
 
 def test_time_range_build_combines():
-    from research.time_range import build
+    from cheetahclaws.research.time_range import build
     tr = build(range_token="30d", since="2024-01-01", until="2024-06-30")
     # since/until override preset
     assert tr.since.year == 2024 and tr.since.month == 1
@@ -829,8 +829,8 @@ def test_time_range_build_combines():
 # ─── 13. Sources honor time_range ──────────────────────────────────────────
 
 def test_arxiv_uses_submittedDate_when_ranged():
-    from research.sources import arxiv
-    from research.time_range import parse_range
+    from cheetahclaws.research.sources import arxiv
+    from cheetahclaws.research.time_range import parse_range
     tr = parse_range("30d")
 
     captured = {}
@@ -845,7 +845,7 @@ def test_arxiv_uses_submittedDate_when_ranged():
         captured["url"] = req.full_url
         return FakeResp(b"""<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>""")
 
-    import research.sources.arxiv as ax
+    import cheetahclaws.research.sources.arxiv as ax
     ax.urllib.request.urlopen = fake_urlopen  # type: ignore
     arxiv.search("test", 3, time_range=tr)
     # URL-encoded as `submittedDate%3A`
@@ -853,28 +853,28 @@ def test_arxiv_uses_submittedDate_when_ranged():
 
 
 def test_hackernews_uses_numericFilters_when_ranged():
-    from research.sources import hackernews
-    from research.time_range import parse_range
+    from cheetahclaws.research.sources import hackernews
+    from cheetahclaws.research.time_range import parse_range
 
     captured = {}
     def fake_get(url, params=None, headers=None, **kw):
         captured["params"] = params or {}
         return {"hits": []}
-    with mock.patch("research.sources.hackernews.get", side_effect=fake_get):
+    with mock.patch("cheetahclaws.research.sources.hackernews.get", side_effect=fake_get):
         hackernews.search("test", 5, time_range=parse_range("7d"))
     assert "numericFilters" in captured["params"]
     assert "created_at_i>" in captured["params"]["numericFilters"]
 
 
 def test_github_adds_pushed_qualifier_when_ranged():
-    from research.sources import github
-    from research.time_range import parse_range
+    from cheetahclaws.research.sources import github
+    from cheetahclaws.research.time_range import parse_range
 
     captured = []
     def fake_get(url, params=None, headers=None, **kw):
         captured.append((url, dict(params or {})))
         return {"items": []}
-    with mock.patch("research.sources.github.get", side_effect=fake_get):
+    with mock.patch("cheetahclaws.research.sources.github.get", side_effect=fake_get):
         github.search("foo", 5, time_range=parse_range("30d"))
     # Both repo and issue searches should get date qualifiers
     qs = [p.get("q", "") for _, p in captured]
@@ -883,29 +883,29 @@ def test_github_adds_pushed_qualifier_when_ranged():
 
 
 def test_openalex_uses_filter_when_ranged():
-    from research.sources import openalex
-    from research.time_range import parse_range
+    from cheetahclaws.research.sources import openalex
+    from cheetahclaws.research.time_range import parse_range
 
     captured = {}
     def fake_get(url, params=None, headers=None, **kw):
         captured["params"] = params or {}
         return {"results": []}
-    with mock.patch("research.sources.openalex.get", side_effect=fake_get):
+    with mock.patch("cheetahclaws.research.sources.openalex.get", side_effect=fake_get):
         openalex.search("x", 3, time_range=parse_range("1y"))
     assert "filter" in captured["params"]
     assert "from_publication_date:" in captured["params"]["filter"]
 
 
 def test_reddit_maps_range_to_t():
-    from research.sources import reddit
-    from research.time_range import parse_range
+    from cheetahclaws.research.sources import reddit
+    from cheetahclaws.research.time_range import parse_range
 
     captured = {}
     def fake_get(url, params=None, headers=None, **kw):
         captured["params"] = params or {}
         return {"data": {"children": []}}
 
-    with mock.patch("research.sources.reddit.get", side_effect=fake_get):
+    with mock.patch("cheetahclaws.research.sources.reddit.get", side_effect=fake_get):
         reddit.search("x", 3, time_range=parse_range("7d"))
         assert captured["params"]["t"] == "week"
         reddit.search("x", 3, time_range=parse_range("1y"))
@@ -915,8 +915,8 @@ def test_reddit_maps_range_to_t():
 # ─── 14. Reports save/load ─────────────────────────────────────────────────
 
 def test_report_save_and_read(tmp_path, monkeypatch):
-    from research import reports as _rep
-    from research.types import Brief, Result, SourceStatus
+    from cheetahclaws.research import reports as _rep
+    from cheetahclaws.research.types import Brief, Result, SourceStatus
 
     monkeypatch.setattr(_rep, "_reports_dir",
                         lambda: (tmp_path / "reports").resolve())
@@ -944,8 +944,8 @@ def test_report_save_and_read(tmp_path, monkeypatch):
 
 
 def test_report_save_as_copies_file(tmp_path, monkeypatch):
-    from research import reports as _rep
-    from research.types import Brief
+    from cheetahclaws.research import reports as _rep
+    from cheetahclaws.research.types import Brief
     monkeypatch.setattr(_rep, "_reports_dir", lambda: (tmp_path / "rep").resolve())
 
     brief = Brief(topic="x", domains=["tech"], results=[], statuses=[])
@@ -957,8 +957,8 @@ def test_report_save_as_copies_file(tmp_path, monkeypatch):
 
 
 def test_report_delete(tmp_path, monkeypatch):
-    from research import reports as _rep
-    from research.types import Brief
+    from cheetahclaws.research import reports as _rep
+    from cheetahclaws.research.types import Brief
     monkeypatch.setattr(_rep, "_reports_dir", lambda: (tmp_path / "r").resolve())
 
     b = Brief(topic="abc", domains=[], results=[], statuses=[])
@@ -972,8 +972,8 @@ def test_report_delete(tmp_path, monkeypatch):
 
 def test_publication_trend_bars():
     from datetime import datetime, timezone, timedelta
-    from research.synthesizer import format_publication_trend
-    from research.types import Brief, Result
+    from cheetahclaws.research.synthesizer import format_publication_trend
+    from cheetahclaws.research.types import Brief, Result
     now = datetime.now(timezone.utc)
     rs = [
         Result(source="arxiv", title=f"p{i}", url=f"u{i}",
@@ -988,8 +988,8 @@ def test_publication_trend_bars():
 
 def test_publication_sparkline_uses_unicode_bars():
     from datetime import datetime, timezone, timedelta
-    from research.synthesizer import format_publication_sparkline
-    from research.types import Brief, Result
+    from cheetahclaws.research.synthesizer import format_publication_sparkline
+    from cheetahclaws.research.types import Brief, Result
     now = datetime.now(timezone.utc)
     rs = [
         Result(source="arxiv", title=f"p{i}", url=f"u{i}",
@@ -1006,8 +1006,8 @@ def test_publication_sparkline_uses_unicode_bars():
 # ─── 16. Citations helper ──────────────────────────────────────────────────
 
 def test_citation_extract_ss_id():
-    from research.citations import _extract_ss_id
-    from research.types import Result
+    from cheetahclaws.research.citations import _extract_ss_id
+    from cheetahclaws.research.types import Result
     r1 = Result(source="semantic_scholar", title="T", url="https://www.semanticscholar.org/paper/abc/def0123")
     assert _extract_ss_id(r1) == "def0123"
     r2 = Result(source="semantic_scholar", title="T", url="https://arxiv.org/abs/2401.12345v1")
@@ -1017,7 +1017,7 @@ def test_citation_extract_ss_id():
 
 
 def test_notable_citers_rendering():
-    from research.citations import NotableCiter, render_notable_section
+    from cheetahclaws.research.citations import NotableCiter, render_notable_section
     ns = [
         NotableCiter(name="Yoshua Bengio", author_id="aa",
                      total_citations=450000, h_index=230,
@@ -1033,7 +1033,7 @@ def test_notable_citers_rendering():
 # ─── 17. Google Scholar graceful skip ──────────────────────────────────────
 
 def test_google_scholar_skips_without_scholarly(monkeypatch):
-    from research.sources import SourceSkipped, google_scholar
+    from cheetahclaws.research.sources import SourceSkipped, google_scholar
     import sys
     # Pretend `scholarly` isn't installed by removing any cached module
     sys.modules.pop("scholarly", None)
@@ -1056,7 +1056,7 @@ def test_google_scholar_skips_without_scholarly(monkeypatch):
 # ─── 19. Chinese platform sources ──────────────────────────────────────────
 
 def test_bilibili_parses_video_group():
-    from research.sources import bilibili
+    from cheetahclaws.research.sources import bilibili
     fixture = {
         "code": 0,
         "data": {
@@ -1078,7 +1078,7 @@ def test_bilibili_parses_video_group():
             }],
         },
     }
-    with mock.patch("research.sources.bilibili.get", return_value=fixture):
+    with mock.patch("cheetahclaws.research.sources.bilibili.get", return_value=fixture):
         rs = bilibili.search("transformer", 5)
     assert len(rs) == 1
     r = rs[0]
@@ -1091,22 +1091,22 @@ def test_bilibili_parses_video_group():
 
 
 def test_bilibili_skips_non_ok_code():
-    from research.sources import bilibili
+    from cheetahclaws.research.sources import bilibili
     fixture = {"code": -401, "message": "anti-bot", "data": None}
-    with mock.patch("research.sources.bilibili.get", return_value=fixture):
+    with mock.patch("cheetahclaws.research.sources.bilibili.get", return_value=fixture):
         rs = bilibili.search("x", 5)
     assert rs == []
 
 
 def test_weibo_skips_without_cookie(monkeypatch):
-    from research.sources import SourceSkipped, weibo
+    from cheetahclaws.research.sources import SourceSkipped, weibo
     monkeypatch.delenv("WEIBO_COOKIE", raising=False)
     with pytest.raises(SourceSkipped):
         weibo.search("x", 5, {})
 
 
 def test_weibo_parses_mblog(monkeypatch):
-    from research.sources import weibo
+    from cheetahclaws.research.sources import weibo
     monkeypatch.setenv("WEIBO_COOKIE", "SUB=xxx;SUBP=yyy")
     fixture = {
         "ok": 1,
@@ -1123,7 +1123,7 @@ def test_weibo_parses_mblog(monkeypatch):
             },
         }]},
     }
-    with mock.patch("research.sources.weibo.get", return_value=fixture):
+    with mock.patch("cheetahclaws.research.sources.weibo.get", return_value=fixture):
         rs = weibo.search("transformer", 5, {})
     assert len(rs) == 1
     r = rs[0]
@@ -1135,7 +1135,7 @@ def test_weibo_parses_mblog(monkeypatch):
 
 
 def test_weibo_date_parser_relative():
-    from research.sources.weibo import _parse_weibo_date
+    from cheetahclaws.research.sources.weibo import _parse_weibo_date
     import re
     assert re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",
                     _parse_weibo_date("5分钟前"))
@@ -1145,7 +1145,7 @@ def test_weibo_date_parser_relative():
 
 
 def test_xiaohongshu_skips_without_cookie(monkeypatch):
-    from research.sources import SourceSkipped, xiaohongshu
+    from cheetahclaws.research.sources import SourceSkipped, xiaohongshu
     monkeypatch.delenv("XHS_COOKIE", raising=False)
     monkeypatch.delenv("XIAOHONGSHU_COOKIE", raising=False)
     with pytest.raises(SourceSkipped):
@@ -1153,8 +1153,8 @@ def test_xiaohongshu_skips_without_cookie(monkeypatch):
 
 
 def test_xiaohongshu_parses_localized_counts(monkeypatch):
-    from research.sources import xiaohongshu
-    from research.sources.xiaohongshu import _parse_count
+    from cheetahclaws.research.sources import xiaohongshu
+    from cheetahclaws.research.sources.xiaohongshu import _parse_count
     assert _parse_count("1.2w") == 12000
     assert _parse_count("3万") == 30000
     assert _parse_count("500") == 500
@@ -1164,7 +1164,7 @@ def test_xiaohongshu_parses_localized_counts(monkeypatch):
 
 
 def test_xiaohongshu_parses_success_response(monkeypatch):
-    from research.sources import xiaohongshu
+    from cheetahclaws.research.sources import xiaohongshu
     monkeypatch.setenv("XHS_COOKIE", "test-cookie")
     fixture = {
         "success": True,
@@ -1184,7 +1184,7 @@ def test_xiaohongshu_parses_success_response(monkeypatch):
             },
         }]},
     }
-    with mock.patch("research.sources.xiaohongshu.post_json",
+    with mock.patch("cheetahclaws.research.sources.xiaohongshu.post_json",
                     return_value=fixture):
         rs = xiaohongshu.search("transformer", 5, {})
     assert len(rs) == 1
@@ -1198,10 +1198,10 @@ def test_xiaohongshu_parses_success_response(monkeypatch):
 # ─── 20. Monitor research:<topic> fetcher ──────────────────────────────────
 
 def test_monitor_fetcher_dispatches_research_prefix(monkeypatch, tmp_path):
-    from monitor import fetchers
-    from research import cache as _cache
-    from research.sources import SOURCES
-    from research.types import Result
+    from cheetahclaws.monitor import fetchers
+    from cheetahclaws.research import cache as _cache
+    from cheetahclaws.research.sources import SOURCES
+    from cheetahclaws.research.types import Result
 
     monkeypatch.setattr(_cache, "_db_path", lambda: tmp_path / "c.db")
 
@@ -1219,10 +1219,10 @@ def test_monitor_fetcher_dispatches_research_prefix(monkeypatch, tmp_path):
 
 
 def test_monitor_fetcher_research_with_range_prefix(monkeypatch, tmp_path):
-    from monitor import fetchers
-    from research import cache as _cache
-    from research.sources import SOURCES
-    from research.types import Result
+    from cheetahclaws.monitor import fetchers
+    from cheetahclaws.research import cache as _cache
+    from cheetahclaws.research.sources import SOURCES
+    from cheetahclaws.research.types import Result
 
     # Isolate cache so prior tests' cached entries don't mask the mocks
     monkeypatch.setattr(_cache, "_db_path", lambda: tmp_path / "c.db")
@@ -1244,8 +1244,8 @@ def test_monitor_fetcher_research_with_range_prefix(monkeypatch, tmp_path):
 # ─── 21. Entity extraction ─────────────────────────────────────────────────
 
 def test_entity_extraction_picks_up_known_models():
-    from research.entities import extract
-    from research.types import Result
+    from cheetahclaws.research.entities import extract
+    from cheetahclaws.research.types import Result
     rs = [
         Result(source="reddit", title="GPT-5 vs Claude-Opus-5: which is better",
                url="u1", snippet="GPT-5 dominates on MMLU but Claude-Opus-5 wins on coding", domain="social"),
@@ -1269,8 +1269,8 @@ def test_entity_extraction_picks_up_known_models():
 
 
 def test_entity_extraction_orgs():
-    from research.entities import extract
-    from research.types import Result
+    from cheetahclaws.research.entities import extract
+    from cheetahclaws.research.types import Result
     rs = [
         Result(source="news", title="OpenAI releases GPT-5",
                url="u", snippet="Anthropic and Google DeepMind respond.", domain="news"),
@@ -1289,8 +1289,8 @@ def test_entity_extraction_orgs():
 
 def test_entity_extraction_dedupes_within_single_result():
     """A result mentioning the same model 10 times should count as 1."""
-    from research.entities import extract
-    from research.types import Result
+    from cheetahclaws.research.entities import extract
+    from cheetahclaws.research.types import Result
     rs = [Result(source="x", title="GPT-5 is amazing",
                  url="u", snippet="GPT-5 GPT-5 GPT-5 GPT-5 GPT-5 GPT-5",
                  domain="tech")]
@@ -1302,8 +1302,8 @@ def test_entity_extraction_dedupes_within_single_result():
 
 
 def test_entity_extraction_people_from_author():
-    from research.entities import extract
-    from research.types import Result
+    from cheetahclaws.research.entities import extract
+    from cheetahclaws.research.types import Result
     rs = [
         Result(source="arxiv", title="paper 1", url="u1",
                author="Alice Smith, Bob Chen", domain="academic"),
@@ -1317,7 +1317,7 @@ def test_entity_extraction_people_from_author():
 
 
 def test_entity_table_renders_markdown():
-    from research.entities import Entities, render_entities_table
+    from cheetahclaws.research.entities import Entities, render_entities_table
     e = Entities(
         models=[("GPT-5", 7), ("Claude-Opus-5", 4)],
         benchmarks=[("MMLU", 3)],
@@ -1333,20 +1333,20 @@ def test_entity_table_renders_markdown():
 
 
 def test_entity_table_empty_returns_empty_string():
-    from research.entities import Entities, render_entities_table
+    from cheetahclaws.research.entities import Entities, render_entities_table
     assert render_entities_table(Entities()) == ""
 
 
 # ─── 22. Multi-query expansion ─────────────────────────────────────────────
 
 def test_expand_subqueries_no_model_returns_empty():
-    from research.aggregator import _expand_subqueries
+    from cheetahclaws.research.aggregator import _expand_subqueries
     assert _expand_subqueries("topic", 4, config={}) == []
 
 
 def test_expand_subqueries_parses_model_lines(monkeypatch):
-    from research import aggregator
-    from research.types import Result
+    from cheetahclaws.research import aggregator
+    from cheetahclaws.research.types import Result
 
     fake_lines = [
         "LLM evaluation benchmarks safety",
@@ -1373,25 +1373,25 @@ def test_expand_subqueries_parses_model_lines(monkeypatch):
     # leak the stub into later tests.  Previously this finally was a no-op,
     # which broke tests/test_setup_wizard.py and any other suite that ran
     # after this one and tried `from providers import PROVIDERS`.
-    real_providers = sys.modules.get("providers")
-    sys.modules["providers"] = fake_providers
+    real_providers = sys.modules.get("cheetahclaws.providers")
+    sys.modules["cheetahclaws.providers"] = fake_providers
     try:
         out = aggregator._expand_subqueries("frontier LLM benchmarks", 4,
                                             config={"model": "test"})
     finally:
         if real_providers is not None:
-            sys.modules["providers"] = real_providers
+            sys.modules["cheetahclaws.providers"] = real_providers
         else:
-            sys.modules.pop("providers", None)
+            sys.modules.pop("cheetahclaws.providers", None)
 
     assert len(out) == 4
     assert all(5 < len(ln) < 150 for ln in out)
 
 
 def test_aggregator_expand_produces_multi_query_cache_keys(monkeypatch, tmp_path):
-    from research import aggregator, cache as _cache
-    from research.sources import SOURCES
-    from research.types import Result
+    from cheetahclaws.research import aggregator, cache as _cache
+    from cheetahclaws.research.sources import SOURCES
+    from cheetahclaws.research.types import Result
 
     monkeypatch.setattr(_cache, "_db_path", lambda: tmp_path / "c.db")
 
@@ -1424,9 +1424,9 @@ def test_aggregator_expand_produces_multi_query_cache_keys(monkeypatch, tmp_path
 # ─── 23. Compare mode ──────────────────────────────────────────────────────
 
 def test_compare_runs_two_queries(monkeypatch, tmp_path):
-    from research import aggregator, cache as _cache
-    from research.sources import SOURCES
-    from research.types import Result
+    from cheetahclaws.research import aggregator, cache as _cache
+    from cheetahclaws.research.sources import SOURCES
+    from cheetahclaws.research.types import Result
 
     monkeypatch.setattr(_cache, "_db_path", lambda: tmp_path / "c.db")
     for spec in SOURCES.values():
@@ -1447,9 +1447,9 @@ def test_compare_runs_two_queries(monkeypatch, tmp_path):
 
 
 def test_compare_three_topics(monkeypatch, tmp_path):
-    from research import aggregator, cache as _cache
-    from research.sources import SOURCES
-    from research.types import Result
+    from cheetahclaws.research import aggregator, cache as _cache
+    from cheetahclaws.research.sources import SOURCES
+    from cheetahclaws.research.types import Result
 
     monkeypatch.setattr(_cache, "_db_path", lambda: tmp_path / "c.db")
     for spec in SOURCES.values():
@@ -1467,8 +1467,8 @@ def test_compare_three_topics(monkeypatch, tmp_path):
 
 
 def test_render_compare_brief_has_all_topics_cited():
-    from research.synthesizer import render_compare_brief
-    from research.types import Brief, Result, SourceStatus
+    from cheetahclaws.research.synthesizer import render_compare_brief
+    from cheetahclaws.research.types import Brief, Result, SourceStatus
 
     b1 = Brief(topic="A", domains=["tech"],
                results=[Result(source="hn", title="T1", url="u1", domain="tech")],
@@ -1487,10 +1487,10 @@ def test_render_compare_brief_has_all_topics_cited():
 
 
 def test_aggregator_threads_time_range_into_sources(monkeypatch):
-    from research import aggregator
-    from research.sources import SOURCES
-    from research.time_range import parse_range
-    from research.types import Result
+    from cheetahclaws.research import aggregator
+    from cheetahclaws.research.sources import SOURCES
+    from cheetahclaws.research.time_range import parse_range
+    from cheetahclaws.research.types import Result
 
     received: dict[str, object] = {}
 

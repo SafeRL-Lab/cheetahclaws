@@ -1,5 +1,5 @@
 import pytest
-import ui.render as render
+import cheetahclaws.ui.render as render
 
 
 class _FakeLive:

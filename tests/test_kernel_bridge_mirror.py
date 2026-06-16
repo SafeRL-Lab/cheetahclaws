@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     BridgeKind,
     BridgeMessage,
     BridgeMirror,
@@ -15,7 +15,7 @@ from kernel import (
     inbound_topic,
     outbound_topic,
 )
-from kernel.bridge_mirror import MESSAGE_KIND
+from cheetahclaws.kernel.bridge_mirror import MESSAGE_KIND
 
 
 @pytest.fixture

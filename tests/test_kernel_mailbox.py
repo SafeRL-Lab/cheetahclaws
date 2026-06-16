@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     KernelStore,
     Mailbox,
     MailboxAlreadyExists,

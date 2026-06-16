@@ -20,8 +20,8 @@ from unittest.mock import patch
 
 import pytest
 
-import runtime
-from tools import interaction as itx
+from cheetahclaws import runtime
+from cheetahclaws.tools import interaction as itx
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────

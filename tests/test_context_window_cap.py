@@ -20,8 +20,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import providers
-import compaction
+from cheetahclaws import providers
+from cheetahclaws import compaction
 
 
 # ── Known model context registry ─────────────────────────────────────────

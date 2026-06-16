@@ -10,24 +10,24 @@ import time
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     AgentProcess,
     AgentState,
     IllegalTransition,
     KernelStore,
     UnknownPid,
 )
-from kernel.errors import (
+from cheetahclaws.kernel.errors import (
     KERNEL_ILLEGAL_TRANSITION,
     KERNEL_UNKNOWN_PID,
     InvalidPayload,
 )
-from kernel.schema import (
+from cheetahclaws.kernel.schema import (
     EXPECTED_SCHEMA_VERSION,
     get_schema_version,
     open_connection,
 )
-from kernel.store import (
+from cheetahclaws.kernel.store import (
     EV_PROCESS_CREATED,
     EV_PROCESS_RECOVERED,
     EV_PROCESS_TERMINATED,

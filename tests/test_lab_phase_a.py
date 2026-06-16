@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from research.lab import iterate, resume, backlog
-from research.lab.iterate import (
+from cheetahclaws.research.lab import iterate, resume, backlog
+from cheetahclaws.research.lab.iterate import (
     DIMENSIONS,
     DIMENSION_TO_STAGE,
     IterationConfig,
@@ -22,8 +22,8 @@ from research.lab.iterate import (
     parse_review_scores,
     weakest_dimension,
 )
-from research.lab.orchestrator import LLMResponse, Stage
-from research.lab.storage import LabStorage
+from cheetahclaws.research.lab.orchestrator import LLMResponse, Stage
+from cheetahclaws.research.lab.storage import LabStorage
 
 
 # ── Fake LLM ──────────────────────────────────────────────────────────────
@@ -191,8 +191,8 @@ def test_score_report_aggregates_across_reviewers(storage):
     fake.set_response("reviewer_3",
                       "novelty: 8\nrigor: 7\nclarity: 8\nevidence: 7")
 
-    from research.lab.orchestrator import LabRun, LabState
-    from research.lab.roles import build_default_assignment
+    from cheetahclaws.research.lab.orchestrator import LabRun, LabState
+    from cheetahclaws.research.lab.roles import build_default_assignment
     roles = build_default_assignment({})
     state = LabState(run_id=rec.run_id, topic=rec.topic, stage=Stage.FINALIZATION)
     run = LabRun(state=state, storage=storage, roles=roles, config={},

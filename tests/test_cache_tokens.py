@@ -19,7 +19,7 @@ import pytest
 # ---------- 1 & 2: AssistantTurn + AgentState ----------
 
 def test_assistant_turn_has_cache_fields():
-    from providers import AssistantTurn
+    from cheetahclaws.providers import AssistantTurn
     turn = AssistantTurn(
         text="hello", tool_calls=[], in_tokens=100, out_tokens=50,
         cache_read_tokens=80, cache_write_tokens=20,
@@ -30,14 +30,14 @@ def test_assistant_turn_has_cache_fields():
 
 def test_assistant_turn_cache_defaults_zero():
     """Older providers and ad-hoc callers construct AssistantTurn without cache fields."""
-    from providers import AssistantTurn
+    from cheetahclaws.providers import AssistantTurn
     turn = AssistantTurn(text="hi", tool_calls=[], in_tokens=10, out_tokens=5)
     assert turn.cache_read_tokens == 0
     assert turn.cache_write_tokens == 0
 
 
 def test_agent_state_accumulates_cache_tokens():
-    from agent import AgentState
+    from cheetahclaws.agent import AgentState
     state = AgentState()
     assert (state.total_cache_read_tokens, state.total_cache_write_tokens) == (0, 0)
 
@@ -53,8 +53,8 @@ def test_agent_state_accumulates_cache_tokens():
 # ---------- 3: Checkpoint persistence ----------
 
 def test_checkpoint_snapshot_includes_cache(tmp_path, monkeypatch):
-    from checkpoint import store
-    from agent import AgentState
+    from cheetahclaws.checkpoint import store
+    from cheetahclaws.agent import AgentState
 
     monkeypatch.setattr(store, "_checkpoints_root", lambda: tmp_path / ".checkpoints")
     store.reset_file_versions()
@@ -77,8 +77,8 @@ def test_rewind_restores_cache_tokens_from_snapshot(tmp_path, monkeypatch):
     """Rewinding to an older snapshot must restore cache totals in lock-step
     with input/output totals — otherwise the running counters drift away from
     what make_snapshot will persist on the next turn."""
-    from checkpoint import store
-    from agent import AgentState
+    from cheetahclaws.checkpoint import store
+    from cheetahclaws.agent import AgentState
 
     monkeypatch.setattr(store, "_checkpoints_root", lambda: tmp_path / ".checkpoints")
     store.reset_file_versions()
@@ -114,7 +114,7 @@ class TestAnthropicCacheExtraction:
     """_anthropic_cache_tokens must read cache_read_input_tokens / cache_creation_input_tokens."""
 
     def test_returns_both_when_populated(self):
-        from providers import _anthropic_cache_tokens
+        from cheetahclaws.providers import _anthropic_cache_tokens
         usage = SimpleNamespace(
             input_tokens=120, output_tokens=40,
             cache_read_input_tokens=77, cache_creation_input_tokens=33,
@@ -123,13 +123,13 @@ class TestAnthropicCacheExtraction:
 
     def test_missing_fields_default_to_zero(self):
         """Older Anthropic SDKs and Bedrock-over-litellm wrappers omit the cache fields."""
-        from providers import _anthropic_cache_tokens
+        from cheetahclaws.providers import _anthropic_cache_tokens
         usage = SimpleNamespace(input_tokens=10, output_tokens=5)
         assert _anthropic_cache_tokens(usage) == (0, 0)
 
     def test_none_fields_coerced_to_zero(self):
         """Anthropic occasionally returns None (JSON null) rather than omitting the field."""
-        from providers import _anthropic_cache_tokens
+        from cheetahclaws.providers import _anthropic_cache_tokens
         usage = SimpleNamespace(
             input_tokens=10, output_tokens=5,
             cache_read_input_tokens=None, cache_creation_input_tokens=None,
@@ -141,7 +141,7 @@ class TestOpenAICacheExtraction:
     """_openai_cached_read_tokens must walk prompt_tokens_details.cached_tokens."""
 
     def test_reads_cached_tokens_from_details(self):
-        from providers import _openai_cached_read_tokens
+        from cheetahclaws.providers import _openai_cached_read_tokens
         usage = SimpleNamespace(
             prompt_tokens=100, completion_tokens=50,
             prompt_tokens_details=SimpleNamespace(cached_tokens=42),
@@ -149,12 +149,12 @@ class TestOpenAICacheExtraction:
         assert _openai_cached_read_tokens(usage) == 42
 
     def test_missing_details_returns_zero(self):
-        from providers import _openai_cached_read_tokens
+        from cheetahclaws.providers import _openai_cached_read_tokens
         usage = SimpleNamespace(prompt_tokens=100, completion_tokens=50)
         assert _openai_cached_read_tokens(usage) == 0
 
     def test_none_cached_tokens_returns_zero(self):
-        from providers import _openai_cached_read_tokens
+        from cheetahclaws.providers import _openai_cached_read_tokens
         usage = SimpleNamespace(
             prompt_tokens=100, completion_tokens=50,
             prompt_tokens_details=SimpleNamespace(cached_tokens=None),
@@ -164,7 +164,7 @@ class TestOpenAICacheExtraction:
 
 def test_ollama_stream_never_reports_cache_tokens():
     """Ollama has no prompt-caching; the path must yield 0/0 without raising."""
-    from providers import AssistantTurn
+    from cheetahclaws.providers import AssistantTurn
     # stream_ollama yields AssistantTurn(text, tool_calls, 0, 0, 0, 0) -- we can't
     # reach the full HTTP call in a unit test, but we can assert the shape of the
     # yielded object the callers rely on.
@@ -177,10 +177,10 @@ def test_ollama_stream_never_reports_cache_tokens():
 
 def test_agent_run_propagates_cache_tokens_from_mocked_stream(monkeypatch, tmp_path):
     """Drive agent.run once with a scripted stream and assert totals + snapshot."""
-    import tools as _tools_init  # noqa: F401 - register tools
-    from agent import AgentState, run
-    from providers import AssistantTurn
-    from checkpoint import store as ck_store
+    from cheetahclaws import tools as _tools_init  # noqa: F401 - register tools
+    from cheetahclaws.agent import AgentState, run
+    from cheetahclaws.providers import AssistantTurn
+    from cheetahclaws.checkpoint import store as ck_store
 
     monkeypatch.setattr(ck_store, "_checkpoints_root", lambda: tmp_path / ".checkpoints")
     ck_store.reset_file_versions()
@@ -192,7 +192,7 @@ def test_agent_run_propagates_cache_tokens_from_mocked_stream(monkeypatch, tmp_p
             cache_read_tokens=700, cache_write_tokens=50,
         )
 
-    monkeypatch.setattr("agent.stream", fake_stream)
+    monkeypatch.setattr("cheetahclaws.agent.stream", fake_stream)
 
     state = AgentState()
     list(run("hello", state, {
@@ -210,9 +210,9 @@ def test_agent_run_propagates_cache_tokens_from_mocked_stream(monkeypatch, tmp_p
 
 def test_agent_run_accumulates_cache_across_multi_turn(monkeypatch):
     """Two consecutive agent.run calls must sum their cache counters in state."""
-    import tools as _tools_init  # noqa: F401
-    from agent import AgentState, run
-    from providers import AssistantTurn
+    from cheetahclaws import tools as _tools_init  # noqa: F401
+    from cheetahclaws.agent import AgentState, run
+    from cheetahclaws.providers import AssistantTurn
 
     emitted = iter([
         AssistantTurn("one", [], 100, 50, cache_read_tokens=40, cache_write_tokens=10),
@@ -222,7 +222,7 @@ def test_agent_run_accumulates_cache_across_multi_turn(monkeypatch):
     def fake_stream(**_kwargs):
         yield next(emitted)
 
-    monkeypatch.setattr("agent.stream", fake_stream)
+    monkeypatch.setattr("cheetahclaws.agent.stream", fake_stream)
 
     state = AgentState()
     cfg = {"model": "test", "permission_mode": "accept-all",

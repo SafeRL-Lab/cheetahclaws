@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-from commands.monitor_cmd import _parse_subscribe_args
+from cheetahclaws.commands.monitor_cmd import _parse_subscribe_args
 
 
 @pytest.mark.parametrize("args,expected_topic,expected_schedule,expected_channels", [

@@ -24,7 +24,7 @@ _skip_if_no_pandas = pytest.mark.skipif(
 # ── Universe helpers ─────────────────────────────────────────────────────
 
 def test_resolve_universe_default_returns_sp100():
-    from modular.trading.universe import resolve_universe, SP100
+    from cheetahclaws.modular.trading.universe import resolve_universe, SP100
     out = resolve_universe(None)
     assert out == SP100
     assert "AAPL" in out
@@ -32,20 +32,20 @@ def test_resolve_universe_default_returns_sp100():
 
 
 def test_resolve_universe_custom_overrides():
-    from modular.trading.universe import resolve_universe
+    from cheetahclaws.modular.trading.universe import resolve_universe
     out = resolve_universe(None, custom=["aapl", "  msft", "GOOG  ", ""])
     assert out == ["AAPL", "MSFT", "GOOG"]
 
 
 def test_resolve_universe_preset_name():
-    from modular.trading.universe import resolve_universe
+    from cheetahclaws.modular.trading.universe import resolve_universe
     sectors = resolve_universe("sectors")
     assert "XLK" in sectors
     assert "XLF" in sectors
 
 
 def test_sector_top_holdings_keyed_by_etf():
-    from modular.trading.universe import SECTOR_TOP_HOLDINGS
+    from cheetahclaws.modular.trading.universe import SECTOR_TOP_HOLDINGS
     assert "XLK" in SECTOR_TOP_HOLDINGS
     assert "AAPL" in SECTOR_TOP_HOLDINGS["XLK"]
     assert all(len(v) >= 5 for v in SECTOR_TOP_HOLDINGS.values())
@@ -111,7 +111,7 @@ def stub_yfinance(monkeypatch):
 
 @_skip_if_no_pandas
 def test_factor_scan_and_score(stub_yfinance, tmp_path, monkeypatch):
-    from modular.trading import factors
+    from cheetahclaws.modular.trading import factors
     monkeypatch.setattr(factors, "_CACHE_PATH", tmp_path / "factors.json")
 
     rows = factors.scan_universe(["AAPL", "MSFT", "GOOG"], use_cache=False)
@@ -129,7 +129,7 @@ def test_factor_scan_and_score(stub_yfinance, tmp_path, monkeypatch):
 
 @_skip_if_no_pandas
 def test_factor_render_table(stub_yfinance, tmp_path, monkeypatch):
-    from modular.trading import factors
+    from cheetahclaws.modular.trading import factors
     monkeypatch.setattr(factors, "_CACHE_PATH", tmp_path / "factors.json")
     rows = factors.scan_universe(["AAPL", "MSFT"], use_cache=False)
     factors.score(rows)
@@ -141,8 +141,8 @@ def test_factor_render_table(stub_yfinance, tmp_path, monkeypatch):
 # ── Discovery: insider cluster ───────────────────────────────────────────
 
 def test_insider_cluster_flags_clusters(monkeypatch):
-    from modular.trading.discover import insider_cluster
-    from modular.trading.alt_data import insider as ins_mod
+    from cheetahclaws.modular.trading.discover import insider_cluster
+    from cheetahclaws.modular.trading.alt_data import insider as ins_mod
 
     def fake_filings(sym, days=30, max_filings=20):
         # Return ≥3 filings only for "TSLA"
@@ -171,8 +171,8 @@ def test_insider_cluster_flags_clusters(monkeypatch):
 
 @_skip_if_no_pandas
 def test_momentum_quality_filters_below_threshold(stub_yfinance, tmp_path, monkeypatch):
-    from modular.trading import factors
-    from modular.trading.discover import momentum_quality
+    from cheetahclaws.modular.trading import factors
+    from cheetahclaws.modular.trading.discover import momentum_quality
     monkeypatch.setattr(factors, "_CACHE_PATH", tmp_path / "factors.json")
 
     hits = momentum_quality.scan(symbols=["AAPL", "MSFT", "GOOG"],
@@ -184,7 +184,7 @@ def test_momentum_quality_filters_below_threshold(stub_yfinance, tmp_path, monke
 # ── Discovery: sector rotation ───────────────────────────────────────────
 
 def test_sector_rotation_picks_top_sectors(monkeypatch):
-    from modular.trading.discover import sector_rotation
+    from cheetahclaws.modular.trading.discover import sector_rotation
 
     # Stub fetch_market_data to return synthetic strong-up ETF data only for XLK
     def fake_data(sym, **kw):
@@ -203,7 +203,7 @@ def test_sector_rotation_picks_top_sectors(monkeypatch):
             "error": None,
         }
     monkeypatch.setattr(
-        "modular.trading.data.fetchers.fetch_market_data", fake_data,
+        "cheetahclaws.modular.trading.data.fetchers.fetch_market_data", fake_data,
     )
 
     hits = sector_rotation.scan(top_sectors=2, top_per_sector=3)
@@ -216,8 +216,8 @@ def test_sector_rotation_picks_top_sectors(monkeypatch):
 # ── Discovery orchestrator ───────────────────────────────────────────────
 
 def test_orchestrator_merges_multi_source_hits(monkeypatch):
-    from modular.trading.discover import orchestrator
-    from modular.trading.discover.types import Discovery
+    from cheetahclaws.modular.trading.discover import orchestrator
+    from cheetahclaws.modular.trading.discover.types import Discovery
 
     # Stub each scanner to return a known set
     def fake_insider(**kw):
@@ -247,7 +247,7 @@ def test_orchestrator_merges_multi_source_hits(monkeypatch):
 
 
 def test_orchestrator_render_report_handles_empty():
-    from modular.trading.discover import orchestrator
+    from cheetahclaws.modular.trading.discover import orchestrator
     md = orchestrator.render_report({
         "ranked": [], "per_source": {}, "n_unique": 0,
         "n_total_hits": 0, "notes": ["test note"],
@@ -258,7 +258,7 @@ def test_orchestrator_render_report_handles_empty():
 # ── Anomaly detector ────────────────────────────────────────────────────
 
 def test_anomaly_volume_spike_detected(monkeypatch):
-    from modular.trading.discover import anomaly
+    from cheetahclaws.modular.trading.discover import anomaly
     # Synthetic 100-bar history: today's volume = 5× median
     rows = []
     for i in range(99):
@@ -268,7 +268,7 @@ def test_anomaly_volume_spike_detected(monkeypatch):
                  "close": 100, "volume": 5_000_000})
 
     monkeypatch.setattr(
-        "modular.trading.data.fetchers.fetch_market_data",
+        "cheetahclaws.modular.trading.data.fetchers.fetch_market_data",
         lambda sym, **kw: {"data": rows, "error": None},
     )
     hits = anomaly.scan(["NVDA"], max_workers=1)
@@ -277,7 +277,7 @@ def test_anomaly_volume_spike_detected(monkeypatch):
 
 
 def test_anomaly_price_gap_detected(monkeypatch):
-    from modular.trading.discover import anomaly
+    from cheetahclaws.modular.trading.discover import anomaly
     rows = [{"date": f"d{i}", "open": 100, "high": 101, "low": 99,
              "close": 100, "volume": 1_000_000} for i in range(99)]
     # 5% gap up at open
@@ -285,7 +285,7 @@ def test_anomaly_price_gap_detected(monkeypatch):
                  "close": 105, "volume": 1_000_000})
 
     monkeypatch.setattr(
-        "modular.trading.data.fetchers.fetch_market_data",
+        "cheetahclaws.modular.trading.data.fetchers.fetch_market_data",
         lambda sym, **kw: {"data": rows, "error": None},
     )
     hits = anomaly.scan(["AMD"], max_workers=1)
@@ -294,11 +294,11 @@ def test_anomaly_price_gap_detected(monkeypatch):
 
 
 def test_anomaly_returns_empty_for_short_history(monkeypatch):
-    from modular.trading.discover import anomaly
+    from cheetahclaws.modular.trading.discover import anomaly
     short_rows = [{"date": f"d{i}", "open": 100, "high": 100, "low": 100,
                    "close": 100, "volume": 1_000_000} for i in range(20)]
     monkeypatch.setattr(
-        "modular.trading.data.fetchers.fetch_market_data",
+        "cheetahclaws.modular.trading.data.fetchers.fetch_market_data",
         lambda sym, **kw: {"data": short_rows, "error": None},
     )
     hits = anomaly.scan(["X"], max_workers=1)
@@ -309,8 +309,8 @@ def test_anomaly_returns_empty_for_short_history(monkeypatch):
 
 @_skip_if_no_pandas
 def test_ranker_combines_factor_and_discovery(stub_yfinance, tmp_path, monkeypatch):
-    from modular.trading import ranker, factors
-    from modular.trading.discover import orchestrator
+    from cheetahclaws.modular.trading import ranker, factors
+    from cheetahclaws.modular.trading.discover import orchestrator
 
     monkeypatch.setattr(factors, "_CACHE_PATH", tmp_path / "factors.json")
     # Stub orchestrator to avoid running real discovery
@@ -329,7 +329,7 @@ def test_ranker_combines_factor_and_discovery(stub_yfinance, tmp_path, monkeypat
 
 
 def test_ranker_handles_empty_universe(monkeypatch):
-    from modular.trading import ranker, factors
+    from cheetahclaws.modular.trading import ranker, factors
     monkeypatch.setattr(factors, "scan_universe", lambda syms, **k: [])
     out = ranker.rank(symbols=[], use_discovery=False, use_calibration=False)
     assert out == []
@@ -338,7 +338,7 @@ def test_ranker_handles_empty_universe(monkeypatch):
 # ── Monitor ──────────────────────────────────────────────────────────────
 
 def test_monitor_alert_render():
-    from modular.trading.monitor import Alert, render_alerts
+    from cheetahclaws.modular.trading.monitor import Alert, render_alerts
     alerts = [
         Alert("critical", "NVDA", "STOP HIT", "Trade #5 at -8%", "stop"),
         Alert("warning", "AMD", "Vol spike", "5× 90d median", "anomaly"),
@@ -350,24 +350,24 @@ def test_monitor_alert_render():
 
 
 def test_monitor_render_alerts_empty():
-    from modular.trading.monitor import render_alerts
+    from cheetahclaws.modular.trading.monitor import render_alerts
     md = render_alerts([])
     assert "quiet" in md.lower()
 
 
 def test_monitor_dispatch_no_alerts_skips():
-    from modular.trading.monitor import dispatch_to_bridges
+    from cheetahclaws.modular.trading.monitor import dispatch_to_bridges
     r = dispatch_to_bridges([])
     assert r["sent"] == 0
 
 
 def test_monitor_scan_with_no_data_returns_empty(monkeypatch, tmp_path):
     """End-to-end: no watchlist, no open trades → empty alert list."""
-    from modular.trading import monitor
+    from cheetahclaws.modular.trading import monitor
     # Point state DB to tmp
     monkeypatch.setattr(monitor, "_STATE_DB", tmp_path / "monitor.db")
     # Stub paper_trader to return no trades / no watchlist
-    import modular.trading.paper_trader as pt
+    import cheetahclaws.modular.trading.paper_trader as pt
     monkeypatch.setattr(pt, "list_trades", lambda **kw: [])
     monkeypatch.setattr(pt, "watchlist_list", lambda **kw: [])
 
@@ -381,10 +381,10 @@ def test_monitor_scan_with_no_data_returns_empty(monkeypatch, tmp_path):
 
 def test_monitor_anomaly_detection_when_watchlist_set(monkeypatch, tmp_path):
     """Smoke: with synthetic anomaly data, scan produces an alert."""
-    from modular.trading import monitor
+    from cheetahclaws.modular.trading import monitor
     monkeypatch.setattr(monitor, "_STATE_DB", tmp_path / "monitor.db")
 
-    import modular.trading.paper_trader as pt
+    import cheetahclaws.modular.trading.paper_trader as pt
     monkeypatch.setattr(pt, "list_trades", lambda **kw: [])
     monkeypatch.setattr(pt, "watchlist_list",
                         lambda **kw: [{"symbol": "NVDA", "added_at": "x", "note": ""}])
@@ -395,11 +395,11 @@ def test_monitor_anomaly_detection_when_watchlist_set(monkeypatch, tmp_path):
     rows.append({"date": "today", "open": 100, "high": 101, "low": 99,
                  "close": 100, "volume": 5_000_000})
     monkeypatch.setattr(
-        "modular.trading.data.fetchers.fetch_market_data",
+        "cheetahclaws.modular.trading.data.fetchers.fetch_market_data",
         lambda sym, **kw: {"data": rows, "error": None},
     )
     monkeypatch.setattr(
-        "modular.trading.data.fetchers.fetch_current_price",
+        "cheetahclaws.modular.trading.data.fetchers.fetch_current_price",
         lambda sym: {"price": 100.0},
     )
 

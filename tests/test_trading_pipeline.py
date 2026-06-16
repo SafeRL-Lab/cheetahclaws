@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from modular.trading import paper_trader, calibration, verifier
-from modular.trading.engines.base import BaseEngine, BacktestConfig
-from modular.trading.engines.equity import EquityEngine
+from cheetahclaws.modular.trading import paper_trader, calibration, verifier
+from cheetahclaws.modular.trading.engines.base import BaseEngine, BacktestConfig
+from cheetahclaws.modular.trading.engines.equity import EquityEngine
 
 
 # ── paper_trader ──────────────────────────────────────────────────────────
@@ -276,7 +276,7 @@ def _synthetic_uptrend(n_bars: int = 500, drift: float = 0.0008) -> list[dict]:
 
 
 def test_walk_forward_produces_per_chunk_metrics():
-    from modular.trading.tools import _build_strategy
+    from cheetahclaws.modular.trading.tools import _build_strategy
     rows = _synthetic_uptrend(500)
     engine = EquityEngine(BacktestConfig(initial_capital=100_000.0), market="us")
     strat = _build_strategy("dual_ma")
@@ -289,7 +289,7 @@ def test_walk_forward_produces_per_chunk_metrics():
 
 
 def test_walk_forward_too_short_returns_diagnostic():
-    from modular.trading.tools import _build_strategy
+    from cheetahclaws.modular.trading.tools import _build_strategy
     rows = _synthetic_uptrend(100)  # too short for 5×60-bar splits
     engine = EquityEngine(BacktestConfig(initial_capital=100_000.0))
     strat = _build_strategy("dual_ma")
@@ -299,7 +299,7 @@ def test_walk_forward_too_short_returns_diagnostic():
 
 
 def test_strategy_factory_validates_unknown_name():
-    from modular.trading.tools import _build_strategy
+    from cheetahclaws.modular.trading.tools import _build_strategy
     with pytest.raises(ValueError, match="Unknown strategy"):
         _build_strategy("moonshot_2x")
 
@@ -314,11 +314,11 @@ def test_analysis_prompt_includes_book_block_when_positions_exist(db, monkeypatc
     # Point _parse_phase5's underlying paper_trader to our temp db
     monkeypatch.setattr(paper_trader, "_DB_PATH", db)
     # Stub macro + earnings to keep test offline
-    from modular.trading import macro as macro_mod, earnings as earnings_mod
+    from cheetahclaws.modular.trading import macro as macro_mod, earnings as earnings_mod
     monkeypatch.setattr(macro_mod, "render_macro_context", lambda: "")
     monkeypatch.setattr(earnings_mod, "render_earnings_warning", lambda s: "")
 
-    from modular.trading.cmd import _build_analysis_prompt
+    from cheetahclaws.modular.trading.cmd import _build_analysis_prompt
     prompt = _build_analysis_prompt("NVDA", "2026-05-07", {
         "technical": "RSI 55, above 50d", "fundamental": "PE 30",
         "news": "Strong demand reported",

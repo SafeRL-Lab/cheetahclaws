@@ -10,10 +10,10 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import monitor.store as store
-import monitor.scheduler as scheduler
-from daemon import events, monitor_methods, schema
-from daemon.rpc import CallContext, RpcRegistry
+import cheetahclaws.monitor.store as store
+import cheetahclaws.monitor.scheduler as scheduler
+from cheetahclaws.daemon import events, monitor_methods, schema
+from cheetahclaws.daemon.rpc import CallContext, RpcRegistry
 
 
 # ── Fakes / fixtures ──────────────────────────────────────────────────────
@@ -170,7 +170,7 @@ def test_run_publishes_monitor_report_event():
 # ── Coexistence with other registered methods ───────────────────────────
 
 def test_register_does_not_clash_with_system_methods():
-    from daemon import system_methods
+    from cheetahclaws.daemon import system_methods
     registry = RpcRegistry()
     system_methods.register(registry, _FakeState())
     monitor_methods.register(registry, _FakeState())

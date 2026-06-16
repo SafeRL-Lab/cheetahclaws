@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-from commands.advanced import (
+from cheetahclaws.commands.advanced import (
     _extract_challenge_blocks,
     _jaccard_similarity,
     _is_redundant_challenge,
@@ -173,7 +173,7 @@ def test_is_weak_lead_model(model_id, expected):
 def test_lead_synthesis_accepts_opening(monkeypatch):
     """Backward compat: opening is optional. Existing callers passing
     only the original 4 args must still work."""
-    import commands.advanced as adv
+    import cheetahclaws.commands.advanced as adv
     monkeypatch.setattr(adv, "_llm_oneshot",
                          lambda *a, **kw: "## Consensus\n- ok")
     # Without opening
@@ -189,7 +189,7 @@ def test_lead_synthesis_passes_opening_to_prompt(monkeypatch):
     """When opening is provided, it MUST appear in the user message so
     the model can self-check its action plan against the ban list."""
     captured = {}
-    import commands.advanced as adv
+    import cheetahclaws.commands.advanced as adv
 
     def fake(model, sys, user, config, **kw):
         captured["user"] = user

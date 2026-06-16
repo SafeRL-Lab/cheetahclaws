@@ -19,7 +19,7 @@ if platform.system() == "Windows":
 import pty
 import select
 
-from ui.input import HAS_PROMPT_TOOLKIT
+from cheetahclaws.ui.input import HAS_PROMPT_TOOLKIT
 
 if not HAS_PROMPT_TOOLKIT:
     pytest.skip("prompt_toolkit not installed", allow_module_level=True)
@@ -31,7 +31,7 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _CHILD_SCRIPT = r"""
 import sys
 sys.path.insert(0, {repo_root!r})
-import ui.input as _ui
+import cheetahclaws.ui.input as _ui
 
 _COMMANDS = {{"help": True, "clear": True, "checkpoint": True, "cwd": True,
               "compact": True, "config": True, "cost": True, "copy": True,

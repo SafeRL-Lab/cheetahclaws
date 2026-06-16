@@ -10,12 +10,12 @@ import uuid
 
 import pytest
 
-from daemon import API_VERSION, API_VERSION_HEADER, events
-from daemon.originator import CLIENT_KIND_HEADER
-from daemon.server import make_tcp_server
+from cheetahclaws.daemon import API_VERSION, API_VERSION_HEADER, events
+from cheetahclaws.daemon.originator import CLIENT_KIND_HEADER
+from cheetahclaws.daemon.server import make_tcp_server
 
-from kernel import register_with_daemon
-from kernel.integration import detach
+from cheetahclaws.kernel import register_with_daemon
+from cheetahclaws.kernel.integration import detach
 
 
 def _free_port() -> int:

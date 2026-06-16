@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-from commands.advanced import _parse_models_flag
+from cheetahclaws.commands.advanced import _parse_models_flag
 
 
 @pytest.mark.parametrize("args,expected_models,expected_remaining", [

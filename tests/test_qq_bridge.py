@@ -28,7 +28,7 @@ def test_config_defaults(monkeypatch, tmp_path):
     """QQ config keys exist in DEFAULTS."""
     monkeypatch.setenv("HOME", str(tmp_path))
     import importlib
-    import config
+    from cheetahclaws import config
     importlib.reload(config)
     cfg = config.load_config()
     assert "qq_appid" in cfg
@@ -39,7 +39,7 @@ def test_config_defaults(monkeypatch, tmp_path):
 
 def test_runtime_context_fields():
     """RuntimeContext has QQ fields with correct defaults."""
-    from runtime import RuntimeContext
+    from cheetahclaws.runtime import RuntimeContext
     ctx = RuntimeContext()
     assert ctx.qq_send is None
     assert ctx.qq_input_event is None
@@ -52,13 +52,13 @@ def test_runtime_context_fields():
 
 def test_is_in_qq_turn_default():
     """Turn detection returns False when no QQ turn is active."""
-    from tools.interaction import _is_in_qq_turn
+    from cheetahclaws.tools.interaction import _is_in_qq_turn
     assert _is_in_qq_turn({}) is False
 
 
 def test_is_in_qq_turn_thread_local():
     """Turn detection returns True when thread-local flag is set."""
-    from tools.interaction import _qq_thread_local, _is_in_qq_turn
+    from cheetahclaws.tools.interaction import _qq_thread_local, _is_in_qq_turn
     _qq_thread_local.active = True
     try:
         assert _is_in_qq_turn({}) is True
@@ -68,8 +68,8 @@ def test_is_in_qq_turn_thread_local():
 
 def test_is_in_qq_turn_runtime_ctx():
     """Turn detection returns True when RuntimeContext.in_qq_turn is True."""
-    from tools.interaction import _is_in_qq_turn
-    import runtime
+    from cheetahclaws.tools.interaction import _is_in_qq_turn
+    from cheetahclaws import runtime
     ctx = runtime.get_session_ctx("_test_qq_turn")
     ctx.in_qq_turn = True
     try:
@@ -81,7 +81,7 @@ def test_is_in_qq_turn_runtime_ctx():
 
 def test_qq_cmd_missing_config():
     """cmd_qq shows error when no args and no saved config."""
-    from bridges.qq import cmd_qq
+    from cheetahclaws.bridges.qq import cmd_qq
     result = cmd_qq("", None, {"qq_appid": "", "qq_secret": ""})
     assert result is True
 
@@ -89,11 +89,11 @@ def test_qq_cmd_missing_config():
 def test_qq_cmd_inline_config(tmp_path, monkeypatch):
     """cmd_qq saves appid/secret when provided inline."""
     from unittest.mock import patch
-    from bridges.qq import cmd_qq
+    from cheetahclaws.bridges.qq import cmd_qq
     monkeypatch.setenv("HOME", str(tmp_path))
     cfg = {"qq_appid": "", "qq_secret": ""}
     # Mock bridge start to avoid spawning a real daemon thread
-    with patch("bridges.qq._qq_start_bridge"):
+    with patch("cheetahclaws.bridges.qq._qq_start_bridge"):
         result = cmd_qq("myappid mysecret", None, cfg)
     assert result is True
     assert cfg["qq_appid"] == "myappid"
@@ -102,21 +102,21 @@ def test_qq_cmd_inline_config(tmp_path, monkeypatch):
 
 def test_qq_cmd_status_not_running():
     """cmd_qq status reports not configured when empty."""
-    from bridges.qq import cmd_qq
+    from cheetahclaws.bridges.qq import cmd_qq
     result = cmd_qq("status", None, {"qq_appid": "", "qq_secret": ""})
     assert result is True
 
 
 def test_qq_cmd_status_configured():
     """cmd_qq status reports configured but not running."""
-    from bridges.qq import cmd_qq
+    from cheetahclaws.bridges.qq import cmd_qq
     result = cmd_qq("status", None, {"qq_appid": "test123", "qq_secret": "sec"})
     assert result is True
 
 
 def test_message_dedup_set_capped():
     """_qq_seen_msgids stays under 2000 entries."""
-    from bridges import qq
+    from cheetahclaws.bridges import qq
     for i in range(2100):
         qq._qq_seen_msgids.add(f"msg_{i}")
     assert len(qq._qq_seen_msgids) <= 2100
@@ -125,7 +125,7 @@ def test_message_dedup_set_capped():
 
 def test_reply_ctx_tracking():
     """Passive reply context stores msg_id, event_id, seq, timestamp, and msg_type."""
-    from bridges.qq import _qq_reply_ctx, _qq_reply_lock
+    from cheetahclaws.bridges.qq import _qq_reply_ctx, _qq_reply_lock
     with _qq_reply_lock:
         _qq_reply_ctx["test_target"] = ("msg123", "event456", 1, time.time(), "group")
     assert "test_target" in _qq_reply_ctx
@@ -148,14 +148,14 @@ def test_reply_ctx_tracking():
 
 def test_qq_send_no_api():
     """_qq_send is a no-op when no API is configured."""
-    from bridges.qq import _qq_send
+    from cheetahclaws.bridges.qq import _qq_send
     _qq_send("some_target", "hello", {"qq_appid": "x"})
 
 
 def test_qq_pending_input_only_accepts_prompt_target():
     """A QQ permission reply from another target must not release the prompt."""
-    from runtime import RuntimeContext
-    from bridges.qq import _qq_try_deliver_input
+    from cheetahclaws.runtime import RuntimeContext
+    from cheetahclaws.bridges.qq import _qq_try_deliver_input
 
     ctx = RuntimeContext()
     evt = threading.Event()
@@ -173,7 +173,7 @@ def test_qq_pending_input_only_accepts_prompt_target():
 
 def test_qq_send_with_chunks():
     """_qq_send splits long text into chunks."""
-    from bridges.qq import _qq_send, _QQ_MAX_MSG_LEN
+    from cheetahclaws.bridges.qq import _qq_send, _QQ_MAX_MSG_LEN
     long_text = "A" * (_QQ_MAX_MSG_LEN * 2 + 100)
     # Should not raise even without API
     _qq_send("target", long_text, {})
@@ -181,7 +181,7 @@ def test_qq_send_with_chunks():
 
 def test_passive_window_constants():
     """Passive reply window follows botpy's documented 5-minute validity."""
-    from bridges.qq import _QQ_PASSIVE_WINDOW, _QQ_STREAM_INTERVAL, _QQ_MAX_MSG_LEN, _QQ_STREAM_MIN_LEN
+    from cheetahclaws.bridges.qq import _QQ_PASSIVE_WINDOW, _QQ_STREAM_INTERVAL, _QQ_MAX_MSG_LEN, _QQ_STREAM_MIN_LEN
     assert _QQ_PASSIVE_WINDOW == 300
     assert _QQ_STREAM_INTERVAL == 2.0
     assert _QQ_MAX_MSG_LEN == 2000
@@ -192,12 +192,12 @@ def test_send_future_exception_is_logged():
     """Errors raised by scheduled QQ HTTP sends should be surfaced."""
     from concurrent.futures import Future
     from unittest.mock import patch
-    from bridges.qq import _qq_log_send_future
+    from cheetahclaws.bridges.qq import _qq_log_send_future
 
     fut = Future()
     fut.set_exception(RuntimeError("api failed"))
 
-    with patch("bridges.qq._log.warn") as warn:
+    with patch("cheetahclaws.bridges.qq._log.warn") as warn:
         _qq_log_send_future(fut, "group", "target")
 
     warn.assert_called_once()
@@ -207,7 +207,7 @@ def test_send_future_exception_is_logged():
 def test_queue_or_dispatch_marks_busy_before_thread_dispatch():
     """A second same-target job should queue before worker thread starts."""
     from unittest.mock import MagicMock, patch
-    from bridges import qq
+    from cheetahclaws.bridges import qq
 
     job1 = MagicMock()
     job1.id = "job1"
@@ -223,7 +223,7 @@ def test_queue_or_dispatch_marks_busy_before_thread_dispatch():
     def fake_dispatch(job, prompt, target_id, msg_type, run_query_cb, session_ctx, config, image_b64=None):
         dispatched.append((job.id, prompt, target_id, image_b64))
 
-    with patch("bridges.qq._dispatch_qq_job", side_effect=fake_dispatch):
+    with patch("cheetahclaws.bridges.qq._dispatch_qq_job", side_effect=fake_dispatch):
         pos1 = qq._queue_or_dispatch_qq_job(
             job1, "prompt1", "target", "group", None, None, {}, "img1"
         )
@@ -243,7 +243,7 @@ def test_queue_or_dispatch_marks_busy_before_thread_dispatch():
 
 def test_qq_thread_not_running_initially():
     """QQ bridge thread state is properly managed."""
-    from bridges.qq import _qq_thread
+    from cheetahclaws.bridges.qq import _qq_thread
     # After import, thread may have been started by other tests;
     # just verify the module-level variable exists and is accessible
     assert _qq_thread is None or isinstance(_qq_thread, threading.Thread)
@@ -251,7 +251,7 @@ def test_qq_thread_not_running_initially():
 
 def test_qq_stop_event_cleared():
     """QQ stop event should not be set initially."""
-    from bridges.qq import _qq_stop
+    from cheetahclaws.bridges.qq import _qq_stop
     assert not _qq_stop.is_set()
 
 
@@ -259,7 +259,7 @@ def test_post_group_clean_payload_no_msg_id(fake_botpy_route):
     """_qq_post_group builds clean payload without msg_id/event_id when empty."""
     import asyncio
     from unittest.mock import AsyncMock, MagicMock
-    from bridges.qq import _qq_post_group
+    from cheetahclaws.bridges.qq import _qq_post_group
 
     api = MagicMock()
     api._http = MagicMock()
@@ -290,7 +290,7 @@ def test_post_group_clean_payload_with_msg_id(fake_botpy_route):
     """_qq_post_group includes msg_id/msg_seq when msg_id is provided."""
     import asyncio
     from unittest.mock import AsyncMock, MagicMock
-    from bridges.qq import _qq_post_group
+    from cheetahclaws.bridges.qq import _qq_post_group
 
     api = MagicMock()
     api._http = MagicMock()
@@ -312,7 +312,7 @@ def test_post_group_clean_payload_with_event_id(fake_botpy_route):
     """_qq_post_group uses event_id when msg_id is None."""
     import asyncio
     from unittest.mock import AsyncMock, MagicMock
-    from bridges.qq import _qq_post_group
+    from cheetahclaws.bridges.qq import _qq_post_group
 
     api = MagicMock()
     api._http = MagicMock()
@@ -335,7 +335,7 @@ def test_post_c2c_clean_payload(fake_botpy_route):
     """_qq_post_c2c builds clean payload."""
     import asyncio
     from unittest.mock import AsyncMock, MagicMock
-    from bridges.qq import _qq_post_c2c
+    from cheetahclaws.bridges.qq import _qq_post_c2c
 
     api = MagicMock()
     api._http = MagicMock()
@@ -357,7 +357,7 @@ def test_post_c2c_clean_payload(fake_botpy_route):
 def test_msg_seq_starts_at_1_for_new_message():
     """First send with reply context should use msg_seq=1."""
     import time
-    from bridges.qq import _qq_reply_ctx, _qq_reply_lock
+    from cheetahclaws.bridges.qq import _qq_reply_ctx, _qq_reply_lock
     from unittest.mock import MagicMock, patch
 
     # Set up reply context with seq=0 (as stored by _handle_message)
@@ -370,9 +370,9 @@ def test_msg_seq_starts_at_1_for_new_message():
     def mock_send_group(api, group_openid, content, msg_id=None, event_id=None, msg_seq=1):
         captured_seqs.append((msg_id, event_id, msg_seq, content))
 
-    with patch("bridges.qq._qq_send_group", side_effect=mock_send_group):
-        with patch("bridges.qq._qq_api_client", MagicMock()):
-            from bridges.qq import _qq_send
+    with patch("cheetahclaws.bridges.qq._qq_send_group", side_effect=mock_send_group):
+        with patch("cheetahclaws.bridges.qq._qq_api_client", MagicMock()):
+            from cheetahclaws.bridges.qq import _qq_send
             _qq_send("test_target", "hello", {})
 
     # First chunk should have msg_seq=1
@@ -388,7 +388,7 @@ def test_msg_seq_starts_at_1_for_new_message():
 def test_msg_seq_increments_correctly_for_chunks():
     """Multiple chunks should increment msg_seq properly."""
     import time
-    from bridges.qq import _qq_reply_ctx, _qq_reply_lock, _QQ_MAX_MSG_LEN
+    from cheetahclaws.bridges.qq import _qq_reply_ctx, _qq_reply_lock, _QQ_MAX_MSG_LEN
     from unittest.mock import MagicMock, patch
 
     # Set up reply context with seq=0
@@ -400,9 +400,9 @@ def test_msg_seq_increments_correctly_for_chunks():
     def mock_send_group(api, group_openid, content, msg_id=None, event_id=None, msg_seq=1):
         captured_seqs.append((msg_id, event_id, msg_seq, content))
 
-    with patch("bridges.qq._qq_send_group", side_effect=mock_send_group):
-        with patch("bridges.qq._qq_api_client", MagicMock()):
-            from bridges.qq import _qq_send
+    with patch("cheetahclaws.bridges.qq._qq_send_group", side_effect=mock_send_group):
+        with patch("cheetahclaws.bridges.qq._qq_api_client", MagicMock()):
+            from cheetahclaws.bridges.qq import _qq_send
             # Send text that will be split into 2 chunks
             long_text = "A" * (_QQ_MAX_MSG_LEN + 100)
             _qq_send("test_target", long_text, {})
@@ -420,7 +420,7 @@ def test_msg_seq_increments_correctly_for_chunks():
 def test_no_duplicate_send_in_bg_runner():
     """_qq_bg_runner should not send duplicate messages."""
     from unittest.mock import MagicMock, patch
-    from bridges.qq import _qq_bg_runner
+    from cheetahclaws.bridges.qq import _qq_bg_runner
 
     session_ctx = MagicMock()
 
@@ -433,11 +433,11 @@ def test_no_duplicate_send_in_bg_runner():
     def mock_qq_send(target_id, text, _cfg=None, _msg_type=None):
         send_calls.append((target_id, text))
 
-    with patch("bridges.qq._qq_api_client", MagicMock()):
-        with patch("bridges.qq._qq_send", side_effect=mock_qq_send):
-            with patch("bridges.qq._jobs.start"):
-                with patch("bridges.qq._jobs.stream_result"):
-                    with patch("bridges.qq._jobs.complete"):
+    with patch("cheetahclaws.bridges.qq._qq_api_client", MagicMock()):
+        with patch("cheetahclaws.bridges.qq._qq_send", side_effect=mock_qq_send):
+            with patch("cheetahclaws.bridges.qq._jobs.start"):
+                with patch("cheetahclaws.bridges.qq._jobs.stream_result"):
+                    with patch("cheetahclaws.bridges.qq._jobs.complete"):
                         _qq_bg_runner(job, "test prompt", "target123", "group",
                                      run_query_cb, session_ctx, {})
 
@@ -452,8 +452,8 @@ def test_no_duplicate_send_in_bg_runner():
 def test_qq_bg_runner_sets_pending_image_for_matching_job():
     """Downloaded QQ images should be attached to the job that owns them."""
     from unittest.mock import MagicMock, patch
-    from bridges.qq import _qq_bg_runner
-    import runtime
+    from cheetahclaws.bridges.qq import _qq_bg_runner
+    from cheetahclaws import runtime
 
     session_id = "_test_qq_image_job"
     config = {"_session_id": session_id}
@@ -467,9 +467,9 @@ def test_qq_bg_runner_sets_pending_image_for_matching_job():
         runtime.get_ctx(config).pending_image = None
 
     try:
-        with patch("bridges.qq._qq_send"):
-            with patch("bridges.qq._jobs.start"):
-                with patch("bridges.qq._jobs.complete"):
+        with patch("cheetahclaws.bridges.qq._qq_send"):
+            with patch("cheetahclaws.bridges.qq._jobs.start"):
+                with patch("cheetahclaws.bridges.qq._jobs.complete"):
                     _qq_bg_runner(
                         job,
                         "describe this",
@@ -489,8 +489,8 @@ def test_qq_bg_runner_sets_pending_image_for_matching_job():
 def test_qq_bg_runner_clears_pending_image_if_run_query_fails_before_consuming():
     """A failed image job must not leak its image into the next turn."""
     from unittest.mock import MagicMock, patch
-    from bridges.qq import _qq_bg_runner
-    import runtime
+    from cheetahclaws.bridges.qq import _qq_bg_runner
+    from cheetahclaws import runtime
 
     session_id = "_test_qq_image_fail_cleanup"
     config = {"_session_id": session_id}
@@ -502,9 +502,9 @@ def test_qq_bg_runner_clears_pending_image_if_run_query_fails_before_consuming()
         raise RuntimeError("boom before agent consumes image")
 
     try:
-        with patch("bridges.qq._qq_send"):
-            with patch("bridges.qq._jobs.start"):
-                with patch("bridges.qq._jobs.fail"):
+        with patch("cheetahclaws.bridges.qq._qq_send"):
+            with patch("cheetahclaws.bridges.qq._jobs.start"):
+                with patch("cheetahclaws.bridges.qq._jobs.fail"):
                     _qq_bg_runner(
                         job,
                         "describe this",
@@ -523,7 +523,7 @@ def test_qq_bg_runner_clears_pending_image_if_run_query_fails_before_consuming()
 def test_streaming_hook_idempotency():
     """Streaming hooks should handle duplicate calls gracefully."""
     from unittest.mock import MagicMock, patch
-    from bridges.qq import _qq_bg_runner
+    from cheetahclaws.bridges.qq import _qq_bg_runner
 
     session_ctx = MagicMock()
 
@@ -554,10 +554,10 @@ def test_streaming_hook_idempotency():
         _ = _cfg, _msg_type  # Mark as intentionally unused
         send_calls.append((target_id, text))
 
-    with patch("bridges.qq._qq_api_client", MagicMock()):
-        with patch("bridges.qq._qq_send", side_effect=mock_qq_send):
-            with patch("bridges.qq._jobs.start"):
-                with patch("bridges.qq._jobs.complete"):
+    with patch("cheetahclaws.bridges.qq._qq_api_client", MagicMock()):
+        with patch("cheetahclaws.bridges.qq._qq_send", side_effect=mock_qq_send):
+            with patch("cheetahclaws.bridges.qq._jobs.start"):
+                with patch("cheetahclaws.bridges.qq._jobs.complete"):
                     _qq_bg_runner(job, "test", "target", "group",
                                  mock_run_query, session_ctx, {})
 
@@ -573,8 +573,8 @@ def test_streaming_hook_idempotency():
 def test_qq_bg_runner_serializes_global_streaming_hooks():
     """Concurrent QQ jobs must not overwrite each other's session-level hooks."""
     from unittest.mock import MagicMock, patch
-    from bridges.qq import _qq_bg_runner
-    from runtime import RuntimeContext
+    from cheetahclaws.bridges.qq import _qq_bg_runner
+    from cheetahclaws.runtime import RuntimeContext
 
     session_ctx = RuntimeContext()
     job_a = MagicMock()
@@ -601,10 +601,10 @@ def test_qq_bg_runner_serializes_global_streaming_hooks():
         with send_lock:
             send_calls.append((target_id, text))
 
-    with patch("bridges.qq._qq_send", side_effect=mock_qq_send):
-        with patch("bridges.qq._jobs.start"):
-            with patch("bridges.qq._jobs.stream_result"):
-                with patch("bridges.qq._jobs.complete"):
+    with patch("cheetahclaws.bridges.qq._qq_send", side_effect=mock_qq_send):
+        with patch("cheetahclaws.bridges.qq._jobs.start"):
+            with patch("cheetahclaws.bridges.qq._jobs.stream_result"):
+                with patch("cheetahclaws.bridges.qq._jobs.complete"):
                     t1 = threading.Thread(
                         target=_qq_bg_runner,
                         args=(

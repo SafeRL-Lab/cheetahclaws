@@ -11,8 +11,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import jobs
-from daemon import schema
+from cheetahclaws import jobs
+from cheetahclaws.daemon import schema
 
 
 @pytest.fixture(autouse=True)

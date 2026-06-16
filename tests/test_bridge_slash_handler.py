@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import cheetahclaws
+from cheetahclaws import cli as cheetahclaws
 
 
 def _make_handler(handle_slash_return, run_query_calls):
@@ -104,7 +104,7 @@ def test_handler_is_assigned_in_headless_bridges_bootstrap(monkeypatch):
     """End-to-end pin: when _start_headless_bridges runs with bridge
     config present, session_ctx.handle_slash must be set to a callable.
     Pre-fix this attribute stayed None, which is the actual user bug."""
-    import runtime
+    from cheetahclaws import runtime
     sid = "test-headless-slash-wire"
     config = {
         "_session_id": sid,
@@ -112,7 +112,7 @@ def test_handler_is_assigned_in_headless_bridges_bootstrap(monkeypatch):
         "telegram_chat_id": 12345,
     }
     # Stub the actual bridge thread spawn so we don't make HTTP calls.
-    import cheetahclaws as cc
+    from cheetahclaws import cli as cc
     monkeypatch.setattr(cc._btg, "_telegram_thread", None)
 
     class _NoopThread:
@@ -134,7 +134,7 @@ def test_headless_bootstrap_wires_tg_send(monkeypatch):
     session_ctx.tg_send is non-None.  Headless bootstrap previously left it
     unset, so inline-keyboard approval prompts never reached the user — the
     bridge silently fell through to terminal input()."""
-    import runtime, cheetahclaws as cc
+    from cheetahclaws import runtime; from cheetahclaws import cli as cc
     sid = "test-headless-tgsend-wire"
     config = {
         "_session_id": sid,
@@ -161,8 +161,8 @@ def test_headless_run_query_handles_permission_request(monkeypatch):
     PermissionRequest event for sensitive tools.  Pre-fix that event was
     dropped, leaving event.granted=False, so every approval-required tool
     silently denied without ever asking the user."""
-    import runtime, cheetahclaws as cc
-    from agent import PermissionRequest
+    from cheetahclaws import runtime; from cheetahclaws import cli as cc
+    from cheetahclaws.agent import PermissionRequest
 
     sid = "test-headless-permission-event"
     config = {
@@ -184,10 +184,10 @@ def test_headless_run_query_handles_permission_request(monkeypatch):
         captured.append(req)
         yield req
 
-    monkeypatch.setattr("agent.run", _fake_run)
+    monkeypatch.setattr("cheetahclaws.agent.run", _fake_run)
     monkeypatch.setattr(cc, "ask_permission_interactive",
                         lambda desc, cfg: True)
-    monkeypatch.setattr("context.build_system_prompt", lambda c: "sys")
+    monkeypatch.setattr("cheetahclaws.context.build_system_prompt", lambda c: "sys")
 
     cc._start_headless_bridges(config)
     ctx = runtime.get_session_ctx(sid)
@@ -206,7 +206,7 @@ def test_headless_run_query_promotes_telegram_incoming(monkeypatch):
     must promote that to in_telegram_turn so _is_in_tg_turn() returns True
     while ask_input_interactive routes the prompt — otherwise prompts fall
     through to terminal input()."""
-    import runtime, cheetahclaws as cc
+    from cheetahclaws import runtime; from cheetahclaws import cli as cc
 
     sid = "test-headless-turn-promotion"
     config = {
@@ -226,8 +226,8 @@ def test_headless_run_query_promotes_telegram_incoming(monkeypatch):
         seen_in_turn.append(runtime.get_session_ctx(sid).in_telegram_turn)
         return iter(())  # generator yielding nothing
 
-    monkeypatch.setattr("agent.run", _fake_run)
-    monkeypatch.setattr("context.build_system_prompt", lambda c: "sys")
+    monkeypatch.setattr("cheetahclaws.agent.run", _fake_run)
+    monkeypatch.setattr("cheetahclaws.context.build_system_prompt", lambda c: "sys")
 
     cc._start_headless_bridges(config)
     ctx = runtime.get_session_ctx(sid)

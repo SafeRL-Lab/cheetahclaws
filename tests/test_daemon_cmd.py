@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from commands import daemon_cmd
+from cheetahclaws.commands import daemon_cmd
 
 
 # ── dispatch ───────────────────────────────────────────────────────────────

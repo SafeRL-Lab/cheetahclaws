@@ -15,8 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import agent_runner
-from commands.agent_cmd import _resolve_output_path
+from cheetahclaws import agent_runner
+from cheetahclaws.commands.agent_cmd import _resolve_output_path
 
 
 # ── _resolve_output_path ─────────────────────────────────────────────────

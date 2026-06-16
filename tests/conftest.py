@@ -26,7 +26,7 @@ def _isolate_lab_output_dir(tmp_path, monkeypatch):
     research/lab/ isn't on the import path (e.g. minimal CI matrices).
     """
     try:
-        from research.lab import storage as _storage
+        from cheetahclaws.research.lab import storage as _storage
     except Exception:
         return
     sandbox_root = tmp_path / "lab_test_papers"
@@ -35,7 +35,7 @@ def _isolate_lab_output_dir(tmp_path, monkeypatch):
     # output.py + sandbox.py both import the constant by reference,
     # so re-bind those module-level names too.
     try:
-        from research.lab import output as _output
+        from cheetahclaws.research.lab import output as _output
         monkeypatch.setattr(_output, "DEFAULT_OUTPUT_DIR", sandbox_root)
     except Exception:
         pass

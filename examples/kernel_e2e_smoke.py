@@ -29,10 +29,10 @@ import tempfile
 import time
 from pathlib import Path
 
-import kernel
+from cheetahclaws import kernel
 # Module-level classes referenced inside _run_demo, where the `kernel`
 # param holds a Kernel *instance* and would otherwise shadow the module.
-from kernel import ScheduleSpec, SandboxPolicy
+from cheetahclaws.kernel import ScheduleSpec, SandboxPolicy
 
 
 def main() -> int:
@@ -117,7 +117,7 @@ def _run_demo(kernel: kernel.Kernel) -> int:
     # ── Step 6: build worker loop (spawns echo runner) ──────────────
     worker = kernel.make_worker(
         argv_factory=lambda entry: [
-            sys.executable, "-m", "kernel.runner.runner_main",
+            sys.executable, "-m", "cheetahclaws.kernel.runner.runner_main",
         ],
         policy_factory=lambda entry: SandboxPolicy(
             wall_seconds=10,

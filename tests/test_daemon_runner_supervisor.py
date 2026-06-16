@@ -74,8 +74,8 @@ def _spawn_with_inline_runner(name, source):
     what we want to exercise; we just need any subprocess on the other
     end of the JsonLineChannel that speaks the protocol."""
     import subprocess
-    from daemon import runner_supervisor
-    from daemon.runner_ipc import JsonLineChannel
+    from cheetahclaws.daemon import runner_supervisor
+    from cheetahclaws.daemon.runner_ipc import JsonLineChannel
 
     proc = subprocess.Popen(
         [sys.executable, "-u", "-c", source],
@@ -109,7 +109,7 @@ class TestSupervisorBasics(unittest.TestCase):
 
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_enabled_default_off(self):
-        from daemon import runner_supervisor
+        from cheetahclaws.daemon import runner_supervisor
         # Clear the env var first so a stray export doesn't fool the test.
         old = os.environ.pop("CHEETAHCLAWS_ENABLE_F4", None)
         try:
@@ -120,7 +120,7 @@ class TestSupervisorBasics(unittest.TestCase):
 
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_enabled_via_env(self):
-        from daemon import runner_supervisor
+        from cheetahclaws.daemon import runner_supervisor
         os.environ["CHEETAHCLAWS_ENABLE_F4"] = "1"
         try:
             self.assertTrue(runner_supervisor.enabled())
@@ -129,12 +129,12 @@ class TestSupervisorBasics(unittest.TestCase):
 
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_get_returns_none_for_unknown(self):
-        from daemon import runner_supervisor
+        from cheetahclaws.daemon import runner_supervisor
         self.assertIsNone(runner_supervisor.get("does-not-exist"))
 
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_stop_unknown_returns_false(self):
-        from daemon import runner_supervisor
+        from cheetahclaws.daemon import runner_supervisor
         self.assertFalse(runner_supervisor.stop("does-not-exist"))
 
 
@@ -146,7 +146,7 @@ class TestSupervisorLifecycle(unittest.TestCase):
         handle = _spawn_with_inline_runner("graceful", _MOCK_RUNNER_SOURCE)
         self.assertTrue(handle.is_alive())
 
-        from daemon import runner_supervisor
+        from cheetahclaws.daemon import runner_supervisor
         t0 = time.monotonic()
         self.assertTrue(runner_supervisor.stop("graceful", timeout_s=5.0))
         elapsed = time.monotonic() - t0
@@ -163,7 +163,7 @@ class TestSupervisorLifecycle(unittest.TestCase):
         handle = _spawn_with_inline_runner("hang", _MOCK_HANG_SOURCE)
         self.assertTrue(handle.is_alive())
 
-        from daemon import runner_supervisor
+        from cheetahclaws.daemon import runner_supervisor
         t0 = time.monotonic()
         ok = runner_supervisor.stop("hang", timeout_s=5.0)
         elapsed = time.monotonic() - t0
@@ -217,7 +217,7 @@ class TestSupervisorMalformedInput(unittest.TestCase):
                          "good iteration_done after a bad one wasn't applied")
 
         # And a graceful stop must still work.
-        from daemon import runner_supervisor
+        from cheetahclaws.daemon import runner_supervisor
         self.assertTrue(runner_supervisor.stop("malformed", timeout_s=5.0))
         self.assertFalse(handle.is_alive())
 
@@ -230,7 +230,7 @@ class TestSupervisorMalformedInput(unittest.TestCase):
         proc.poll to return None forever (simulating a hung process),
         injecting an exception via the reader's IPC parse path.
         Realistically rare, but the safety net should still fire."""
-        from daemon import runner_supervisor
+        from cheetahclaws.daemon import runner_supervisor
 
         # Use the hanging-runner stand-in.
         handle = _spawn_with_inline_runner("safety-net", _MOCK_HANG_SOURCE)
@@ -257,7 +257,7 @@ class TestSupervisorCrashDetection(unittest.TestCase):
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_kill_9_marks_handle_crashed(self):
         handle = _spawn_with_inline_runner("crashy", _MOCK_RUNNER_SOURCE)
-        from daemon import runner_supervisor
+        from cheetahclaws.daemon import runner_supervisor
 
         # SIGKILL from the outside — supervisor never asked for stop.
         os.killpg(os.getpgid(handle.pid), signal.SIGKILL)
@@ -283,8 +283,8 @@ class TestIpcShim(unittest.TestCase):
     """Confirm daemon/runner_ipc.py re-exports the kernel implementation."""
 
     def test_reexports_match_kernel(self):
-        from daemon import runner_ipc
-        from kernel.runner import ipc as kernel_ipc
+        from cheetahclaws.daemon import runner_ipc
+        from cheetahclaws.kernel.runner import ipc as kernel_ipc
         self.assertIs(runner_ipc.JsonLineChannel, kernel_ipc.JsonLineChannel)
         self.assertIs(runner_ipc.IpcReadTimeout, kernel_ipc.IpcReadTimeout)
 
@@ -298,7 +298,7 @@ class TestSqlitePersistence(unittest.TestCase):
 
     def setUp(self):
         import tempfile
-        from daemon import schema
+        from cheetahclaws.daemon import schema
         self._tmpdir = tempfile.TemporaryDirectory()
         self._db_path = Path(self._tmpdir.name) / "test.db"
         schema.set_db_path(self._db_path)
@@ -306,7 +306,7 @@ class TestSqlitePersistence(unittest.TestCase):
         # Lazy: schema is auto-inited on first get_conn() in the helpers.
 
     def tearDown(self):
-        from daemon import schema
+        from cheetahclaws.daemon import schema
         if hasattr(schema._local, "conn") and schema._local.conn is not None:
             schema._local.conn.close()
             schema._local.conn = None
@@ -318,7 +318,7 @@ class TestSqlitePersistence(unittest.TestCase):
                           template="demo", args="--foo bar"):
         """Build a RunnerHandle that has just enough state for the DB
         helpers — no subprocess, no IPC channel."""
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         import subprocess as sp
         # A dummy popen object whose poll() returns 0 (so is_alive=False
         # is consistent). The DB helpers never touch proc/chan; we only
@@ -344,7 +344,7 @@ class TestSqlitePersistence(unittest.TestCase):
     # ── agent_runs insert ─────────────────────────────────────────────────
 
     def test_insert_agent_run_creates_row(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         handle = self._make_fake_handle(run_id="run_one", template="t1",
                                         args="a1")
         self.assertTrue(rs._db_insert_agent_run(handle))
@@ -361,7 +361,7 @@ class TestSqlitePersistence(unittest.TestCase):
         self.assertEqual(last_iter, 0)
 
     def test_insert_agent_run_idempotent_on_same_id(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         handle = self._make_fake_handle(run_id="run_dup")
         self.assertTrue(rs._db_insert_agent_run(handle))
         # Second call must not raise and must not duplicate.
@@ -373,7 +373,7 @@ class TestSqlitePersistence(unittest.TestCase):
     # ── agent_iterations insert + last_iteration update ──────────────────
 
     def test_insert_iteration_accumulates_rows(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         handle = self._make_fake_handle(run_id="run_iter")
         rs._db_insert_agent_run(handle)
         for i in range(1, 4):
@@ -395,7 +395,7 @@ class TestSqlitePersistence(unittest.TestCase):
         self.assertEqual(last, 3)
 
     def test_insert_iteration_rejects_invalid_iteration_number(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         handle = self._make_fake_handle(run_id="run_neg")
         rs._db_insert_agent_run(handle)
         # iteration 0 and negative are rejected (must be ≥ 1).
@@ -409,7 +409,7 @@ class TestSqlitePersistence(unittest.TestCase):
     def test_insert_iteration_idempotent_on_replay(self):
         """A delayed re-delivery of the same iteration_done must not
         double-count or downgrade last_iteration."""
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         handle = self._make_fake_handle(run_id="run_replay")
         rs._db_insert_agent_run(handle)
         rs._db_insert_iteration(handle, {"iteration": 5, "status": "ok",
@@ -434,7 +434,7 @@ class TestSqlitePersistence(unittest.TestCase):
     # ── finalize ─────────────────────────────────────────────────────────
 
     def test_finalize_run_marks_stopped(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         handle = self._make_fake_handle(run_id="run_stopped")
         rs._db_insert_agent_run(handle)
         self.assertTrue(rs._db_finalize_run(handle, status="stopped"))
@@ -447,7 +447,7 @@ class TestSqlitePersistence(unittest.TestCase):
         self.assertIsNone(err)
 
     def test_finalize_run_marks_crashed_with_error(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         handle = self._make_fake_handle(run_id="run_crashed")
         rs._db_insert_agent_run(handle)
         self.assertTrue(rs._db_finalize_run(
@@ -462,7 +462,7 @@ class TestSqlitePersistence(unittest.TestCase):
         self.assertIn("killed", err)
 
     def test_finalize_rejects_unknown_status(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         handle = self._make_fake_handle(run_id="run_bad")
         rs._db_insert_agent_run(handle)
         self.assertFalse(rs._db_finalize_run(handle, status="weird"))
@@ -476,13 +476,13 @@ class TestSqlitePersistence(unittest.TestCase):
     def test_db_failure_does_not_raise(self):
         """All three helpers must swallow exceptions — the supervisor
         thread cannot die from a transient DB error."""
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         handle = self._make_fake_handle(run_id="run_dberr")
 
         def _raising_get_conn():
             raise sqlite3.OperationalError("forced for test")
 
-        with patch("daemon.schema.get_conn", side_effect=_raising_get_conn):
+        with patch("cheetahclaws.daemon.schema.get_conn", side_effect=_raising_get_conn):
             self.assertFalse(rs._db_insert_agent_run(handle))
             self.assertFalse(rs._db_insert_iteration(
                 handle, {"iteration": 1, "status": "ok",

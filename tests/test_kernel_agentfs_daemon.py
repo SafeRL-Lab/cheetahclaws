@@ -14,12 +14,12 @@ import uuid
 
 import pytest
 
-from daemon import API_VERSION, API_VERSION_HEADER, events
-from daemon.originator import CLIENT_KIND_HEADER
-from daemon.server import make_tcp_server
+from cheetahclaws.daemon import API_VERSION, API_VERSION_HEADER, events
+from cheetahclaws.daemon.originator import CLIENT_KIND_HEADER
+from cheetahclaws.daemon.server import make_tcp_server
 
-from kernel import register_with_daemon
-from kernel.integration import detach
+from cheetahclaws.kernel import register_with_daemon
+from cheetahclaws.kernel.integration import detach
 
 
 def _free_port() -> int:
@@ -145,7 +145,7 @@ def test_quota_exceeded_via_rpc(daemon):
 def test_phase4_does_not_break_earlier(daemon):
     h, p, t = daemon
     s, r = _rpc(h, p, t, "kernel.info", {})
-    from kernel import SCHEMA_VERSION
+    from cheetahclaws.kernel import SCHEMA_VERSION
     assert r["result"]["schema_version"] == SCHEMA_VERSION
     # Existing kernel.* surfaces still work.
     pid = _rpc(h, p, t, "kernel.agent.create",

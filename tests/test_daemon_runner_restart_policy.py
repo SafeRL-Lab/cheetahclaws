@@ -44,7 +44,7 @@ class TestRestartPolicyPure(unittest.TestCase):
     """``next_delay`` and ``from_params`` — no I/O, no Timer."""
 
     def test_disabled_returns_none_regardless_of_count(self):
-        from daemon.runner_supervisor import RestartPolicy
+        from cheetahclaws.daemon.runner_supervisor import RestartPolicy
         p = RestartPolicy.disabled()
         self.assertIsNone(p.next_delay(0))
         self.assertIsNone(p.next_delay(5))
@@ -53,13 +53,13 @@ class TestRestartPolicyPure(unittest.TestCase):
     def test_mode_none_with_max_restarts_still_disabled(self):
         """A misconfigured caller that sets max_restarts but forgets
         mode='on-crash' must not silently auto-restart."""
-        from daemon.runner_supervisor import RestartPolicy
+        from cheetahclaws.daemon.runner_supervisor import RestartPolicy
         p = RestartPolicy(mode="none", max_restarts=5)
         self.assertIsNone(p.next_delay(0))
 
     def test_exponential_backoff_capped(self):
         """Without jitter: 1, 2, 4, 8, … capped at cap_s."""
-        from daemon.runner_supervisor import RestartPolicy
+        from cheetahclaws.daemon.runner_supervisor import RestartPolicy
         p = RestartPolicy(mode="on-crash", max_restarts=10,
                           backoff_base_s=1.0, backoff_cap_s=5.0,
                           backoff_jitter_s=0.0)
@@ -73,7 +73,7 @@ class TestRestartPolicyPure(unittest.TestCase):
     def test_jitter_stays_within_bounds(self):
         """Jitter must never produce a negative or huge delay."""
         import random
-        from daemon.runner_supervisor import RestartPolicy
+        from cheetahclaws.daemon.runner_supervisor import RestartPolicy
         p = RestartPolicy(mode="on-crash", max_restarts=100,
                           backoff_base_s=1.0, backoff_cap_s=2.0,
                           backoff_jitter_s=0.5)
@@ -87,7 +87,7 @@ class TestRestartPolicyPure(unittest.TestCase):
             self.assertLessEqual(d, 2.5)
 
     def test_exhausted_after_max_restarts(self):
-        from daemon.runner_supervisor import RestartPolicy
+        from cheetahclaws.daemon.runner_supervisor import RestartPolicy
         p = RestartPolicy(mode="on-crash", max_restarts=3,
                           backoff_base_s=1.0, backoff_cap_s=10.0,
                           backoff_jitter_s=0.0)
@@ -99,13 +99,13 @@ class TestRestartPolicyPure(unittest.TestCase):
         self.assertIsNone(p.next_delay(3))
 
     def test_from_params_defaults(self):
-        from daemon.runner_supervisor import RestartPolicy
+        from cheetahclaws.daemon.runner_supervisor import RestartPolicy
         p = RestartPolicy.from_params({})
         self.assertEqual(p.mode, "none")
         self.assertEqual(p.max_restarts, 0)
 
     def test_from_params_round_trip(self):
-        from daemon.runner_supervisor import RestartPolicy
+        from cheetahclaws.daemon.runner_supervisor import RestartPolicy
         p = RestartPolicy.from_params({
             "restart_policy":   "on-crash",
             "max_restarts":     3,
@@ -120,12 +120,12 @@ class TestRestartPolicyPure(unittest.TestCase):
         self.assertAlmostEqual(p.backoff_jitter_s, 0.1)
 
     def test_from_params_rejects_bad_mode(self):
-        from daemon.runner_supervisor import RestartPolicy
+        from cheetahclaws.daemon.runner_supervisor import RestartPolicy
         with self.assertRaises(TypeError):
             RestartPolicy.from_params({"restart_policy": "always"})
 
     def test_from_params_rejects_negative_max_restarts(self):
-        from daemon.runner_supervisor import RestartPolicy
+        from cheetahclaws.daemon.runner_supervisor import RestartPolicy
         with self.assertRaises(TypeError):
             RestartPolicy.from_params({"restart_policy": "on-crash",
                                        "max_restarts": -1})
@@ -134,7 +134,7 @@ class TestRestartPolicyPure(unittest.TestCase):
         """The footgun: cap=0.1 < base=1.0 would mean every backoff
         gets clamped down and the policy "feels" disabled.  Catch it
         at config time instead."""
-        from daemon.runner_supervisor import RestartPolicy
+        from cheetahclaws.daemon.runner_supervisor import RestartPolicy
         with self.assertRaises(TypeError):
             RestartPolicy.from_params({
                 "restart_policy": "on-crash", "max_restarts": 3,
@@ -142,7 +142,7 @@ class TestRestartPolicyPure(unittest.TestCase):
             })
 
     def test_from_params_rejects_non_numeric_backoff(self):
-        from daemon.runner_supervisor import RestartPolicy
+        from cheetahclaws.daemon.runner_supervisor import RestartPolicy
         with self.assertRaises(TypeError):
             RestartPolicy.from_params({"restart_policy": "on-crash",
                                        "max_restarts": 1,
@@ -171,8 +171,8 @@ def _spawn_crashing_runner_with_policy(name, policy):
     handshake: stores ``_start_kwargs``, calls ``_register``, and spawns
     the reader thread.
     """
-    from daemon import runner_supervisor as rs
-    from daemon.runner_ipc import JsonLineChannel
+    from cheetahclaws.daemon import runner_supervisor as rs
+    from cheetahclaws.daemon.runner_ipc import JsonLineChannel
 
     proc = subprocess.Popen(
         [sys.executable, "-u", "-c", _MOCK_CRASH_SOURCE],
@@ -220,7 +220,7 @@ class TestRestartHookIntegration(unittest.TestCase):
     not actually fork another subprocess — just records the call."""
 
     def setUp(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         # Wipe any handles left over from earlier tests (modules are
         # process-global; flakes here usually trace back to stragglers).
         with rs._handles_lock:
@@ -228,7 +228,7 @@ class TestRestartHookIntegration(unittest.TestCase):
         self._restore_spawner = rs._RESTART_SPAWNER
 
     def tearDown(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         rs._RESTART_SPAWNER = self._restore_spawner
         with rs._handles_lock:
             for h in list(rs._handles.values()):
@@ -247,7 +247,7 @@ class TestRestartHookIntegration(unittest.TestCase):
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_disabled_policy_does_not_schedule_restart(self):
         """Default policy: crash leaves status='crashed', no Timer."""
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         spawn = MagicMock()
         rs._RESTART_SPAWNER = spawn
 
@@ -267,7 +267,7 @@ class TestRestartHookIntegration(unittest.TestCase):
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_on_crash_schedules_restart(self):
         """mode='on-crash' with restarts left: Timer fires _RESTART_SPAWNER."""
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
 
         called: list[dict] = []
         def fake_spawn(**kwargs):
@@ -308,7 +308,7 @@ class TestRestartHookIntegration(unittest.TestCase):
     def test_max_restarts_exhausted_emits_event(self):
         """After max_restarts the lineage stops respawning and publishes
         agent_runner_restart_exhausted."""
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
 
         events: list[tuple[str, dict]] = []
 
@@ -354,13 +354,13 @@ class TestRestartHookIntegration(unittest.TestCase):
 class TestStopCancelsRestart(unittest.TestCase):
 
     def setUp(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         with rs._handles_lock:
             rs._handles.clear()
         self._restore_spawner = rs._RESTART_SPAWNER
 
     def tearDown(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         rs._RESTART_SPAWNER = self._restore_spawner
         with rs._handles_lock:
             for h in list(rs._handles.values()):
@@ -380,7 +380,7 @@ class TestStopCancelsRestart(unittest.TestCase):
     def test_stop_cancels_pending_restart_timer(self):
         """A stop() arriving while a restart Timer is armed must cancel
         the Timer and avoid a respawn."""
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
 
         spawned = threading.Event()
         def fake_spawn(**_kwargs):
@@ -438,8 +438,8 @@ class TestRestartHandleSerialisation(unittest.TestCase):
     """agent_methods._handle_to_dict surfaces restart_count/policy."""
 
     def test_handle_dict_includes_restart_fields(self):
-        from daemon import runner_supervisor as rs
-        from daemon.agent_methods import _handle_to_dict
+        from cheetahclaws.daemon import runner_supervisor as rs
+        from cheetahclaws.daemon.agent_methods import _handle_to_dict
 
         class _FakeProc:
             def poll(self): return 0
@@ -468,17 +468,17 @@ class TestUnregisterIdentityGuard(unittest.TestCase):
     """
 
     def setUp(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         with rs._handles_lock:
             rs._handles.clear()
 
     def tearDown(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         with rs._handles_lock:
             rs._handles.clear()
 
     def _fake_handle(self, name, run_id):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         class _FakeProc:
             def poll(self): return 0
         return rs.RunnerHandle(
@@ -488,7 +488,7 @@ class TestUnregisterIdentityGuard(unittest.TestCase):
         )
 
     def test_unregister_with_expected_only_pops_matching_handle(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         old = self._fake_handle("foo", "run_old")
         new = self._fake_handle("foo", "run_new")
 

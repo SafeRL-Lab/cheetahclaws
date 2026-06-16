@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     Kernel,
     RunnerExitInfo,
     SandboxPolicy,
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-RUNNER_ARGV = [sys.executable, "-m", "kernel.runner.runner_main"]
+RUNNER_ARGV = [sys.executable, "-m", "cheetahclaws.kernel.runner.runner_main"]
 
 
 @pytest.fixture

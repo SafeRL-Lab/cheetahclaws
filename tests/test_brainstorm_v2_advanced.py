@@ -22,8 +22,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-import commands.advanced as adv
-from commands.advanced import (
+import cheetahclaws.commands.advanced as adv
+from cheetahclaws.commands.advanced import (
     _DEFAULT_BAN_KEYWORDS,
     _extract_ban_keywords,
     _filter_action_plan,

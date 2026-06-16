@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     AgentState,
     DialogueOrchestrator,
     DialogueQuotaBreached,
@@ -18,7 +18,7 @@ from kernel import (
     SandboxPolicy,
     UnknownPid,
 )
-from kernel.runner.llm import (
+from cheetahclaws.kernel.runner.llm import (
     LlmRequest,
     LlmResponse,
     MockProvider,
@@ -137,7 +137,7 @@ def _spawn_llm(kernel: Kernel, response: dict, *,
     sup = kernel.make_supervisor()
     sup.spawn(
         pid=a.pid,
-        argv=[sys.executable, "-m", "kernel.runner.llm"],
+        argv=[sys.executable, "-m", "cheetahclaws.kernel.runner.llm"],
         policy=SandboxPolicy(wall_seconds=15),
         init_payload={"model": "m", "user": user_msg},
         env={**os.environ, "CC_LLM_PROVIDER": "mock",
@@ -179,7 +179,7 @@ def test_existing_runner_text_defaults_empty(tmp_path):
         sup = k.make_supervisor()
         sup.spawn(
             pid=a.pid,
-            argv=[sys.executable, "-m", "kernel.runner.runner_main"],
+            argv=[sys.executable, "-m", "cheetahclaws.kernel.runner.runner_main"],
             policy=SandboxPolicy(wall_seconds=10),
         )
         info = sup.wait(a.pid, timeout=15)

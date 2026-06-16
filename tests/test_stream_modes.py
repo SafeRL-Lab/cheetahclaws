@@ -10,7 +10,7 @@ import platform
 
 import pytest
 
-import ui.render as render
+import cheetahclaws.ui.render as render
 
 
 # ── auto_stream_mode routing ────────────────────────────────────────────────

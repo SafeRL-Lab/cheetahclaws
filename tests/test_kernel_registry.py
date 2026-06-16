@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     KernelStore,
     RegistryEntry,
     RegistryInvalidName,

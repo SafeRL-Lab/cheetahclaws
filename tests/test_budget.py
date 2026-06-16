@@ -6,7 +6,7 @@ yields when a budget is reached.
 """
 import pytest
 
-import quota
+from cheetahclaws import quota
 
 
 @pytest.fixture(autouse=True)
@@ -99,9 +99,9 @@ def test_warnings_thresholds(cost, level):
 
 @pytest.fixture
 def cmd(monkeypatch):
-    import config
+    from cheetahclaws import config
     monkeypatch.setattr(config, "save_config", lambda cfg: None)
-    from commands.core import cmd_budget
+    from cheetahclaws.commands.core import cmd_budget
     return cmd_budget
 
 
@@ -158,7 +158,7 @@ def test_cmd_budget_view_runs_with_no_budgets(cmd, capsys):
 # ── QuotaPause event ────────────────────────────────────────────────────────
 
 def test_quota_pause_event_shape():
-    from agent import QuotaPause
+    from cheetahclaws.agent import QuotaPause
     ev = QuotaPause("Session cost budget reached", {"session_cost": 5.0})
     assert ev.reason == "Session cost budget reached"
     assert ev.usage["session_cost"] == 5.0
@@ -245,7 +245,7 @@ def test_output_room_takes_tightest_of_multiple():
 
 def test_output_room_cost_budget_uses_output_price(monkeypatch):
     # Model with a known $/Mtok output price → cost cap converts to token room.
-    import providers
+    from cheetahclaws import providers
     monkeypatch.setitem(providers.COSTS, "budgetmodel", (1.0, 2.0))  # $2 /Mtok out
     with quota._lock:
         quota._sess_cost["t"] = 0.0

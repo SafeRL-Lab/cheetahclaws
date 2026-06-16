@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-from tools.files import (
+from cheetahclaws.tools.files import (
     _is_cjk_heavy,
     _maybe_redirect_to_summarize,
 )
@@ -153,7 +153,7 @@ def test_read_tool_redirects_huge_text_file(tmp_path):
     big.write_text("Sample line with content. " * 4000, encoding="utf-8")  # ~100KB
 
     # Call via the tool registry (simulates what agent.py does)
-    from tools import execute_tool
+    from cheetahclaws.tools import execute_tool
     out = execute_tool(
         "Read",
         {"file_path": str(big)},
@@ -171,7 +171,7 @@ def test_read_tool_passes_through_small_file(tmp_path):
     small = tmp_path / "small.txt"
     small.write_text("just a few lines\nof normal text\n", encoding="utf-8")
 
-    from tools import execute_tool
+    from cheetahclaws.tools import execute_tool
     out = execute_tool(
         "Read",
         {"file_path": str(small)},

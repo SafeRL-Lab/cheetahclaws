@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from daemon import schema
+from cheetahclaws.daemon import schema
 
 
 # ── Idempotent init ────────────────────────────────────────────────────────

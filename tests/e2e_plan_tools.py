@@ -25,8 +25,8 @@ def test_plan_tools():
 
 
 def _run(tmpdir):
-    from tools import _enter_plan_mode, _exit_plan_mode
-    from agent import _check_permission
+    from cheetahclaws.tools import _enter_plan_mode, _exit_plan_mode
+    from cheetahclaws.agent import _check_permission
 
     config = {
         "permission_mode": "auto",
@@ -38,7 +38,7 @@ def _run(tmpdir):
     print("STEP 1: EnterPlanMode")
     print(SEP)
     result = _enter_plan_mode({"task_description": "Add WebSocket support"}, config)
-    import runtime
+    from cheetahclaws import runtime
     sctx = runtime.get_session_ctx("tooltest")
     assert config["permission_mode"] == "plan"
     assert sctx.plan_file
@@ -151,7 +151,7 @@ def _run(tmpdir):
     print(f"\n{SEP}")
     print("STEP 8: System prompt includes plan mode guidance")
     print(SEP)
-    from context import build_system_prompt
+    from cheetahclaws.context import build_system_prompt
     config["permission_mode"] = "auto"
     prompt = build_system_prompt(config)
     assert "EnterPlanMode" in prompt

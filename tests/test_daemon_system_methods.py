@@ -7,8 +7,8 @@ import threading
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from daemon import system_methods
-from daemon.rpc import CallContext, RpcRegistry
+from cheetahclaws.daemon import system_methods
+from cheetahclaws.daemon.rpc import CallContext, RpcRegistry
 
 
 # ── Fake DaemonState that exposes just the surface system_methods touches ──
@@ -87,8 +87,8 @@ def test_system_shutdown_returned_from_dispatch_with_correct_envelope():
 def test_register_does_not_clash_with_spike_methods():
     """Spike's `register_methods` is invoked first by DaemonState.__init__;
     system_methods.register must not collide with any spike-defined names."""
-    from daemon.methods import register as register_spike
-    from daemon.permission import PermissionStore
+    from cheetahclaws.daemon.methods import register as register_spike
+    from cheetahclaws.daemon.permission import PermissionStore
 
     registry = RpcRegistry()
     store = PermissionStore()

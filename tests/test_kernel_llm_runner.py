@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     Kernel,
     LedgerStore,
     RunnerSupervisor,
@@ -17,7 +17,7 @@ from kernel import (
     ScheduleSpec,
     WorkerLoop,
 )
-from kernel.runner.llm import (
+from cheetahclaws.kernel.runner.llm import (
     LlmRequest,
     LlmResponse,
     MockProvider,
@@ -32,7 +32,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-LLM_RUNNER_ARGV = [sys.executable, "-m", "kernel.runner.llm"]
+LLM_RUNNER_ARGV = [sys.executable, "-m", "cheetahclaws.kernel.runner.llm"]
 
 
 # ── Dataclass round-trip ────────────────────────────────────────────────
@@ -418,21 +418,21 @@ def test_worker_loop_runs_llm_job(stack):
 
 def test_anthropic_provider_lazy_imports():
     """Importing the module must NOT trigger the SDK import."""
-    from kernel.runner.llm import anthropic_provider as ap_mod
+    from cheetahclaws.kernel.runner.llm import anthropic_provider as ap_mod
     # Class is importable without the SDK.
     assert hasattr(ap_mod, "AnthropicProvider")
 
 
 def test_anthropic_provider_construction_doesnt_import_sdk():
     """Instantiation alone doesn't import anthropic; the call does."""
-    from kernel.runner.llm.anthropic_provider import AnthropicProvider
+    from cheetahclaws.kernel.runner.llm.anthropic_provider import AnthropicProvider
     p = AnthropicProvider(api_key="dummy")
     # Client still None — not constructed yet.
     assert p._client is None
 
 
 def test_anthropic_provider_no_api_key_raises():
-    from kernel.runner.llm.anthropic_provider import AnthropicProvider
+    from cheetahclaws.kernel.runner.llm.anthropic_provider import AnthropicProvider
     p = AnthropicProvider(api_key=None)
     # Save and clear ANTHROPIC_API_KEY so the unavailable check fires.
     saved = os.environ.pop("ANTHROPIC_API_KEY", None)

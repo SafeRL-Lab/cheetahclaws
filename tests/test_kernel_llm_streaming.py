@@ -7,13 +7,13 @@ import sys
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     Kernel,
     SandboxPolicy,
     ToolRegistry,
     register_builtin_tools,
 )
-from kernel.runner.llm import (
+from cheetahclaws.kernel.runner.llm import (
     LlmRequest,
     LlmResponse,
     MockProvider,
@@ -129,7 +129,7 @@ def test_subprocess_streams_each_char_to_chunks(kernel):
     received: list = []
     sup.spawn(
         pid=a.pid,
-        argv=[sys.executable, "-m", "kernel.runner.llm"],
+        argv=[sys.executable, "-m", "cheetahclaws.kernel.runner.llm"],
         policy=SandboxPolicy(wall_seconds=15),
         init_payload={"model": "m", "user": "hello",
                        "stream": True},
@@ -156,7 +156,7 @@ def test_subprocess_stream_false_no_chunks(kernel):
     received: list = []
     sup.spawn(
         pid=a.pid,
-        argv=[sys.executable, "-m", "kernel.runner.llm"],
+        argv=[sys.executable, "-m", "cheetahclaws.kernel.runner.llm"],
         policy=SandboxPolicy(wall_seconds=15),
         init_payload={"model": "m", "user": "x"},     # stream omitted
         env=_scripted_env(responses),
@@ -177,7 +177,7 @@ def test_subprocess_stream_with_long_text(kernel):
     received: list = []
     sup.spawn(
         pid=a.pid,
-        argv=[sys.executable, "-m", "kernel.runner.llm"],
+        argv=[sys.executable, "-m", "cheetahclaws.kernel.runner.llm"],
         policy=SandboxPolicy(wall_seconds=15),
         init_payload={"model": "m", "user": "x", "stream": True},
         env=_scripted_env(responses),
@@ -197,7 +197,7 @@ def test_subprocess_stream_with_unicode(kernel):
     received: list = []
     sup.spawn(
         pid=a.pid,
-        argv=[sys.executable, "-m", "kernel.runner.llm"],
+        argv=[sys.executable, "-m", "cheetahclaws.kernel.runner.llm"],
         policy=SandboxPolicy(wall_seconds=15),
         init_payload={"model": "m", "user": "x", "stream": True},
         env=_scripted_env(responses),
@@ -237,7 +237,7 @@ def test_subprocess_streaming_multi_iteration_tool_call(kernel):
     received: list = []
     sup.spawn(
         pid=a.pid,
-        argv=[sys.executable, "-m", "kernel.runner.llm"],
+        argv=[sys.executable, "-m", "cheetahclaws.kernel.runner.llm"],
         policy=SandboxPolicy(wall_seconds=15),
         init_payload={
             "model": "m", "user": "go",
@@ -277,7 +277,7 @@ def test_subprocess_stream_with_mock_no_stream_method(kernel):
            "CC_LLM_MOCK_RESPONSE_JSON": response_json}
     sup.spawn(
         pid=a.pid,
-        argv=[sys.executable, "-m", "kernel.runner.llm"],
+        argv=[sys.executable, "-m", "cheetahclaws.kernel.runner.llm"],
         policy=SandboxPolicy(wall_seconds=15),
         init_payload={"model": "m", "user": "x", "stream": True},
         env=env,
@@ -296,7 +296,7 @@ def test_subprocess_stream_with_mock_no_stream_method(kernel):
 def test_anthropic_provider_has_stream_method():
     """The class should expose `stream` as an attribute even
     without anthropic SDK installed."""
-    from kernel.runner.llm.anthropic_provider import AnthropicProvider
+    from cheetahclaws.kernel.runner.llm.anthropic_provider import AnthropicProvider
     p = AnthropicProvider(api_key="dummy")
     assert hasattr(p, "stream")
     assert callable(p.stream)

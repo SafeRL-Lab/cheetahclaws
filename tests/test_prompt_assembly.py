@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-import context as _context
+from cheetahclaws import context as _context
 
 
 @pytest.fixture(autouse=True)
@@ -41,7 +41,7 @@ def test_assembled_prompt_contains_identity_and_env():
 def test_plan_mode_appends_fragment_with_plan_file_filled(monkeypatch, tmp_path):
     plan_path = str(tmp_path / "plan.md")
     # Seed the runtime context so _render_plan_fragment can find the path.
-    import runtime
+    from cheetahclaws import runtime
     sctx = runtime.get_session_ctx("test-session")
     sctx.plan_file = plan_path
     try:
@@ -94,7 +94,7 @@ def test_assembly_order_is_base_then_env_then_memory_then_plan(monkeypatch):
     monkeypatch.setattr(_context, "get_memory_context", lambda: "- a memory")
     monkeypatch.setattr(_context, "_tmux_available", lambda: True)
 
-    import runtime
+    from cheetahclaws import runtime
     runtime.get_session_ctx("test-session").plan_file = "/tmp/plan.md"
     try:
         prompt = _context.build_system_prompt(_base_config(permission_mode="plan"))
@@ -117,7 +117,7 @@ def test_missing_config_falls_back_to_default():
     anthropic.md.  Falling back to a Claude-styled prompt would silently
     apply XML-tag structuring etc. to whatever model picked it up later.
     """
-    from prompts import select as _select
+    from cheetahclaws.prompts import select as _select
     prompt = _context.build_system_prompt(None)
     assert "CheetahClaws" in prompt
     assert "# Environment" in prompt

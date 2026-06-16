@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-from agent import _try_reduce_output_cap_from_error
+from cheetahclaws.agent import _try_reduce_output_cap_from_error
 
 
 # ── _try_reduce_output_cap_from_error ───────────────────────────────────

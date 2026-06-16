@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from providers import (
+from cheetahclaws.providers import (
     _find_native_tool_marker,
     _extract_native_tool_calls,
     TextChunk, AssistantTurn,
@@ -170,7 +170,7 @@ class _FakeOpenAI:
 def test_stream_buffers_gemma_output_and_emits_tool_call(monkeypatch):
     """End-to-end: streaming Gemma's native format → no garbage to user,
     proper tool_calls in AssistantTurn."""
-    from providers import stream_openai_compat
+    from cheetahclaws.providers import stream_openai_compat
 
     chunks = [
         _FakeChunk(_FakeDelta(content="Sure, let me check. ")),
@@ -218,7 +218,7 @@ def test_stream_buffers_gemma_output_and_emits_tool_call(monkeypatch):
 def test_stream_falls_back_to_text_when_native_call_unparsable(monkeypatch):
     """If buffering started but the format is unrecognisable, emit the raw
     buffer as text so the user sees something."""
-    from providers import stream_openai_compat
+    from cheetahclaws.providers import stream_openai_compat
 
     chunks = [
         _FakeChunk(_FakeDelta(content="Looking up. ")),

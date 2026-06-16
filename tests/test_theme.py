@@ -12,8 +12,8 @@ import importlib
 
 import pytest
 
-import ui.render as render
-from ui.render import THEMES, apply_theme, C, _rgb, clr
+import cheetahclaws.ui.render as render
+from cheetahclaws.ui.render import THEMES, apply_theme, C, _rgb, clr
 
 
 @pytest.fixture(autouse=True)

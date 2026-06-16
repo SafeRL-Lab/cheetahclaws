@@ -5,13 +5,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from kernel.runner.llm.provider import (
+from cheetahclaws.kernel.runner.llm.provider import (
     LlmRequest,
     LlmResponse,
     ProviderInvalidRequest,
     ProviderUnavailable,
 )
-from kernel.runner.llm.litellm_provider import LiteLLMProvider
+from cheetahclaws.kernel.runner.llm.litellm_provider import LiteLLMProvider
 
 
 def _make_provider_with_fake_litellm(
@@ -109,7 +109,7 @@ class TestLazyImport:
             # Force re-import: pop the cached module from sys.modules.
             import importlib
 
-            import kernel.runner.llm.litellm_provider as mod
+            import cheetahclaws.kernel.runner.llm.litellm_provider as mod
 
             importlib.reload(mod)
             # Construction must succeed too.
@@ -487,7 +487,7 @@ class TestRegistration:
         """CC_LLM_PROVIDER=litellm must be routable through the
         subprocess runner, otherwise the provider isn't actually
         usable end-to-end."""
-        from kernel.runner.llm import __main__ as runner_main
+        from cheetahclaws.kernel.runner.llm import __main__ as runner_main
 
         import inspect
 
@@ -499,7 +499,7 @@ class TestRegistration:
         """The CLI / Web UI consult providers.PROVIDERS when resolving
         --model X. Without a litellm entry there, no end-to-end caller
         can reach the new adapter — only direct Python use works."""
-        import providers
+        from cheetahclaws import providers
 
         assert "litellm" in providers.PROVIDERS
         entry = providers.PROVIDERS["litellm"]
@@ -511,7 +511,7 @@ class TestRegistration:
         """`litellm/openai/gpt-4o` must resolve as provider=litellm
         with bare_model=openai/gpt-4o (the form litellm.completion
         wants), so the slash-prefix routing actually works."""
-        import providers
+        from cheetahclaws import providers
 
         assert providers.detect_provider("litellm/openai/gpt-4o") == "litellm"
         assert providers.bare_model("litellm/openai/gpt-4o") == "openai/gpt-4o"

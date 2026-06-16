@@ -9,15 +9,15 @@ from unittest.mock import patch
 
 import pytest
 
-from plugin.types import (
+from cheetahclaws.plugin.types import (
     PluginManifest, PluginEntry, PluginScope,
     parse_plugin_identifier, sanitize_plugin_name,
 )
-from plugin.recommend import (
+from cheetahclaws.plugin.recommend import (
     recommend_plugins, recommend_from_files, format_recommendations,
     PluginRecommendation,
 )
-import plugin.store as _store
+import cheetahclaws.plugin.store as _store
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -286,7 +286,7 @@ class TestPluginRecommend:
 class TestAskUserQuestion:
     def test_freetext_answer(self):
         """User typing free text returns that text verbatim."""
-        import tools as _tools
+        from cheetahclaws import tools as _tools
 
         with patch("builtins.input", return_value="yes"):
             result = _tools._ask_user_question("Continue?", allow_freetext=True)
@@ -294,7 +294,7 @@ class TestAskUserQuestion:
 
     def test_option_selection_by_number(self):
         """Selecting option 1 from a numbered list returns its label."""
-        import tools as _tools
+        from cheetahclaws import tools as _tools
 
         with patch("builtins.input", return_value="1"):
             result = _tools._ask_user_question(
@@ -306,7 +306,7 @@ class TestAskUserQuestion:
 
     def test_option_freetext_via_zero(self):
         """Typing 0 with allow_freetext prompts for a custom answer."""
-        import tools as _tools
+        from cheetahclaws import tools as _tools
 
         with patch("builtins.input", side_effect=["0", "custom reply"]):
             result = _tools._ask_user_question(
@@ -318,6 +318,6 @@ class TestAskUserQuestion:
 
     def test_tool_schema_registered(self):
         """AskUserQuestion must appear in TOOL_SCHEMAS."""
-        from tools import TOOL_SCHEMAS
+        from cheetahclaws.tools import TOOL_SCHEMAS
         names = [s["name"] for s in TOOL_SCHEMAS]
         assert "AskUserQuestion" in names

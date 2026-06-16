@@ -25,9 +25,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-import agent
-from agent import AgentState, run, ToolStart, ToolEnd, TextChunk
-from providers import AssistantTurn
+from cheetahclaws import agent
+from cheetahclaws.agent import AgentState, run, ToolStart, ToolEnd, TextChunk
+from cheetahclaws.providers import AssistantTurn
 
 
 def _fake_turn(text="", tool_calls=None):

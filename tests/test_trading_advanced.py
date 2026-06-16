@@ -41,14 +41,14 @@ _skip_if_no_sklearn = pytest.mark.skipif(
 # ── Alt-data: SEC EDGAR insider ───────────────────────────────────────────
 
 def test_insider_summary_soft_fails_when_sec_unreachable(monkeypatch):
-    from modular.trading.alt_data import insider
+    from cheetahclaws.modular.trading.alt_data import insider
     monkeypatch.setattr(insider, "_http_get", lambda url: None)
     assert insider.fetch_recent_insider_filings("AAPL") == []
     assert insider.render_insider_summary("AAPL") == ""
 
 
 def test_insider_filters_to_form4_within_window(monkeypatch):
-    from modular.trading.alt_data import insider
+    from cheetahclaws.modular.trading.alt_data import insider
     import json
 
     def fake_get(url: str):
@@ -79,7 +79,7 @@ def test_insider_filters_to_form4_within_window(monkeypatch):
 # ── Alt-data: trends soft-fail without pytrends ──────────────────────────
 
 def test_trends_soft_fail_when_pytrends_missing(monkeypatch):
-    from modular.trading.alt_data import trends
+    from cheetahclaws.modular.trading.alt_data import trends
     # Ensure pytrends import path raises
     import sys
     monkeypatch.setitem(sys.modules, "pytrends.request", None)
@@ -88,7 +88,7 @@ def test_trends_soft_fail_when_pytrends_missing(monkeypatch):
 
 
 def test_trends_render_empty_string_when_unavailable(monkeypatch):
-    from modular.trading.alt_data import trends
+    from cheetahclaws.modular.trading.alt_data import trends
     monkeypatch.setattr(trends, "fetch_interest", lambda s, lookback_days=90: {})
     assert trends.render_trends_block("NVDA") == ""
 
@@ -96,13 +96,13 @@ def test_trends_render_empty_string_when_unavailable(monkeypatch):
 # ── Alt-data: sentiment ──────────────────────────────────────────────────
 
 def test_sentiment_returns_empty_when_no_headlines(monkeypatch):
-    from modular.trading.alt_data import sentiment
+    from cheetahclaws.modular.trading.alt_data import sentiment
     monkeypatch.setattr(sentiment, "fetch_recent_headlines", lambda *a, **k: [])
     assert sentiment.render_sentiment_block("NVDA") == ""
 
 
 def test_sentiment_renders_with_aux_scores(monkeypatch):
-    from modular.trading.alt_data import sentiment
+    from cheetahclaws.modular.trading.alt_data import sentiment
     monkeypatch.setattr(sentiment, "fetch_recent_headlines",
                         lambda *a, **k: [
                             {"title": "NVDA beats on Q4", "publisher": "Reuters", "link": "", "ts": 0},
@@ -140,7 +140,7 @@ def _make_uptrend(n=120, start=100.0, drift=0.001, noise_seed: int = 0) -> list[
 
 @_skip_if_no_scipy
 def test_optimizer_returns_long_only_caps_weight():
-    from modular.trading.portfolio import Candidate, optimize
+    from cheetahclaws.modular.trading.portfolio import Candidate, optimize
     cands = [
         Candidate("A", _make_uptrend(120, 100, 0.0010, noise_seed=1)),
         Candidate("B", _make_uptrend(120, 50,  0.0005, noise_seed=2)),
@@ -153,7 +153,7 @@ def test_optimizer_returns_long_only_caps_weight():
 
 @_skip_if_no_scipy
 def test_optimizer_handles_too_short_history():
-    from modular.trading.portfolio import Candidate, optimize
+    from cheetahclaws.modular.trading.portfolio import Candidate, optimize
     cands = [Candidate("A", [100.0] * 10)]
     r = optimize(cands)
     assert "insufficient history" in r.diagnostics.get("reason", "")
@@ -161,7 +161,7 @@ def test_optimizer_handles_too_short_history():
 
 @_skip_if_no_scipy
 def test_optimizer_respects_sector_caps():
-    from modular.trading.portfolio import Candidate, optimize
+    from cheetahclaws.modular.trading.portfolio import Candidate, optimize
     cands = [
         Candidate("A", _make_uptrend(120, noise_seed=1), sector="Tech"),
         Candidate("B", _make_uptrend(120, drift=0.0008, noise_seed=2), sector="Tech"),
@@ -174,7 +174,7 @@ def test_optimizer_respects_sector_caps():
 
 @_skip_if_no_scipy
 def test_optimization_report_renders():
-    from modular.trading.portfolio import Candidate, optimize, render_optimization_report
+    from cheetahclaws.modular.trading.portfolio import Candidate, optimize, render_optimization_report
     cands = [Candidate("A", _make_uptrend(120))]
     r = optimize(cands)
     md = render_optimization_report(r)
@@ -186,7 +186,7 @@ def test_optimization_report_renders():
 @pytest.fixture
 def fresh_broker(tmp_path, monkeypatch):
     """PaperBroker with isolated DB and a deterministic price quote."""
-    from modular.trading.broker.paper_backend import PaperBroker
+    from cheetahclaws.modular.trading.broker.paper_backend import PaperBroker
 
     db = tmp_path / "managed.db"
     broker = PaperBroker(name="test_account", db_path=db, initial_cash=100.0)
@@ -241,7 +241,7 @@ def test_broker_average_cost_updates_on_add(fresh_broker, monkeypatch):
 
 
 def test_ibkr_stub_reports_setup_required():
-    from modular.trading.broker import IBKRBroker
+    from cheetahclaws.modular.trading.broker import IBKRBroker
     b = IBKRBroker()
     diag = b.connection_check()
     assert "ok" in diag
@@ -259,8 +259,8 @@ def test_managed_portfolio_lifecycle_with_mocked_quotes(tmp_path, monkeypatch):
     Skipped when [trading] extras aren't installed — managed.step calls
     into portfolio.optimize which requires numpy + scipy.
     """
-    from modular.trading import managed
-    from modular.trading.broker.paper_backend import PaperBroker
+    from cheetahclaws.modular.trading import managed
+    from cheetahclaws.modular.trading.broker.paper_backend import PaperBroker
 
     db = tmp_path / "managed.db"
 
@@ -275,11 +275,11 @@ def test_managed_portfolio_lifecycle_with_mocked_quotes(tmp_path, monkeypatch):
                      for i in range(250)],
             "info": {}, "error": None,
         }
-    monkeypatch.setattr("modular.trading.data.fetchers.fetch_market_data", synthetic_history)
+    monkeypatch.setattr("cheetahclaws.modular.trading.data.fetchers.fetch_market_data", synthetic_history)
 
     quote_value = {"v": 100.0}
     monkeypatch.setattr(
-        "modular.trading.data.fetchers.fetch_current_price",
+        "cheetahclaws.modular.trading.data.fetchers.fetch_current_price",
         lambda sym: {"price": quote_value["v"]},
     )
 
@@ -318,11 +318,11 @@ def test_managed_portfolio_lifecycle_with_mocked_quotes(tmp_path, monkeypatch):
 
 @_skip_if_no_scipy
 def test_managed_portfolio_dry_run_places_no_orders(tmp_path, monkeypatch):
-    from modular.trading import managed
+    from cheetahclaws.modular.trading import managed
 
     db = tmp_path / "managed.db"
     monkeypatch.setattr(
-        "modular.trading.data.fetchers.fetch_market_data",
+        "cheetahclaws.modular.trading.data.fetchers.fetch_market_data",
         lambda sym, **kw: {
             "data": [{"date": "2025-01-01", "open": 100, "high": 100, "low": 100,
                       "close": 100 + i * 0.5, "volume": 1000}
@@ -331,7 +331,7 @@ def test_managed_portfolio_dry_run_places_no_orders(tmp_path, monkeypatch):
         },
     )
     monkeypatch.setattr(
-        "modular.trading.data.fetchers.fetch_current_price",
+        "cheetahclaws.modular.trading.data.fetchers.fetch_current_price",
         lambda sym: {"price": 100.0},
     )
     monkeypatch.setattr(managed, "_universe_for", lambda b, db_path=None: ["AAPL"])
@@ -349,7 +349,7 @@ def _synth_closed_trade(realized_pct: float, signal: str = "BUY",
                        confidence: str = "Medium",
                        sector: str = "Technology", trade_id: int = 0):
     """Make a TradeRecord-shaped object for feature extraction."""
-    from modular.trading.paper_trader import TradeRecord
+    from cheetahclaws.modular.trading.paper_trader import TradeRecord
     return TradeRecord(
         id=trade_id, created_at="2025-01-01T00:00:00", symbol="X",
         market="us_equity", signal=signal, confidence=confidence,
@@ -363,7 +363,7 @@ def _synth_closed_trade(realized_pct: float, signal: str = "BUY",
 
 
 def test_ml_features_build_dataset_correct_shape():
-    from modular.trading.ml.features import build_dataset, feature_columns
+    from cheetahclaws.modular.trading.ml.features import build_dataset, feature_columns
     closed = [_synth_closed_trade(5, trade_id=i) for i in range(10)]
     rows, cols = build_dataset(closed)
     assert len(rows) == 10
@@ -372,8 +372,8 @@ def test_ml_features_build_dataset_correct_shape():
 
 
 def test_ml_train_returns_diagnostic_when_too_few_samples():
-    from modular.trading.ml.stacker import train
-    from modular.trading.ml.features import build_dataset
+    from cheetahclaws.modular.trading.ml.stacker import train
+    from cheetahclaws.modular.trading.ml.features import build_dataset
     closed = [_synth_closed_trade(5, trade_id=i) for i in range(3)]
     rows, cols = build_dataset(closed)
     r = train(rows, cols=cols, min_samples=30)
@@ -385,8 +385,8 @@ def test_ml_train_returns_diagnostic_when_too_few_samples():
 def test_ml_train_with_mixed_labels(tmp_path):
     # Real model fit — needs the heavy ML stack from the [trading] extra.
     # CI's lean `[web,autosuggest]` install skips this cleanly.
-    from modular.trading.ml.stacker import train, predict_proba
-    from modular.trading.ml.features import build_dataset
+    from cheetahclaws.modular.trading.ml.stacker import train, predict_proba
+    from cheetahclaws.modular.trading.ml.features import build_dataset
 
     closed = []
     # 30 winners, 30 losers — give the classifier something to learn
@@ -411,7 +411,7 @@ def test_ml_train_with_mixed_labels(tmp_path):
 
 
 def test_ml_predict_returns_empty_when_no_model(tmp_path):
-    from modular.trading.ml.stacker import predict_proba
+    from cheetahclaws.modular.trading.ml.stacker import predict_proba
     out = predict_proba([0.0] * 17, model_path=tmp_path / "nonexistent.pkl")
     assert out == {}
 
@@ -420,9 +420,9 @@ def test_ml_predict_returns_empty_when_no_model(tmp_path):
 
 def test_review_prompt_includes_actions_format(monkeypatch):
     """Review prompt must contain the ACTION line format the parser expects."""
-    from modular.trading import macro
+    from cheetahclaws.modular.trading import macro
     monkeypatch.setattr(macro, "render_macro_context", lambda: "")
-    from modular.trading.cmd import _build_review_prompt
+    from cheetahclaws.modular.trading.cmd import _build_review_prompt
     prompt = _build_review_prompt([
         {"id": 1, "symbol": "AAPL", "signal": "BUY", "confidence": "High",
          "entry": 100.0, "current": 110.0, "unrealized_pct": 10.0,

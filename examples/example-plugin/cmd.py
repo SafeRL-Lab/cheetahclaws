@@ -4,7 +4,7 @@ Example plugin commands for CheetahClaws.
 This file demonstrates how to define slash commands that users type in the REPL.
 Export your commands as a COMMAND_DEFS dict.
 """
-from ui.render import info, ok, warn, err
+from cheetahclaws.ui.render import info, ok, warn, err
 
 
 def _cmd_example(args: str, state, config) -> bool:

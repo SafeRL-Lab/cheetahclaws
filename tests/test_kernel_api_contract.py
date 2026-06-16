@@ -17,10 +17,10 @@ import uuid
 
 import pytest
 
-from daemon import events
-from daemon.server import make_tcp_server
+from cheetahclaws.daemon import events
+from cheetahclaws.daemon.server import make_tcp_server
 
-from kernel import (
+from cheetahclaws.kernel import (
     ALL_KNOWN_METHODS,
     DEPRECATED_METHODS,
     EXPERIMENTAL_METHODS,
@@ -31,7 +31,7 @@ from kernel import (
     register_with_daemon,
     verify_contract,
 )
-from kernel.integration import detach
+from cheetahclaws.kernel.integration import detach
 
 
 def _free_port() -> int:

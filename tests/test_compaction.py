@@ -7,7 +7,7 @@ import os
 # Ensure project root is on sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from compaction import (
+from cheetahclaws.compaction import (
     estimate_tokens,
     get_context_limit,
     snip_old_tool_results,

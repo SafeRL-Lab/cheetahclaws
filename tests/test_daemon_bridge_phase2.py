@@ -34,7 +34,7 @@ pytestmark_skipif_windows = sys.platform.startswith("win")
 
 
 def _setup_isolated(tmp_path: Path):
-    from daemon import schema, events, bridge_supervisor as bs
+    from cheetahclaws.daemon import schema, events, bridge_supervisor as bs
     schema.set_db_path(tmp_path / "test.db")
     schema._local.conn = None
     events.reset_bus_for_tests()
@@ -48,7 +48,7 @@ def _setup_isolated(tmp_path: Path):
 
 
 def _teardown_isolated():
-    from daemon import schema, events, bridge_supervisor as bs
+    from cheetahclaws.daemon import schema, events, bridge_supervisor as bs
     with bs._handles_lock:
         for h in list(bs._handles.values()):
             try:
@@ -95,7 +95,7 @@ class _Phase2Base(unittest.TestCase):
 class TestSessionIdFormat(unittest.TestCase):
 
     def test_telegram_session_id(self):
-        from daemon.bridge_supervisor import BridgeHandle
+        from cheetahclaws.daemon.bridge_supervisor import BridgeHandle
         h = BridgeHandle(
             kind="telegram",
             config={"telegram_chat_id": 12345},
@@ -105,7 +105,7 @@ class TestSessionIdFormat(unittest.TestCase):
         self.assertEqual(h.session_id(), "tg:12345")
 
     def test_slack_session_id(self):
-        from daemon.bridge_supervisor import BridgeHandle
+        from cheetahclaws.daemon.bridge_supervisor import BridgeHandle
         h = BridgeHandle(
             kind="slack",
             config={"slack_channel": "C123ABC"},
@@ -115,7 +115,7 @@ class TestSessionIdFormat(unittest.TestCase):
         self.assertEqual(h.session_id(), "sl:C123ABC")
 
     def test_wechat_session_id(self):
-        from daemon.bridge_supervisor import BridgeHandle
+        from cheetahclaws.daemon.bridge_supervisor import BridgeHandle
         h = BridgeHandle(
             kind="wechat",
             config={"wechat_user_id": "u_xyz"},
@@ -132,19 +132,19 @@ class TestPhase2OutboundDelivery(_Phase2Base):
 
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_session_reply_forwards_to_sender(self):
-        from daemon import bridge_supervisor as bs
-        from daemon import events as _events
+        from cheetahclaws.daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import events as _events
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
 
         sent: list[str] = []
 
         # Stub the Telegram supervisor (legacy path) — we won't reach it
         # because we're enabling Phase 2, but the import path runs.
-        with patch("bridges.telegram._tg_supervisor",
+        with patch("cheetahclaws.bridges.telegram._tg_supervisor",
                    side_effect=lambda *a, **kw: threading.Event().wait(60)):
             # Patch _tg_api to return no updates so the inbound poller
             # spins quietly while we exercise the outbound path.
-            with patch("bridges.telegram._tg_api",
+            with patch("cheetahclaws.bridges.telegram._tg_api",
                        return_value={"ok": True, "result": []}):
                 handle = bs.start("telegram", {
                     "telegram_token":   "fake",
@@ -172,13 +172,13 @@ class TestPhase2OutboundDelivery(_Phase2Base):
 
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_outbound_ignores_other_sessions(self):
-        from daemon import bridge_supervisor as bs
-        from daemon import events as _events
+        from cheetahclaws.daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import events as _events
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
 
         sent: list[str] = []
 
-        with patch("bridges.telegram._tg_api",
+        with patch("cheetahclaws.bridges.telegram._tg_api",
                    return_value={"ok": True, "result": []}):
             handle = bs.start("telegram", {
                 "telegram_token":   "fake",
@@ -212,8 +212,8 @@ class TestPhase2InboundPublish(_Phase2Base):
 
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_telegram_inbound_publishes_event(self):
-        from daemon import bridge_supervisor as bs
-        from daemon import events as _events
+        from cheetahclaws.daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import events as _events
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
 
         # First call to _tg_api is flush (offset=-1, returns latest).
@@ -238,7 +238,7 @@ class TestPhase2InboundPublish(_Phase2Base):
                 }]}
             return {"ok": True, "result": []}
 
-        with patch("bridges.telegram._tg_api", side_effect=fake_tg_api):
+        with patch("cheetahclaws.bridges.telegram._tg_api", side_effect=fake_tg_api):
             # Subscribe BEFORE start so we capture the inbound event.
             bus = _events.get_bus()
             q = bus.subscribe()
@@ -277,8 +277,8 @@ class TestBridgeStartRpcPhase2(_Phase2Base):
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_rpc_passes_daemon_phase2_through(self):
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
-        from daemon.rpc import RpcRegistry, CallContext
-        from daemon import bridge_methods, bridge_supervisor as bs
+        from cheetahclaws.daemon.rpc import RpcRegistry, CallContext
+        from cheetahclaws.daemon import bridge_methods, bridge_supervisor as bs
 
         class _State:
             config = {}
@@ -286,7 +286,7 @@ class TestBridgeStartRpcPhase2(_Phase2Base):
         reg = RpcRegistry()
         bridge_methods.register(reg, _State())
 
-        with patch("bridges.telegram._tg_api",
+        with patch("cheetahclaws.bridges.telegram._tg_api",
                    return_value={"ok": True, "result": []}):
             envelope = {"jsonrpc": "2.0", "id": 1, "method": "bridge.start",
                         "params": {

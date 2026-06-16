@@ -6,8 +6,8 @@ import os
 
 import pytest
 
-from plugin import store
-from plugin.store import (
+from cheetahclaws.plugin import store
+from cheetahclaws.plugin.store import (
     PLUGIN_PATH_ENV,
     _dep_distribution_name,
     _external_plugin_dirs,
@@ -18,7 +18,7 @@ from plugin.store import (
     get_plugin,
     list_plugins,
 )
-from plugin.types import PluginScope
+from cheetahclaws.plugin.types import PluginScope
 
 
 @pytest.fixture(autouse=True)

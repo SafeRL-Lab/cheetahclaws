@@ -145,31 +145,33 @@ def test_every_top_level_package_dir_reachable_by_find():
 
 # These imports must always succeed in a healthy install. If any of them
 # raise ImportError, the user's `pip install .` produced a broken wheel.
+# Everything now lives under the single ``cheetahclaws`` package — that is the
+# whole point of the layout (no generic top-level name to be shadowed).
 _REQUIRED_IMPORTS = [
-    "prompts",
-    "prompts.select",
-    "memory",
-    "memory.context",
-    "ui",
-    "web",
-    "bridges",
-    "commands",
-    "research",
-    "research.lab",
-    "modular",
-    "modular.trading",
-    "modular.trading.data",
-    "modular.trading.engines",
-    "modular.trading.agents",
-    "modular.trading.alt_data",
-    "modular.trading.broker",
-    "modular.trading.discover",
-    "modular.trading.ml",
-    "modular.video",
-    "modular.voice",
-    "context",        # top-level py-module
-    "providers",
     "cheetahclaws",
+    "cheetahclaws.prompts",
+    "cheetahclaws.prompts.select",
+    "cheetahclaws.memory",
+    "cheetahclaws.memory.context",
+    "cheetahclaws.ui",
+    "cheetahclaws.web",
+    "cheetahclaws.bridges",
+    "cheetahclaws.commands",
+    "cheetahclaws.research",
+    "cheetahclaws.research.lab",
+    "cheetahclaws.modular",
+    "cheetahclaws.modular.trading",
+    "cheetahclaws.modular.trading.data",
+    "cheetahclaws.modular.trading.engines",
+    "cheetahclaws.modular.trading.agents",
+    "cheetahclaws.modular.trading.alt_data",
+    "cheetahclaws.modular.trading.broker",
+    "cheetahclaws.modular.trading.discover",
+    "cheetahclaws.modular.trading.ml",
+    "cheetahclaws.modular.video",
+    "cheetahclaws.modular.voice",
+    "cheetahclaws.context",
+    "cheetahclaws.providers",
 ]
 
 
@@ -190,4 +192,4 @@ def test_required_module_imports(modname):
 
 def test_prompts_exports_pick_base_prompt():
     """The exact symbol context.py needs (failing line in issue #97)."""
-    from prompts import pick_base_prompt, load_fragment  # noqa: F401
+    from cheetahclaws.prompts import pick_base_prompt, load_fragment  # noqa: F401

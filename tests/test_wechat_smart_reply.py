@@ -19,8 +19,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from bridges import wechat_smart_reply as sr
-from bridges import wechat_smart_reply_store as srs
+from cheetahclaws.bridges import wechat_smart_reply as sr
+from cheetahclaws.bridges import wechat_smart_reply_store as srs
 
 
 # ── Identity heuristics ────────────────────────────────────────────────────
@@ -855,7 +855,7 @@ def test_contacts_reload_on_mtime_change(tmp_path):
 
 
 def test_config_defaults_present():
-    from config import DEFAULTS
+    from cheetahclaws.config import DEFAULTS
     assert DEFAULTS["wechat_smart_reply"] is False
     assert DEFAULTS["wechat_smart_reply_whitelist"] == []
     assert DEFAULTS["wechat_smart_reply_groups"] is False

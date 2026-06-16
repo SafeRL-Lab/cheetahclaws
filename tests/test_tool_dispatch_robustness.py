@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-from tools import execute_tool
+from cheetahclaws.tools import execute_tool
 
 
 @pytest.mark.parametrize("name,empty_inputs,must_contain", [

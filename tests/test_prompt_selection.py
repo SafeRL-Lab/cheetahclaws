@@ -16,8 +16,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-from prompts import pick_base_prompt, load_fragment
-from prompts import select as _select
+from cheetahclaws.prompts import pick_base_prompt, load_fragment
+from cheetahclaws.prompts import select as _select
 
 
 def _default_text() -> str:

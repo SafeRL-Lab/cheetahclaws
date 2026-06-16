@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     AgentState,
     KernelStore,
     LedgerStore,

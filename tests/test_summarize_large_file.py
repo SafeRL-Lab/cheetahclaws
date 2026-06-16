@@ -15,8 +15,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-import tools.files as f
-from tools.files import (
+import cheetahclaws.tools.files as f
+from cheetahclaws.tools.files import (
     _estimate_text_tokens,
     _read_file_for_summary,
     _plan_chunks,
@@ -147,9 +147,9 @@ def test_summarize_large_file_does_map_then_reduce(tmp_path, monkeypatch):
     Number of map calls matches the chunk planner's output."""
     # Force a small model context via monkeypatching so the test is robust
     # against future changes to provider context limits in compaction.py.
-    import tools.files as _f
+    import cheetahclaws.tools.files as _f
     monkeypatch.setattr(
-        "compaction.get_context_limit", lambda m: 32768,
+        "cheetahclaws.compaction.get_context_limit", lambda m: 32768,
     )
 
     p = tmp_path / "huge.txt"
@@ -197,7 +197,7 @@ def test_summarize_missing_required_param():
 
 
 def test_summarize_large_file_tool_registered():
-    import tool_registry
+    from cheetahclaws import tool_registry
     tool = tool_registry.get_tool("SummarizeLargeFile")
     assert tool is not None
     assert tool.read_only is True
@@ -207,7 +207,7 @@ def test_summarize_large_file_tool_registered():
 def test_summarize_large_file_schema_advertises_chunking():
     """The tool description must mention map-reduce / chunking so a model
     reading the tool list knows when to pick this tool over Read."""
-    import tool_registry
+    from cheetahclaws import tool_registry
     tool = tool_registry.get_tool("SummarizeLargeFile")
     desc = tool.schema["description"].lower()
     # Key marketing the model must see

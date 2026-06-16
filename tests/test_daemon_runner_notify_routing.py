@@ -41,8 +41,8 @@ _NOTIFY_RUNNER = textwrap.dedent("""
 
 
 def _spawn_inline_notify_runner(name="notifier"):
-    from daemon import runner_supervisor as rs
-    from daemon.runner_ipc import JsonLineChannel
+    from cheetahclaws.daemon import runner_supervisor as rs
+    from cheetahclaws.daemon.runner_ipc import JsonLineChannel
 
     proc = subprocess.Popen(
         [sys.executable, "-u", "-c", _NOTIFY_RUNNER],
@@ -69,8 +69,8 @@ def _spawn_inline_notify_runner(name="notifier"):
 class TestNotifyRouting(unittest.TestCase):
 
     def setUp(self):
-        from daemon import runner_supervisor as rs
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         with rs._handles_lock:
             rs._handles.clear()
         with bs._handles_lock:
@@ -82,8 +82,8 @@ class TestNotifyRouting(unittest.TestCase):
             bs._handles.clear()
 
     def tearDown(self):
-        from daemon import runner_supervisor as rs
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         for h in list(rs._handles.values()):
             try:
                 h.proc.kill()
@@ -96,8 +96,8 @@ class TestNotifyRouting(unittest.TestCase):
 
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_notify_forwards_to_bridge_supervisor(self):
-        from daemon import runner_supervisor as rs
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import bridge_supervisor as bs
 
         calls: list[tuple[str, str]] = []
         def fake_notify(kind, text):
@@ -122,8 +122,8 @@ class TestNotifyRouting(unittest.TestCase):
         """A runner that omits the ``bridge`` field defaults to ``*``
         broadcast, so the originator's bridge doesn't have to be
         threaded all the way down to the agent template."""
-        from daemon import runner_supervisor as rs
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import bridge_supervisor as bs
 
         # Runner variant without "bridge" key.
         source = textwrap.dedent("""
@@ -138,7 +138,7 @@ class TestNotifyRouting(unittest.TestCase):
                     sys.exit(0)
         """).strip()
 
-        from daemon.runner_ipc import JsonLineChannel
+        from cheetahclaws.daemon.runner_ipc import JsonLineChannel
         proc = subprocess.Popen(
             [sys.executable, "-u", "-c", source],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -173,8 +173,8 @@ class TestNotifyRouting(unittest.TestCase):
 
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_notify_with_empty_text_is_skipped(self):
-        from daemon import runner_supervisor as rs
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import bridge_supervisor as bs
 
         source = textwrap.dedent("""
             import json, sys
@@ -189,7 +189,7 @@ class TestNotifyRouting(unittest.TestCase):
                     sys.exit(0)
         """).strip()
 
-        from daemon.runner_ipc import JsonLineChannel
+        from cheetahclaws.daemon.runner_ipc import JsonLineChannel
         proc = subprocess.Popen(
             [sys.executable, "-u", "-c", source],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,

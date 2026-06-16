@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     AgentState,
     Kernel,
     KernelStore,
@@ -140,7 +140,7 @@ def test_make_worker_after_make_supervisor(tmp_path):
         sup = k.make_supervisor()
         worker = k.make_worker(
             argv_factory=lambda e: [
-                sys.executable, "-m", "kernel.runner.runner_main",
+                sys.executable, "-m", "cheetahclaws.kernel.runner.runner_main",
             ],
             max_concurrent=1,
         )
@@ -156,7 +156,7 @@ def test_close_stops_worker(tmp_path):
     k = Kernel.open(tmp_path / "kernel.db")
     worker = k.make_worker(
         argv_factory=lambda e: [
-            sys.executable, "-m", "kernel.runner.runner_main",
+            sys.executable, "-m", "cheetahclaws.kernel.runner.runner_main",
         ],
     )
     worker.start()
@@ -172,9 +172,9 @@ def test_attach_to_daemon_registers_methods(tmp_path):
     daemon's RPC registry."""
     import socket
     import uuid
-    from daemon import events as _events
-    from daemon.server import make_tcp_server
-    from kernel import verify_contract
+    from cheetahclaws.daemon import events as _events
+    from cheetahclaws.daemon.server import make_tcp_server
+    from cheetahclaws.kernel import verify_contract
 
     _events.reset_bus_for_tests()
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import quota
-from quota import QuotaExceeded, check_quota, record_usage, get_usage, reset_session
+from cheetahclaws import quota
+from cheetahclaws.quota import QuotaExceeded, check_quota, record_usage, get_usage, reset_session
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
@@ -41,7 +41,7 @@ class TestCheckQuota:
         self.tmpdir = tempfile.mkdtemp()
         self.sid    = "test_sess"
         _reset_session(self.sid)
-        self._patcher = patch("quota._quota_dir", return_value=Path(self.tmpdir))
+        self._patcher = patch("cheetahclaws.quota._quota_dir", return_value=Path(self.tmpdir))
         self._patcher.start()
 
     def teardown_method(self):
@@ -113,7 +113,7 @@ class TestRecordUsage:
         self.tmpdir = tempfile.mkdtemp()
         self.sid    = "rec_sess"
         _reset_session(self.sid)
-        self._patcher = patch("quota._quota_dir", return_value=Path(self.tmpdir))
+        self._patcher = patch("cheetahclaws.quota._quota_dir", return_value=Path(self.tmpdir))
         self._patcher.start()
 
     def teardown_method(self):
@@ -166,7 +166,7 @@ class TestGetUsage:
         self.tmpdir = tempfile.mkdtemp()
         self.sid    = "get_sess"
         _reset_session(self.sid)
-        self._patcher = patch("quota._quota_dir", return_value=Path(self.tmpdir))
+        self._patcher = patch("cheetahclaws.quota._quota_dir", return_value=Path(self.tmpdir))
         self._patcher.start()
 
     def teardown_method(self):
@@ -194,7 +194,7 @@ class TestResetSession:
         self.tmpdir = tempfile.mkdtemp()
         self.sid    = "rst_sess"
         _reset_session(self.sid)
-        self._patcher = patch("quota._quota_dir", return_value=Path(self.tmpdir))
+        self._patcher = patch("cheetahclaws.quota._quota_dir", return_value=Path(self.tmpdir))
         self._patcher.start()
 
     def teardown_method(self):
@@ -224,7 +224,7 @@ class TestResetSession:
 class TestThreadSafety:
     def setup_method(self):
         self.tmpdir = tempfile.mkdtemp()
-        self._patcher = patch("quota._quota_dir", return_value=Path(self.tmpdir))
+        self._patcher = patch("cheetahclaws.quota._quota_dir", return_value=Path(self.tmpdir))
         self._patcher.start()
 
     def teardown_method(self):

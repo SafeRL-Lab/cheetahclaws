@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from skill.loader import _iter_skill_files
+from cheetahclaws.skill.loader import _iter_skill_files
 
 
 class TestIterSkillFiles:

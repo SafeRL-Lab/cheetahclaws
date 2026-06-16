@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     KernelStore,
     LedgerEntry,
     LedgerExists,

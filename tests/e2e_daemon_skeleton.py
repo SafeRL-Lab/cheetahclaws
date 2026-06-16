@@ -42,7 +42,7 @@ def daemon_proc(tmp_path):
     env["XDG_RUNTIME_DIR"] = str(tmp_path / "xdg")
 
     proc = subprocess.Popen(
-        [sys.executable, "cheetahclaws.py", "serve",
+        [sys.executable, "-m", "cheetahclaws", "serve",
          "--listen", "tcp://127.0.0.1:0"],
         cwd=str(REPO_ROOT),
         env=env,
@@ -99,7 +99,7 @@ def daemon_proc(tmp_path):
 
 def _post_rpc(address: str, token: str, method: str,
               params=None, *, timeout=3.0):
-    from daemon import API_VERSION, API_VERSION_HEADER
+    from cheetahclaws.daemon import API_VERSION, API_VERSION_HEADER
     host, port_s = address.rsplit(":", 1)
     body_obj = {"jsonrpc": "2.0", "id": 1, "method": method}
     if params is not None:
@@ -125,7 +125,7 @@ def _get(address: str, path: str, *, token: str | None = None,
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
     if api_version:
-        from daemon import API_VERSION, API_VERSION_HEADER
+        from cheetahclaws.daemon import API_VERSION, API_VERSION_HEADER
         headers[API_VERSION_HEADER] = API_VERSION
     conn = http.client.HTTPConnection(host, int(port_s), timeout=timeout)
     try:
@@ -142,7 +142,7 @@ def _run_subcommand(args: list[str], home: Path, *, timeout=10.0):
     env["USERPROFILE"] = str(home)
     env["XDG_RUNTIME_DIR"] = str(home / "xdg")
     proc = subprocess.run(
-        [sys.executable, "cheetahclaws.py", *args],
+        [sys.executable, "-m", "cheetahclaws", *args],
         cwd=str(REPO_ROOT), env=env, timeout=timeout,
         capture_output=True,
     )
@@ -230,7 +230,7 @@ def test_metrics_with_token_returns_real_payload(daemon_proc):
 # ── SSE ────────────────────────────────────────────────────────────────────
 
 def test_events_stream_emits_heartbeat(daemon_proc):
-    from daemon import API_VERSION, API_VERSION_HEADER
+    from cheetahclaws.daemon import API_VERSION, API_VERSION_HEADER
     _proc, _home, address, token = daemon_proc
     host, port_s = address.rsplit(":", 1)
     conn = http.client.HTTPConnection(host, int(port_s), timeout=25.0)
@@ -313,7 +313,7 @@ def _start_daemon(home: Path, *, wait_s: float = 10.0) -> tuple[subprocess.Popen
     env["USERPROFILE"] = str(home)
     env["XDG_RUNTIME_DIR"] = str(home / "xdg")
     proc = subprocess.Popen(
-        [sys.executable, "cheetahclaws.py", "serve",
+        [sys.executable, "-m", "cheetahclaws", "serve",
          "--listen", "tcp://127.0.0.1:0"],
         cwd=str(REPO_ROOT), env=env,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -421,7 +421,7 @@ def test_events_persist_in_sqlite_across_daemon_restart(tmp_path):
     This is the headline F-2 user-visible win for SSE clients
     (Web UI / future bridges) that survive daemon restarts.
     """
-    from daemon import API_VERSION, API_VERSION_HEADER
+    from cheetahclaws.daemon import API_VERSION, API_VERSION_HEADER
 
     # Boot A, publish a few events via echo.ping.
     proc1, addr1, token1 = _start_daemon(tmp_path)

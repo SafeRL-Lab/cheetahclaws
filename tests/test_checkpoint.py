@@ -26,14 +26,14 @@ def tmp_home(tmp_path):
     """Redirect ~/.nano_claude/checkpoints to a temp directory."""
     ckpt_root = tmp_path / ".nano_claude" / "checkpoints"
     ckpt_root.mkdir(parents=True)
-    with patch("checkpoint.store._checkpoints_root", return_value=ckpt_root):
+    with patch("cheetahclaws.checkpoint.store._checkpoints_root", return_value=ckpt_root):
         yield tmp_path, ckpt_root
 
 
 @pytest.fixture(autouse=True)
 def reset_versions():
     """Reset file version counters between tests."""
-    from checkpoint.store import reset_file_versions
+    from cheetahclaws.checkpoint.store import reset_file_versions
     reset_file_versions()
     yield
     reset_file_versions()
@@ -43,7 +43,7 @@ def reset_versions():
 
 class TestTypes:
     def test_file_backup_roundtrip(self):
-        from checkpoint.types import FileBackup
+        from cheetahclaws.checkpoint.types import FileBackup
         fb = FileBackup(backup_filename="abc123@v1", version=1, backup_time="2024-01-01T00:00:00")
         d = fb.to_dict()
         fb2 = FileBackup.from_dict(d)
@@ -52,14 +52,14 @@ class TestTypes:
         assert fb2.backup_time == fb.backup_time
 
     def test_file_backup_none_filename(self):
-        from checkpoint.types import FileBackup
+        from cheetahclaws.checkpoint.types import FileBackup
         fb = FileBackup(backup_filename=None, version=0, backup_time="2024-01-01T00:00:00")
         d = fb.to_dict()
         fb2 = FileBackup.from_dict(d)
         assert fb2.backup_filename is None
 
     def test_snapshot_roundtrip(self):
-        from checkpoint.types import Snapshot, FileBackup
+        from cheetahclaws.checkpoint.types import Snapshot, FileBackup
         fb = FileBackup(backup_filename="abc@v1", version=1, backup_time="2024-01-01")
         snap = Snapshot(
             id=1, session_id="test123", created_at="2024-01-01",
@@ -81,7 +81,7 @@ class TestTypes:
 
 class TestStore:
     def test_track_file_edit_existing_file(self, tmp_home, tmp_path):
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
         # Create a file to back up
         test_file = tmp_path / "hello.py"
         test_file.write_text("print('hello')", encoding="utf-8")
@@ -97,19 +97,19 @@ class TestStore:
         assert backup_file.read_text(encoding="utf-8") == "print('hello')"
 
     def test_track_file_edit_nonexistent(self, tmp_home, tmp_path):
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
         result = store.track_file_edit("sess1", str(tmp_path / "nope.py"))
         assert result is None
 
     def test_track_file_edit_large_file_skipped(self, tmp_home, tmp_path):
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
         big_file = tmp_path / "big.bin"
         big_file.write_bytes(b"x" * (2 * 1024 * 1024))  # 2MB
         result = store.track_file_edit("sess1", str(big_file))
         assert result is None
 
     def test_make_snapshot_basic(self, tmp_home, tmp_path):
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
         state = FakeState(
             messages=[{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}],
             turn_count=1,
@@ -123,7 +123,7 @@ class TestStore:
         assert snap.message_index == 2
 
     def test_make_snapshot_incremental(self, tmp_home, tmp_path):
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
         test_file = tmp_path / "code.py"
         test_file.write_text("v1", encoding="utf-8")
 
@@ -147,7 +147,7 @@ class TestStore:
         assert snap2.file_backups[str(test_file)].backup_filename == snap1.file_backups[str(test_file)].backup_filename
 
     def test_list_snapshots(self, tmp_home):
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
         state = FakeState(messages=[], turn_count=0)
         store.make_snapshot("sess1", state, {}, "one")
         store.make_snapshot("sess1", state, {}, "two")
@@ -157,7 +157,7 @@ class TestStore:
         assert snaps[1]["id"] == 2
 
     def test_get_snapshot(self, tmp_home):
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
         state = FakeState(messages=[], turn_count=0)
         store.make_snapshot("sess1", state, {}, "test")
         snap = store.get_snapshot("sess1", 1)
@@ -166,7 +166,7 @@ class TestStore:
         assert store.get_snapshot("sess1", 99) is None
 
     def test_rewind_files(self, tmp_home, tmp_path):
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
         test_file = tmp_path / "code.py"
         test_file.write_text("original", encoding="utf-8")
 
@@ -188,7 +188,7 @@ class TestStore:
         assert test_file.read_text(encoding="utf-8") == "original"
 
     def test_rewind_deletes_new_file(self, tmp_home, tmp_path):
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
         new_file = tmp_path / "new.py"
 
         state = FakeState(messages=[], turn_count=0)
@@ -208,8 +208,8 @@ class TestStore:
         assert not new_file.exists()
 
     def test_max_snapshots_sliding_window(self, tmp_home):
-        from checkpoint import store
-        from checkpoint.types import MAX_SNAPSHOTS
+        from cheetahclaws.checkpoint import store
+        from cheetahclaws.checkpoint.types import MAX_SNAPSHOTS
         state = FakeState(messages=[], turn_count=0)
         for i in range(MAX_SNAPSHOTS + 10):
             store.make_snapshot("sess1", state, {}, f"snap {i}")
@@ -217,7 +217,7 @@ class TestStore:
         assert len(snaps) == MAX_SNAPSHOTS
 
     def test_files_changed_since(self, tmp_home, tmp_path):
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
         f1 = tmp_path / "a.py"
         f1.write_text("a", encoding="utf-8")
         f2 = tmp_path / "b.py"
@@ -235,14 +235,14 @@ class TestStore:
         # f1 was not changed after snapshot 1 (it was already in snap 1)
 
     def test_delete_session_checkpoints(self, tmp_home):
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
         state = FakeState(messages=[], turn_count=0)
         store.make_snapshot("sess1", state, {}, "test")
         assert store.delete_session_checkpoints("sess1")
         assert store.list_snapshots("sess1") == []
 
     def test_cleanup_old_sessions(self, tmp_home):
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
         # Create a session dir and make it old
         old_dir = store._session_dir("old_sess")
         old_dir.mkdir(parents=True, exist_ok=True)
@@ -258,7 +258,7 @@ class TestStore:
 
 class TestHooks:
     def test_set_session_and_tracking(self, tmp_home, tmp_path):
-        from checkpoint import hooks, store
+        from cheetahclaws.checkpoint import hooks, store
 
         hooks.set_session("sess_test")
         hooks.reset_tracked()
@@ -276,7 +276,7 @@ class TestHooks:
         assert edits2 == edits
 
     def test_reset_tracked(self, tmp_home, tmp_path):
-        from checkpoint import hooks
+        from cheetahclaws.checkpoint import hooks
 
         hooks.set_session("sess_test2")
         hooks.reset_tracked()  # clear state from previous test
@@ -292,7 +292,7 @@ class TestHooks:
 
     def test_install_hooks_wraps_tools(self):
         """Verify install_hooks wraps Write/Edit/NotebookEdit without error."""
-        from checkpoint import hooks
+        from cheetahclaws.checkpoint import hooks
         # Hooks are already installed by tools.py import, just verify no crash
         # and that the function is idempotent
         hooks._hooks_installed = False
@@ -305,7 +305,7 @@ class TestHooks:
 class TestIntegration:
     def test_write_snapshot_rewind_cycle(self, tmp_home, tmp_path):
         """Simulate: write file → snapshot → modify → rewind → verify restored."""
-        from checkpoint import store, hooks
+        from cheetahclaws.checkpoint import store, hooks
 
         session_id = "integ_test"
         hooks.set_session(session_id)
@@ -364,7 +364,7 @@ class TestIntegration:
 
     def test_initial_snapshot(self, tmp_home):
         """Initial snapshot should be id=1 with empty messages and prompt '(initial state)'."""
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
 
         state = FakeState(messages=[], turn_count=0)
         snap = store.make_snapshot("init_test", state, {}, "(initial state)", tracked_edits=None)
@@ -376,7 +376,7 @@ class TestIntegration:
 
     def test_throttle_skips_when_no_changes(self, tmp_home):
         """Snapshot should be skipped when no files changed and message_index is same."""
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
 
         state = FakeState(messages=[], turn_count=0)
         # Initial snapshot
@@ -391,7 +391,7 @@ class TestIntegration:
 
     def test_throttle_creates_when_messages_grew(self, tmp_home):
         """Snapshot should be created when messages grew even without file changes."""
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
 
         state = FakeState(messages=[], turn_count=0)
         store.make_snapshot("throttle2", state, {}, "(initial state)")
@@ -414,7 +414,7 @@ class TestIntegration:
 
     def test_throttle_conversation_rewind_works(self, tmp_home):
         """After throttled snapshots, conversation rewind via message_index still works."""
-        from checkpoint import store
+        from cheetahclaws.checkpoint import store
 
         state = FakeState(messages=[], turn_count=0)
         # Snap 1: initial

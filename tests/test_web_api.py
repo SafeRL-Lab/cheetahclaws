@@ -60,7 +60,7 @@ def server_url() -> str:
     os.environ["CHEETAHCLAWS_WEB_SECRET"] = "test-secret-do-not-use-in-prod"
     os.environ["CHEETAHCLAWS_LOG_LEVEL"] = "WARNING"  # quiet during tests
 
-    from web.server import start_web_server  # noqa: WPS433
+    from cheetahclaws.web.server import start_web_server  # noqa: WPS433
 
     port = _free_port()
     threading.Thread(
@@ -76,17 +76,17 @@ def server_url() -> str:
 @pytest.fixture(autouse=True)
 def fresh_db():
     """Truncate all tables between tests so each starts empty."""
-    from web.db import init_db, _engine  # noqa: WPS433
-    from web.models import Base
+    from cheetahclaws.web.db import init_db, _engine  # noqa: WPS433
+    from cheetahclaws.web.models import Base
     init_db()
     # _engine is a module global set by init_db
-    from web import db as _dbmod
+    from cheetahclaws.web import db as _dbmod
     eng = _dbmod._engine
     assert eng is not None
     Base.metadata.drop_all(eng)
     Base.metadata.create_all(eng)
     # Also wipe the in-memory ChatSession cache so stale objects don't survive
-    from web import api as _apimod
+    from cheetahclaws.web import api as _apimod
     _apimod._chat_sessions.clear()
     yield
 
@@ -473,7 +473,7 @@ def test_reap_stale_chat_sessions_passes_user_id(server_url):
                      json={"prompt": "", "session_id": ""}).json()["session_id"]
         # Force this session into the "stale + idle" state by rewinding
         # its last_active far enough that is_stale() returns True.
-        from web import api as _apimod
+        from cheetahclaws.web import api as _apimod
         sess = _apimod._chat_sessions.get(sid)
         assert sess is not None, "session should be in the in-memory cache"
         import time as _time
@@ -511,7 +511,7 @@ def test_session_persists_in_db_after_cache_clear(server_url):
                      json={"prompt": "", "session_id": ""}).json()["session_id"]
         c.patch(f"/api/sessions/{sid}", json={"title": "Persistent Title"})
         # Clear in-memory cache (simulates restart)
-        from web import api as _apimod
+        from cheetahclaws.web import api as _apimod
         _apimod._chat_sessions.clear()
         # Listing still works (DB-backed)
         ls = c.get("/api/sessions").json()["sessions"]

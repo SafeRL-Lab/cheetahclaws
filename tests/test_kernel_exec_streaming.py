@@ -7,14 +7,14 @@ import time
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     Kernel,
     SandboxPolicy,
     ToolRegistry,
     register_builtin_tools,
 )
-from kernel.tools.exec_tool import exec_handler, register_exec_tool
-from kernel.tools.registry import (
+from cheetahclaws.kernel.tools.exec_tool import exec_handler, register_exec_tool
+from cheetahclaws.kernel.tools.registry import (
     ToolContext,
     ToolInvalidArgs,
     dispatch_tool_call,
@@ -50,7 +50,7 @@ def test_dispatch_passes_on_chunk_into_ctx():
         captured["on_chunk"] = ctx.on_chunk
         return {"ok": True}
 
-    from kernel.tools.registry import Tool, ToolRegistry
+    from cheetahclaws.kernel.tools.registry import Tool, ToolRegistry
 
     reg = ToolRegistry()
     reg.register(Tool(
@@ -252,7 +252,7 @@ def test_exec_streaming_end_to_end(kernel):
     # via -c so we don't need a fixture file.
     driver = (
         "import sys\n"
-        "from kernel.runner.ipc import JsonLineChannel\n"
+        "from cheetahclaws.kernel.runner.ipc import JsonLineChannel\n"
         "ch = JsonLineChannel(sys.stdin.buffer, sys.stdout.buffer)\n"
         "init = ch.recv(timeout=10)\n"
         "ch.send({'op':'ready','pid': init['pid']})\n"

@@ -6,7 +6,7 @@ legal and illegal transitions.
 """
 from __future__ import annotations
 
-from kernel.process import (
+from cheetahclaws.kernel.process import (
     ALLOWED_TRANSITIONS,
     AgentProcess,
     AgentState,

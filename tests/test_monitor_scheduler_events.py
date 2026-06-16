@@ -13,9 +13,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import monitor.store as store
-import monitor.scheduler as scheduler
-from daemon import events, schema
+import cheetahclaws.monitor.store as store
+import cheetahclaws.monitor.scheduler as scheduler
+from cheetahclaws.daemon import events, schema
 
 
 @pytest.fixture(autouse=True)
@@ -59,7 +59,7 @@ def test_run_one_persists_report_to_monitor_reports():
 def test_run_one_records_failed_delivery_in_report():
     store.add_subscription("arxiv", schedule="daily", channels=["telegram"])
     # Force telegram delivery to fail
-    import monitor.scheduler as sched
+    import cheetahclaws.monitor.scheduler as sched
     def _failing_deliver(_report, channels, _config):
         return {ch: "no token" for ch in channels}
     sched.deliver = _failing_deliver
@@ -116,7 +116,7 @@ def test_event_report_id_matches_persisted_row():
 def test_event_carries_error_list_on_partial_failure():
     store.add_subscription("arxiv", schedule="daily",
                             channels=["telegram", "console"])
-    import monitor.scheduler as sched
+    import cheetahclaws.monitor.scheduler as sched
     sched.deliver = lambda _r, channels, _c: {
         "telegram": "no token", "console": ""}
     bus = events.get_bus()

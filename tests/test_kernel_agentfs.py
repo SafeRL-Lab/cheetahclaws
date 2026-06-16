@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     AgentFSStore,
     DEFAULT_MAX_OBJECT_BYTES,
     FsAlreadyExists,

@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     Kernel,
     ToolRegistry,
     register_builtin_tools,
 )
-from kernel.tools.registry import dispatch_tool_call
+from cheetahclaws.kernel.tools.registry import dispatch_tool_call
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────

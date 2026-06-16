@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 def _isolate_schema():
     """Point the schema at a fresh tmp DB. Returns (tmpdir, db_path)."""
-    from daemon import schema
+    from cheetahclaws.daemon import schema
     tmp = tempfile.TemporaryDirectory()
     db = Path(tmp.name) / "test.db"
     schema.set_db_path(db)
@@ -35,7 +35,7 @@ def _isolate_schema():
 
 
 def _restore_schema():
-    from daemon import schema
+    from cheetahclaws.daemon import schema
     if hasattr(schema._local, "conn") and schema._local.conn is not None:
         schema._local.conn.close()
         schema._local.conn = None
@@ -54,14 +54,14 @@ class TestProactiveStateRoundTrip(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_get_returns_defaults_on_empty_table(self):
-        from daemon import proactive_state
+        from cheetahclaws.daemon import proactive_state
         enabled, iv, last = proactive_state.get_state()
         self.assertFalse(enabled)
         self.assertEqual(iv, proactive_state.DEFAULT_INTERVAL_S)
         self.assertEqual(last, 0.0)
 
     def test_set_state_persists_and_round_trips(self):
-        from daemon import proactive_state
+        from cheetahclaws.daemon import proactive_state
         proactive_state.set_state(enabled=True, interval_s=120)
         enabled, iv, last = proactive_state.get_state()
         self.assertTrue(enabled)
@@ -71,14 +71,14 @@ class TestProactiveStateRoundTrip(unittest.TestCase):
         self.assertGreater(last, time.time() - 5)
 
     def test_set_state_rejects_zero_or_negative_interval(self):
-        from daemon import proactive_state
+        from cheetahclaws.daemon import proactive_state
         with self.assertRaises(ValueError):
             proactive_state.set_state(enabled=True, interval_s=0)
         with self.assertRaises(ValueError):
             proactive_state.set_state(enabled=True, interval_s=-5)
 
     def test_disable_keeps_interval(self):
-        from daemon import proactive_state
+        from cheetahclaws.daemon import proactive_state
         proactive_state.set_state(enabled=True, interval_s=999)
         proactive_state.disable()
         enabled, iv, _ = proactive_state.get_state()
@@ -86,7 +86,7 @@ class TestProactiveStateRoundTrip(unittest.TestCase):
         self.assertEqual(iv, 999)
 
     def test_tickle_bumps_last_tick_at(self):
-        from daemon import proactive_state
+        from cheetahclaws.daemon import proactive_state
         proactive_state.set_state(enabled=True, interval_s=60)
         time.sleep(0.05)
         old = proactive_state.get_state()[2]
@@ -97,7 +97,7 @@ class TestProactiveStateRoundTrip(unittest.TestCase):
     def test_corrupt_value_falls_back_to_defaults(self):
         """A malformed row from a prior buggy writer must not crash the
         scheduler — get_state() heals with defaults instead."""
-        from daemon import proactive_state, schema
+        from cheetahclaws.daemon import proactive_state, schema
         conn = schema.get_conn()
         # Manually plant garbage in the interval field.
         conn.execute(
@@ -117,20 +117,20 @@ class TestProactiveStateRoundTrip(unittest.TestCase):
 class TestProactiveScheduler(unittest.TestCase):
     def setUp(self):
         self._tmp, self._db = _isolate_schema()
-        from daemon import events
+        from cheetahclaws.daemon import events
         events.reset_bus_for_tests()
         # Sanity: make sure no scheduler from a prior test is still alive.
-        from daemon import proactive_scheduler as ps
+        from cheetahclaws.daemon import proactive_scheduler as ps
         ps.stop()
 
     def tearDown(self):
-        from daemon import proactive_scheduler as ps
+        from cheetahclaws.daemon import proactive_scheduler as ps
         ps.stop()
         _restore_schema()
         self._tmp.cleanup()
 
     def test_disabled_state_does_not_publish(self):
-        from daemon import (
+        from cheetahclaws.daemon import (
             events, proactive_state, proactive_scheduler as ps,
         )
         proactive_state.set_state(enabled=False, interval_s=1)
@@ -150,7 +150,7 @@ class TestProactiveScheduler(unittest.TestCase):
         self.assertEqual(ticks, [])
 
     def test_enabled_publishes_after_idle_interval(self):
-        from daemon import (
+        from cheetahclaws.daemon import (
             events, proactive_state, proactive_scheduler as ps,
         )
         # Subscribe BEFORE start so we don't miss the first tick.
@@ -189,7 +189,7 @@ class TestProactiveScheduler(unittest.TestCase):
           2. monkey-patching discovery.locate to return a fake foreign pid
           3. confirming a tick still fires
         """
-        from daemon import (
+        from cheetahclaws.daemon import (
             events, proactive_state, proactive_scheduler as ps, discovery,
         )
         proactive_state.set_state(enabled=True, interval_s=1)
@@ -218,7 +218,7 @@ class TestProactiveScheduler(unittest.TestCase):
             events.get_bus().unsubscribe(q)
 
     def test_stop_joins_within_5s(self):
-        from daemon import proactive_scheduler as ps
+        from cheetahclaws.daemon import proactive_scheduler as ps
         ps.start(owned_by_daemon=True)
         t0 = time.monotonic()
         self.assertTrue(ps.stop())
@@ -227,7 +227,7 @@ class TestProactiveScheduler(unittest.TestCase):
         self.assertFalse(ps.is_running())
 
     def test_double_start_returns_false(self):
-        from daemon import proactive_scheduler as ps
+        from cheetahclaws.daemon import proactive_scheduler as ps
         try:
             self.assertTrue(ps.start(owned_by_daemon=True))
             self.assertFalse(ps.start(owned_by_daemon=True))
@@ -243,18 +243,18 @@ class TestProactiveRpc(unittest.TestCase):
 
     def setUp(self):
         self._tmp, self._db = _isolate_schema()
-        from daemon import events
+        from cheetahclaws.daemon import events
         events.reset_bus_for_tests()
 
     def tearDown(self):
-        from daemon import proactive_scheduler as ps
+        from cheetahclaws.daemon import proactive_scheduler as ps
         ps.stop()
         _restore_schema()
         self._tmp.cleanup()
 
     def _registry(self):
-        from daemon import proactive_methods
-        from daemon.rpc import RpcRegistry
+        from cheetahclaws.daemon import proactive_methods
+        from cheetahclaws.daemon.rpc import RpcRegistry
 
         class _FakeState:
             config = {}
@@ -264,7 +264,7 @@ class TestProactiveRpc(unittest.TestCase):
         return reg
 
     def _call(self, reg, method, params=None):
-        from daemon.rpc import CallContext
+        from cheetahclaws.daemon.rpc import CallContext
         envelope = {"jsonrpc": "2.0", "id": 1, "method": method,
                     "params": params or {}}
         ctx = CallContext(client_id="t", transport="unix", api_version="0")
@@ -310,7 +310,7 @@ class TestProactiveRpc(unittest.TestCase):
         self.assertEqual(err["code"], -32602)
 
     def test_tickle_bumps_last_tick_at(self):
-        from daemon import proactive_state
+        from cheetahclaws.daemon import proactive_state
         reg = self._registry()
         proactive_state.set_state(enabled=True, interval_s=300)
         time.sleep(0.05)
@@ -320,7 +320,7 @@ class TestProactiveRpc(unittest.TestCase):
         self.assertGreater(result["last_tick_at"], time.time() - 5)
 
     def test_get_reports_scheduler_state(self):
-        from daemon import proactive_scheduler as ps
+        from cheetahclaws.daemon import proactive_scheduler as ps
         reg = self._registry()
         try:
             ps.start(owned_by_daemon=True)
@@ -342,7 +342,7 @@ class TestReplStepAside(unittest.TestCase):
     full loop is timing-sensitive and covered by integration testing."""
 
     def test_foreign_daemon_helper_returns_false_when_none(self):
-        from daemon import discovery
+        from cheetahclaws.daemon import discovery
         orig = discovery.locate
         discovery.locate = lambda: None
         try:
@@ -354,7 +354,7 @@ class TestReplStepAside(unittest.TestCase):
             discovery.locate = orig
 
     def test_foreign_daemon_helper_returns_true_for_other_pid(self):
-        from daemon import discovery
+        from cheetahclaws.daemon import discovery
         orig = discovery.locate
         discovery.locate = lambda: {"pid": 1, "address": "x:0"}
         try:
@@ -364,7 +364,7 @@ class TestReplStepAside(unittest.TestCase):
             discovery.locate = orig
 
     def test_foreign_daemon_helper_returns_false_for_own_pid(self):
-        from daemon import discovery
+        from cheetahclaws.daemon import discovery
         orig = discovery.locate
         discovery.locate = lambda: {"pid": os.getpid(), "address": "x:0"}
         try:

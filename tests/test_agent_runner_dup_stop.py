@@ -17,8 +17,8 @@ from typing import Iterable
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import agent_runner
-from agent_runner import AgentRunner, _normalize_summary
+from cheetahclaws import agent_runner
+from cheetahclaws.agent_runner import AgentRunner, _normalize_summary
 
 
 # ── _normalize_summary unit tests ────────────────────────────────────────
@@ -72,7 +72,7 @@ def _fake_agent_run_factory(text_per_iter: Iterable[str]):
     """Build an `agent.run` replacement that yields the next canned text on
     every invocation. Each canned text becomes one TextChunk.
     """
-    from agent import TextChunk
+    from cheetahclaws.agent import TextChunk
 
     iter_texts = iter(text_per_iter)
 
@@ -109,7 +109,7 @@ class TestStagnationStop:
                                   dup_limit=3, max_seconds=5.0):
         """Helper: instantiate runner, patch agent.run, run loop in thread,
         wait until it stops or timeout, return runner."""
-        import agent
+        from cheetahclaws import agent
         runner = _build_runner(tmp_path, dup_limit=dup_limit, interval=0.0)
         monkeypatch.setattr(agent, "run", _fake_agent_run_factory(outputs))
         runner.start()

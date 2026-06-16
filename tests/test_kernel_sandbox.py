@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     SANDBOX_DEFAULT,
     SANDBOX_OFF,
     SANDBOX_STRICT,

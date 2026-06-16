@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     AgentState,
     KernelStore,
 )
-from kernel.errors import InvalidPayload
-from kernel.store import (
+from cheetahclaws.kernel.errors import InvalidPayload
+from cheetahclaws.kernel.store import (
     EV_PROCESS_RECOVERED,
     RECOVERY_MARK_DEAD,
     RECOVERY_SUSPEND,

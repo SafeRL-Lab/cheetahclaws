@@ -91,8 +91,8 @@ def _spawn_inline_runner(name, source, *, init_payload=None,
                          originator=""):
     """Bypass start() and build a RunnerHandle on top of a -c subprocess,
     mirroring the helper used in test_daemon_runner_supervisor.py."""
-    from daemon import runner_supervisor
-    from daemon.runner_ipc import JsonLineChannel
+    from cheetahclaws.daemon import runner_supervisor
+    from cheetahclaws.daemon.runner_ipc import JsonLineChannel
 
     proc = subprocess.Popen(
         [sys.executable, "-u", "-c", source],
@@ -121,7 +121,7 @@ def _spawn_inline_runner(name, source, *, init_payload=None,
 
 
 def _stop_and_cleanup(name):
-    from daemon import runner_supervisor
+    from cheetahclaws.daemon import runner_supervisor
     runner_supervisor.stop(name, timeout_s=3.0)
 
 
@@ -132,7 +132,7 @@ class TestStoreOnAnswerCallback(unittest.TestCase):
     """The store's new on_answer hook is what makes routing possible."""
 
     def test_answer_invokes_callback_with_request(self):
-        from daemon import events, permission
+        from cheetahclaws.daemon import events, permission
         events.reset_bus_for_tests()
         store = permission.PermissionStore()
         seen: list = []
@@ -146,7 +146,7 @@ class TestStoreOnAnswerCallback(unittest.TestCase):
         self.assertEqual(seen[0].answer, {"approve": True})
 
     def test_callback_exception_does_not_propagate(self):
-        from daemon import events, permission
+        from cheetahclaws.daemon import events, permission
         events.reset_bus_for_tests()
         store = permission.PermissionStore()
         def _boom(_r):
@@ -162,7 +162,7 @@ class TestStoreOnAnswerCallback(unittest.TestCase):
             store.answer(req.request_id, "alice", {"approve": False})
 
     def test_janitor_timeout_fires_callback_with_deny_answer(self):
-        from daemon import events, permission
+        from cheetahclaws.daemon import events, permission
         events.reset_bus_for_tests()
         store = permission.PermissionStore()
         store.start_janitor()
@@ -196,7 +196,7 @@ class TestSupervisorPermissionRouting(unittest.TestCase):
         """Back-compat: a runner started with auto_approve=True keeps
         seeing instant grants. PermissionStore is bypassed even when one
         is wired in."""
-        from daemon import events, permission
+        from cheetahclaws.daemon import events, permission
         events.reset_bus_for_tests()
         store = permission.PermissionStore()
         store.start_janitor()
@@ -229,7 +229,7 @@ class TestSupervisorPermissionRouting(unittest.TestCase):
         """Slow path: with auto_approve=False + a store, the supervisor
         opens a pending request, the originator calls store.answer(),
         and the runner sees granted=True via permission_response."""
-        from daemon import events, permission
+        from cheetahclaws.daemon import events, permission
         events.reset_bus_for_tests()
         store = permission.PermissionStore()
         store.start_janitor()
@@ -287,7 +287,7 @@ class TestSupervisorPermissionRouting(unittest.TestCase):
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_originator_denies_routes_deny_back_to_runner(self):
         """Same flow, but the originator returns ``{"approve": False}``."""
-        from daemon import events, permission
+        from cheetahclaws.daemon import events, permission
         events.reset_bus_for_tests()
         store = permission.PermissionStore()
         store.start_janitor()
@@ -330,7 +330,7 @@ class TestSupervisorPermissionRouting(unittest.TestCase):
         """The store's existing NotOriginator guard still applies — a
         stranger cannot deliver a permission_response on behalf of the
         runner."""
-        from daemon import events, permission
+        from cheetahclaws.daemon import events, permission
         events.reset_bus_for_tests()
         store = permission.PermissionStore()
         store.start_janitor()
@@ -368,7 +368,7 @@ class TestSupervisorPermissionRouting(unittest.TestCase):
         """If no originator answers, the janitor's timeout path must
         still fire on_answer with approve=False so the runner unblocks
         instead of waiting forever."""
-        from daemon import events, permission
+        from cheetahclaws.daemon import events, permission
         events.reset_bus_for_tests()
         store = permission.PermissionStore()
         # The supervisor calls store.create() without an explicit
@@ -444,7 +444,7 @@ class TestSupervisorPermissionRouting(unittest.TestCase):
 
             # Give the reader thread a moment to drain.
             deadline = time.monotonic() + 2.0
-            from daemon import runner_supervisor as rs
+            from cheetahclaws.daemon import runner_supervisor as rs
             while time.monotonic() < deadline:
                 # If the runner exited or status changed, that's our cue.
                 if not handle.is_alive():
@@ -466,8 +466,8 @@ class TestAgentStartWiresPermissionStore(unittest.TestCase):
     runner_supervisor.start to capture the kwargs."""
 
     def test_agent_start_forwards_originator_and_store(self):
-        from daemon import agent_methods, permission
-        from daemon.rpc import RpcRegistry, CallContext
+        from cheetahclaws.daemon import agent_methods, permission
+        from cheetahclaws.daemon.rpc import RpcRegistry, CallContext
 
         class _FakeState:
             def __init__(self):
@@ -478,7 +478,7 @@ class TestAgentStartWiresPermissionStore(unittest.TestCase):
 
         # Imported lazily so this test file works even before F-4 #3
         # landed (i.e. RestartPolicy didn't yet exist).
-        from daemon import runner_supervisor as _rs_for_handle
+        from cheetahclaws.daemon import runner_supervisor as _rs_for_handle
         class _FakeHandle:
             name = "x"; run_id = "r"; pid = 1; status = "running"
             iteration = 0; started_at = 0.0; template_name = "demo"
@@ -498,7 +498,7 @@ class TestAgentStartWiresPermissionStore(unittest.TestCase):
         reg = RpcRegistry()
         agent_methods.register(reg, state)
 
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         with mock.patch.object(rs, "start", side_effect=_fake_start):
             envelope = {
                 "jsonrpc": "2.0", "id": 1, "method": "agent.start",

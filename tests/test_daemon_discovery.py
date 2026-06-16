@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from daemon import discovery
+from cheetahclaws.daemon import discovery
 
 
 # ── make_info ──────────────────────────────────────────────────────────────
@@ -170,6 +170,6 @@ def test_locate_clears_stale_file_when_pid_dead(tmp_path: Path, monkeypatch):
 # ── default path ───────────────────────────────────────────────────────────
 
 def test_get_default_path_lives_under_config_dir():
-    from config import CONFIG_DIR
+    from cheetahclaws.config import CONFIG_DIR
     p = discovery.get_default_path()
     assert p == CONFIG_DIR / "daemon.json"

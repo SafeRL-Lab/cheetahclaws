@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from kernel import (
+from cheetahclaws.kernel import (
     AgentFSStore,
     AgentState,
     CapabilityStore,
@@ -18,7 +18,7 @@ from kernel import (
     SchedulerStore,
     ScheduleSpec,
 )
-from kernel.errors import InvalidPayload, UnknownPid
+from cheetahclaws.kernel.errors import InvalidPayload, UnknownPid
 
 
 @pytest.fixture
@@ -258,7 +258,7 @@ def test_prometheus_text_passes_basic_regex_contract(stores):
 
 def test_prometheus_text_label_escaping():
     """Make sure label-value escaping handles backslashes and quotes."""
-    from kernel.observability import _esc_label
+    from cheetahclaws.kernel.observability import _esc_label
     assert _esc_label('plain') == 'plain'
     assert _esc_label('with"quote') == 'with\\"quote'
     assert _esc_label('with\\back') == 'with\\\\back'

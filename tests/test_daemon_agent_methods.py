@@ -33,15 +33,15 @@ class _FakeDaemonState:
 
 def _build_registry(state=None):
     """Fresh RpcRegistry with agent.* methods registered."""
-    from daemon.rpc import RpcRegistry
-    from daemon import agent_methods
+    from cheetahclaws.daemon.rpc import RpcRegistry
+    from cheetahclaws.daemon import agent_methods
     reg = RpcRegistry()
     agent_methods.register(reg, state or _FakeDaemonState())
     return reg
 
 
 def _ctx():
-    from daemon.rpc import CallContext
+    from cheetahclaws.daemon.rpc import CallContext
     return CallContext(client_id="test", transport="unix", api_version="0")
 
 
@@ -107,7 +107,7 @@ class TestListWhenEmpty(unittest.TestCase):
 
     def test_list_returns_empty(self):
         # Clear the registry first in case another test left something.
-        from daemon import runner_supervisor
+        from cheetahclaws.daemon import runner_supervisor
         for h in list(runner_supervisor.list_all()):
             runner_supervisor._unregister(h.name)
         reg = _build_registry()
@@ -145,8 +145,8 @@ class TestStopRunningEndToEnd(unittest.TestCase):
     @unittest.skipIf(pytestmark_skipif_windows, "POSIX only")
     def test_list_and_stop_round_trip(self):
         import textwrap, subprocess, threading
-        from daemon import runner_supervisor as rs
-        from daemon.runner_ipc import JsonLineChannel
+        from cheetahclaws.daemon import runner_supervisor as rs
+        from cheetahclaws.daemon.runner_ipc import JsonLineChannel
 
         source = textwrap.dedent("""
             import json, sys

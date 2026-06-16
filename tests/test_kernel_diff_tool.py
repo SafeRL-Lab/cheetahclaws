@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import pytest
 
-from kernel.tools.diff_tool import (
+from cheetahclaws.kernel.tools.diff_tool import (
     DEFAULT_DIFF_CAP_BYTES,
     DIFF_TOOL,
     diff_handler,
 )
-from kernel.tools.registry import (
+from cheetahclaws.kernel.tools.registry import (
     ToolContext,
     ToolFsDenied,
     ToolInvalidArgs,
@@ -177,7 +177,7 @@ def test_truncation(monkeypatch):
     """Force a tiny cap to verify truncation marker."""
     ctx = ToolContext(pid=1, kernel=None)
     monkeypatch.setattr(
-        "kernel.tools.diff_tool.DEFAULT_DIFF_CAP_BYTES",
+        "cheetahclaws.kernel.tools.diff_tool.DEFAULT_DIFF_CAP_BYTES",
         200,
     )
     big_a = "\n".join(f"line{i}" for i in range(500)) + "\n"
@@ -191,7 +191,7 @@ def test_truncation(monkeypatch):
 
 
 def test_diff_tool_registered_by_register_builtin_tools():
-    from kernel.tools.builtin import register_builtin_tools
+    from cheetahclaws.kernel.tools.builtin import register_builtin_tools
     reg = ToolRegistry()
     names = register_builtin_tools(reg)
     assert "Diff" in names

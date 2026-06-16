@@ -37,8 +37,8 @@ class _BridgeTestBase(unittest.TestCase):
     parallel test runs don't share state."""
 
     def setUp(self):
-        from daemon import schema
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import schema
+        from cheetahclaws.daemon import bridge_supervisor as bs
         self._tmpdir = tempfile.TemporaryDirectory()
         self._db_path = Path(self._tmpdir.name) / "test.db"
         schema.set_db_path(self._db_path)
@@ -62,8 +62,8 @@ class _BridgeTestBase(unittest.TestCase):
             bs._handles.clear()
 
     def tearDown(self):
-        from daemon import schema
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import schema
+        from cheetahclaws.daemon import bridge_supervisor as bs
 
         with bs._handles_lock:
             for h in list(bs._handles.values()):
@@ -98,18 +98,18 @@ class _BridgeTestBase(unittest.TestCase):
 class TestFeatureFlag(_BridgeTestBase):
 
     def test_enabled_default_off(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         self.assertFalse(bs.enabled("telegram"))
         self.assertFalse(bs.enabled("slack"))
         self.assertFalse(bs.enabled("wechat"))
 
     def test_enabled_unknown_kind_is_false(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         self.assertFalse(bs.enabled("discord"))
         self.assertFalse(bs.enabled(""))
 
     def test_enabled_via_env(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
         self.assertTrue(bs.enabled("telegram"))
         # F-7 and F-8 stay off — flags are per-bridge.
@@ -117,7 +117,7 @@ class TestFeatureFlag(_BridgeTestBase):
         self.assertFalse(bs.enabled("wechat"))
 
     def test_truthy_values(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         for v in ("1", "true", "TRUE", "yes", "on", " 1 "):
             os.environ["CHEETAHCLAWS_ENABLE_F6"] = v
             self.assertTrue(bs.enabled("telegram"), v)
@@ -139,29 +139,29 @@ def _quiet_telegram_worker_stub(stop_event):
 class TestLifecycle(_BridgeTestBase):
 
     def test_start_without_flag_raises(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         with self.assertRaises(RuntimeError) as ctx:
             bs.start("telegram", {"telegram_token": "x", "telegram_chat_id": 1})
         self.assertIn("CHEETAHCLAWS_ENABLE_F6", str(ctx.exception))
 
     def test_start_unsupported_kind_raises(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         with self.assertRaises(ValueError):
             bs.start("discord", {})
 
     def test_start_slack_without_telegram_flag_raises(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         os.environ["CHEETAHCLAWS_ENABLE_F7"] = "1"
         with self.assertRaises(RuntimeError) as ctx:
             bs.start("slack", {"slack_token": "x", "slack_channel": "c"})
         self.assertIn("depends on F-6", str(ctx.exception))
 
     def test_start_and_stop_telegram(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
 
         # Patch the inner supervisor so we don't actually hit Telegram.
-        with patch("bridges.telegram._tg_supervisor",
+        with patch("cheetahclaws.bridges.telegram._tg_supervisor",
                    side_effect=lambda *a, **kw: _quiet_telegram_worker_stub(
                        a[2].get("_test_stop", threading.Event())
                        if len(a) > 2 and isinstance(a[2], dict)
@@ -187,11 +187,11 @@ class TestLifecycle(_BridgeTestBase):
             self.assertEqual(rows, [("telegram", 0)])
 
     def test_double_start_raises(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
 
         ev = threading.Event()
-        with patch("bridges.telegram._tg_supervisor",
+        with patch("cheetahclaws.bridges.telegram._tg_supervisor",
                    side_effect=lambda *a, **kw: ev.wait()):
             try:
                 bs.start("telegram", {"telegram_token": "fake",
@@ -204,7 +204,7 @@ class TestLifecycle(_BridgeTestBase):
                 bs.stop("telegram", timeout_s=3.0)
 
     def test_stop_unknown_returns_false(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         self.assertFalse(bs.stop("telegram"))
 
 
@@ -214,11 +214,11 @@ class TestLifecycle(_BridgeTestBase):
 class TestNotify(_BridgeTestBase):
 
     def test_notify_no_bridge_returns_false(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         self.assertFalse(bs.notify("telegram", "hello"))
 
     def test_notify_calls_sender(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
 
         sent: list[tuple[dict, str]] = []
@@ -226,7 +226,7 @@ class TestNotify(_BridgeTestBase):
             sent.append((cfg, text))
             return True
 
-        with patch("bridges.telegram._tg_supervisor",
+        with patch("cheetahclaws.bridges.telegram._tg_supervisor",
                    side_effect=lambda *a, **kw: threading.Event().wait(0.5)):
             handle = bs.start("telegram", {"telegram_token": "x",
                                             "telegram_chat_id": 5})
@@ -239,11 +239,11 @@ class TestNotify(_BridgeTestBase):
                 bs.stop("telegram", timeout_s=3.0)
 
     def test_notify_empty_text_is_dropped(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         self.assertFalse(bs.notify("telegram", ""))
 
     def test_notify_broadcast_delivers_to_every_live_bridge(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
         os.environ["CHEETAHCLAWS_ENABLE_F7"] = "1"
 
@@ -254,9 +254,9 @@ class TestNotify(_BridgeTestBase):
         def sl_sender(cfg, text):
             seen["slack"].append(text); return True
 
-        with patch("bridges.telegram._tg_supervisor",
+        with patch("cheetahclaws.bridges.telegram._tg_supervisor",
                    side_effect=lambda *a, **kw: threading.Event().wait(0.5)), \
-             patch("bridges.slack._slack_supervisor",
+             patch("cheetahclaws.bridges.slack._slack_supervisor",
                    side_effect=lambda *a, **kw: threading.Event().wait(0.5)):
             tg = bs.start("telegram", {"telegram_token": "t",
                                         "telegram_chat_id": 1})
@@ -278,11 +278,11 @@ class TestNotify(_BridgeTestBase):
 class TestSqlitePersistence(_BridgeTestBase):
 
     def test_list_persisted_after_stop(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
 
         ev = threading.Event()
-        with patch("bridges.telegram._tg_supervisor",
+        with patch("cheetahclaws.bridges.telegram._tg_supervisor",
                    side_effect=lambda *a, **kw: ev.wait()):
             bs.start("telegram", {"telegram_token": "abcdef",
                                    "telegram_chat_id": 7})
@@ -301,14 +301,14 @@ class TestSqlitePersistence(_BridgeTestBase):
     def test_db_failure_does_not_raise(self):
         """A broken SQLite handle must not prevent start/stop from
         running — bridges work degraded but don't take down the daemon."""
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
 
         class _Handle:
             kind = "telegram"
             config = {"telegram_token": "t", "telegram_chat_id": 1}
             last_error = ""
         # Pass a partial handle so we exercise just the helper.
-        with patch("daemon.schema.get_conn",
+        with patch("cheetahclaws.daemon.schema.get_conn",
                    side_effect=sqlite3.OperationalError("forced")):
             self.assertFalse(bs._db_upsert_bridge(_Handle(), enabled_flag=True))
             self.assertFalse(bs._db_finalize_bridge(_Handle()))
@@ -321,7 +321,7 @@ class TestSqlitePersistence(_BridgeTestBase):
 class TestConfigRedaction(unittest.TestCase):
 
     def test_token_redacted_chat_id_kept(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         safe = bs._safe_cfg({
             "telegram_token":   "1234567890:abcdefghijklmnop",
             "telegram_chat_id": 99,
@@ -339,7 +339,7 @@ class TestConfigRedaction(unittest.TestCase):
         ``openai_api_key`` / ``password`` / ``*_secret`` / ``auth_*``)
         must also be redacted before they hit the bus or the bridges
         SQLite row."""
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         safe = bs._safe_cfg({
             "anthropic_api_key": "sk-ant-aaaabbbbccccdddd",
             "openai_api_key":    "sk-proj-eeeeffffgggghhhh",
@@ -366,7 +366,7 @@ class TestSlackWorker(_BridgeTestBase):
     """F-7: same supervisor scaffolding, slack-specific imports + sender."""
 
     def test_slack_requires_f6_flag_too(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         os.environ["CHEETAHCLAWS_ENABLE_F7"] = "1"
         # No F-6 flag → bridge_supervisor.start refuses.
         with self.assertRaises(RuntimeError) as ctx:
@@ -374,7 +374,7 @@ class TestSlackWorker(_BridgeTestBase):
         self.assertIn("F-6", str(ctx.exception))
 
     def test_slack_worker_calls_slack_supervisor(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
         os.environ["CHEETAHCLAWS_ENABLE_F7"] = "1"
 
@@ -384,7 +384,7 @@ class TestSlackWorker(_BridgeTestBase):
             called.append((token, channel))
             ev.wait()
 
-        with patch("bridges.slack._slack_supervisor",
+        with patch("cheetahclaws.bridges.slack._slack_supervisor",
                    side_effect=fake_supervisor):
             handle = bs.start("slack", {"slack_token": "sl-tok",
                                          "slack_channel": "general"})
@@ -395,15 +395,15 @@ class TestSlackWorker(_BridgeTestBase):
             bs.stop("slack", timeout_s=3.0)
 
     def test_slack_sender_dispatches_outbound(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
         os.environ["CHEETAHCLAWS_ENABLE_F7"] = "1"
 
         sent: list[tuple] = []
         ev = threading.Event()
-        with patch("bridges.slack._slack_supervisor",
+        with patch("cheetahclaws.bridges.slack._slack_supervisor",
                    side_effect=lambda *a, **kw: ev.wait()), \
-             patch("bridges.slack._slack_send",
+             patch("cheetahclaws.bridges.slack._slack_send",
                    side_effect=lambda tok, chan, text: sent.append(
                        (tok, chan, text))):
             handle = bs.start("slack", {"slack_token": "tok",
@@ -425,14 +425,14 @@ class TestWechatWorker(_BridgeTestBase):
     QR-login path; the worker surfaces a clear error if either is missing."""
 
     def test_wechat_requires_f6_flag_too(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         os.environ["CHEETAHCLAWS_ENABLE_F8"] = "1"
         with self.assertRaises(RuntimeError) as ctx:
             bs.start("wechat", {"wechat_token": "x", "wechat_base_url": "u"})
         self.assertIn("F-6", str(ctx.exception))
 
     def test_wechat_worker_calls_wx_supervisor(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
         os.environ["CHEETAHCLAWS_ENABLE_F8"] = "1"
 
@@ -442,7 +442,7 @@ class TestWechatWorker(_BridgeTestBase):
             called.append((token, base_url))
             ev.wait()
 
-        with patch("bridges.wechat._wx_supervisor", side_effect=fake_supervisor):
+        with patch("cheetahclaws.bridges.wechat._wx_supervisor", side_effect=fake_supervisor):
             handle = bs.start("wechat", {
                 "wechat_token":    "wc-tok",
                 "wechat_base_url": "http://localhost:1234",
@@ -457,7 +457,7 @@ class TestWechatWorker(_BridgeTestBase):
         base_url (typical when /wechat login hasn't run), the worker
         exits cleanly with a clear last_error rather than blowing up
         deep inside _wx_supervisor's first HTTP call."""
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
         os.environ["CHEETAHCLAWS_ENABLE_F8"] = "1"
 
@@ -473,15 +473,15 @@ class TestWechatWorker(_BridgeTestBase):
         self.assertIn("wechat config missing", handle.last_error)
 
     def test_wechat_sender_dispatches_outbound(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
         os.environ["CHEETAHCLAWS_ENABLE_F8"] = "1"
 
         sent: list = []
         ev = threading.Event()
-        with patch("bridges.wechat._wx_supervisor",
+        with patch("cheetahclaws.bridges.wechat._wx_supervisor",
                    side_effect=lambda *a, **kw: ev.wait()), \
-             patch("bridges.wechat._wx_send",
+             patch("cheetahclaws.bridges.wechat._wx_send",
                    side_effect=lambda user_id, text, cfg: sent.append(
                        (user_id, text))):
             handle = bs.start("wechat", {

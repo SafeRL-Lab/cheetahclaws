@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tool_registry import (
+from cheetahclaws.tool_registry import (
     ToolDef,
     clear_registry,
     execute_tool,

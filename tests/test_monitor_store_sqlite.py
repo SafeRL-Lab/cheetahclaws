@@ -10,8 +10,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import monitor.store as store
-from daemon import schema
+import cheetahclaws.monitor.store as store
+from cheetahclaws.daemon import schema
 
 
 @pytest.fixture(autouse=True)

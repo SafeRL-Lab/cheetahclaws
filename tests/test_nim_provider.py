@@ -14,9 +14,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-import agent
-from agent import AgentState, run
-from providers import (
+from cheetahclaws import agent
+from cheetahclaws.agent import AgentState, run
+from cheetahclaws.providers import (
     PROVIDERS, COSTS, AssistantTurn, TextChunk,
     bare_model, detect_provider, nim_next_model,
 )

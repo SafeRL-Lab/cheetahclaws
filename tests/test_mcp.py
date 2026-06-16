@@ -10,13 +10,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mcp_client.types import (
+from cheetahclaws.mcp_client.types import (
     MCPServerConfig, MCPTool, MCPServerState, MCPTransport,
     make_request, make_notification, INIT_PARAMS,
 )
-from mcp_client.config import load_mcp_configs, add_server_to_user_config, remove_server_from_user_config
-from mcp_client.client import MCPManager, MCPClient, StdioTransport, get_mcp_manager
-import mcp_client.config as _mcp_config
+from cheetahclaws.mcp_client.config import load_mcp_configs, add_server_to_user_config, remove_server_from_user_config
+from cheetahclaws.mcp_client.client import MCPManager, MCPClient, StdioTransport, get_mcp_manager
+import cheetahclaws.mcp_client.config as _mcp_config
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ import mcp_client.config as _mcp_config
 @pytest.fixture(autouse=True)
 def reset_manager(monkeypatch):
     """Each test gets a fresh MCPManager singleton."""
-    import mcp_client.client as _client_mod
+    import cheetahclaws.mcp_client.client as _client_mod
     monkeypatch.setattr(_client_mod, "_manager", None)
 
 

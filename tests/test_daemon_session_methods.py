@@ -26,14 +26,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 def _setup_bus(tmp_path: Path):
     """Reinit the event bus on a tmpdir-backed SQLite so the in-memory
     LRU and the SSE feed don't bleed between tests."""
-    from daemon import schema, events
+    from cheetahclaws.daemon import schema, events
     schema.set_db_path(tmp_path / "test.db")
     schema._local.conn = None
     events.reset_bus_for_tests()
 
 
 def _teardown_bus():
-    from daemon import schema, events
+    from cheetahclaws.daemon import schema, events
     events.reset_bus_for_tests()
     if hasattr(schema._local, "conn") and schema._local.conn is not None:
         try:
@@ -50,15 +50,15 @@ class _FakeState:
 
 
 def _build_registry():
-    from daemon.rpc import RpcRegistry
-    from daemon import session_methods
+    from cheetahclaws.daemon.rpc import RpcRegistry
+    from cheetahclaws.daemon import session_methods
     reg = RpcRegistry()
     session_methods.register(reg, _FakeState())
     return reg
 
 
 def _ctx(client_id="bridge:tg:99"):
-    from daemon.rpc import CallContext
+    from cheetahclaws.daemon.rpc import CallContext
     return CallContext(client_id=client_id, transport="unix", api_version="0")
 
 
@@ -74,7 +74,7 @@ class _SessionTestBase(unittest.TestCase):
         self._tmpdir = tempfile.TemporaryDirectory()
         _setup_bus(Path(self._tmpdir.name))
         # Wipe the LRU so test ordering doesn't leak.
-        from daemon import session_methods
+        from cheetahclaws.daemon import session_methods
         session_methods._RECENT_LRU.clear()
 
     def tearDown(self):
@@ -85,7 +85,7 @@ class _SessionTestBase(unittest.TestCase):
 class TestSessionSend(_SessionTestBase):
 
     def test_send_publishes_session_inbound(self):
-        from daemon import events
+        from cheetahclaws.daemon import events
         bus = events.get_bus()
         q = bus.subscribe()
         try:
@@ -108,7 +108,7 @@ class TestSessionSend(_SessionTestBase):
             bus.unsubscribe(q)
 
     def test_send_explicit_origin_overrides_client_id(self):
-        from daemon import events
+        from cheetahclaws.daemon import events
         bus = events.get_bus()
         q = bus.subscribe()
         try:
@@ -155,7 +155,7 @@ class TestSessionSend(_SessionTestBase):
 class TestSessionReply(_SessionTestBase):
 
     def test_reply_publishes_session_outbound(self):
-        from daemon import events
+        from cheetahclaws.daemon import events
         bus = events.get_bus()
         q = bus.subscribe()
         try:

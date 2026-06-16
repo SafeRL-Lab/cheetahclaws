@@ -23,15 +23,15 @@ class _FakeDaemonState:
 
 
 def _build_registry(state=None):
-    from daemon.rpc import RpcRegistry
-    from daemon import bridge_methods
+    from cheetahclaws.daemon.rpc import RpcRegistry
+    from cheetahclaws.daemon import bridge_methods
     reg = RpcRegistry()
     bridge_methods.register(reg, state or _FakeDaemonState())
     return reg
 
 
 def _ctx():
-    from daemon.rpc import CallContext
+    from cheetahclaws.daemon.rpc import CallContext
     return CallContext(client_id="tester", transport="unix", api_version="0")
 
 
@@ -45,8 +45,8 @@ def _call(reg, method, params=None):
 class _BridgeMethodsBase(unittest.TestCase):
 
     def setUp(self):
-        from daemon import schema
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import schema
+        from cheetahclaws.daemon import bridge_supervisor as bs
 
         self._tmpdir = tempfile.TemporaryDirectory()
         self._db_path = Path(self._tmpdir.name) / "test.db"
@@ -68,8 +68,8 @@ class _BridgeMethodsBase(unittest.TestCase):
             bs._handles.clear()
 
     def tearDown(self):
-        from daemon import schema
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import schema
+        from cheetahclaws.daemon import bridge_supervisor as bs
 
         with bs._handles_lock:
             for h in list(bs._handles.values()):
@@ -156,7 +156,7 @@ class TestStartStopRoundTrip(_BridgeMethodsBase):
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
 
         ev = threading.Event()
-        with patch("bridges.telegram._tg_supervisor",
+        with patch("cheetahclaws.bridges.telegram._tg_supervisor",
                    side_effect=lambda *a, **kw: ev.wait()):
             reg = _build_registry()
             try:
@@ -204,11 +204,11 @@ class TestSendOutbound(_BridgeMethodsBase):
         self.assertEqual(result, {"kind": "telegram", "delivered": False})
 
     def test_send_with_running_bridge_calls_sender(self):
-        from daemon import bridge_supervisor as bs
+        from cheetahclaws.daemon import bridge_supervisor as bs
         os.environ["CHEETAHCLAWS_ENABLE_F6"] = "1"
 
         ev = threading.Event()
-        with patch("bridges.telegram._tg_supervisor",
+        with patch("cheetahclaws.bridges.telegram._tg_supervisor",
                    side_effect=lambda *a, **kw: ev.wait()):
             handle = bs.start("telegram", {"telegram_token": "t",
                                             "telegram_chat_id": 1})

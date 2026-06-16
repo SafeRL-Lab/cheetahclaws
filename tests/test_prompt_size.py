@@ -24,8 +24,8 @@ from pathlib import Path
 
 import pytest
 
-_BASE_DIR     = Path(__file__).parent.parent / "prompts" / "base"
-_OVERLAYS_DIR = Path(__file__).parent.parent / "prompts" / "overlays"
+_BASE_DIR     = Path(__file__).parent.parent / "cheetahclaws" / "prompts" / "base"
+_OVERLAYS_DIR = Path(__file__).parent.parent / "cheetahclaws" / "prompts" / "overlays"
 
 # Keep these in sync with prompts/README.md.  Bump deliberately, not by accident.
 MAX_BASE_PROMPT_LINES = 150

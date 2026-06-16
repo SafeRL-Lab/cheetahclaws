@@ -2,8 +2,8 @@
 import pytest
 from pathlib import Path
 
-import memory.store as _store
-from memory.store import (
+import cheetahclaws.memory.store as _store
+from cheetahclaws.memory.store import (
     MemoryEntry,
     save_memory,
     load_index,
@@ -14,8 +14,8 @@ from memory.store import (
     parse_frontmatter,
     get_index_content,
 )
-from memory.context import get_memory_context, truncate_index_content
-from memory.scan import (
+from cheetahclaws.memory.context import get_memory_context, truncate_index_content
+from cheetahclaws.memory.scan import (
     scan_memory_dir,
     format_memory_manifest,
     memory_age_days,
@@ -23,7 +23,7 @@ from memory.scan import (
     memory_freshness_text,
     MemoryHeader,
 )
-from memory.types import MEMORY_TYPES
+from cheetahclaws.memory.types import MEMORY_TYPES
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────

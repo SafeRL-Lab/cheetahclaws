@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import health
+from cheetahclaws import health
 
 
 def test_healthz_payload_basic_shape():

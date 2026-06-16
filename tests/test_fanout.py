@@ -15,7 +15,7 @@ from typing import Callable
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from multi_agent.fanout import (
+from cheetahclaws.multi_agent.fanout import (
     DEFAULT_FANOUT_TOOLS,
     chunk_text,
     coalesce_chunks,

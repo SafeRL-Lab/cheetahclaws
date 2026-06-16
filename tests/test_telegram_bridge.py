@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from bridges import telegram as tg
+from cheetahclaws.bridges import telegram as tg
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
@@ -538,7 +538,7 @@ class TestAskInputWithKeyboard:
 
     def _drive(self, options, click_value, expected_return,
                click_via_handler: bool = True):
-        import threading, time, runtime
+        import threading, time; from cheetahclaws import runtime
         # Reset session ctx to a clean state for the test.
         sid = "tg-kbd-test"
         sctx = runtime.get_session_ctx(sid)
@@ -564,7 +564,7 @@ class TestAskInputWithKeyboard:
         result_holder = {}
 
         def worker():
-            from tools.interaction import ask_input_interactive
+            from cheetahclaws.tools.interaction import ask_input_interactive
             result_holder["v"] = ask_input_interactive(
                 "Allow: rm -rf  [y/N/a]", config, options=options
             )
@@ -632,7 +632,7 @@ class TestSlashRunnerCapturesPrintOutput:
         """Replicate the closure from bridges/telegram.py:_tg_poll_loop so
         unit tests can drive it without pumping the long-poll loop."""
         import io as _io, sys as _sys, re as _re
-        from bridges import telegram as tg
+        from cheetahclaws.bridges import telegram as tg
 
         # Patch _tg_send to capture instead of hitting the network.
         monkeypatch.setattr(tg, "_tg_send",
@@ -650,7 +650,7 @@ class TestSlashRunnerCapturesPrintOutput:
                     try: s.flush()
                     except Exception: pass
 
-        from tools import _tg_thread_local as _ttl  # imported the same way the bridge does
+        from cheetahclaws.tools import _tg_thread_local as _ttl  # imported the same way the bridge does
 
         def _slash_runner(_slash_text, _token, _chat_id):
             _ttl.active = True
@@ -718,7 +718,7 @@ class TestSlashRunnerCapturesPrintOutput:
         must strip them before sending — otherwise the user sees raw
         '\\x1b[36m...\\x1b[0m' garbage."""
         def coloured_cmd(text):
-            from ui.render import info, ok
+            from cheetahclaws.ui.render import info, ok
             info("informational")
             ok("done")
             return "simple"

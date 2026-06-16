@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 class TestApplyServeDefaults(unittest.TestCase):
 
     def test_all_none_flipped_to_conservative_defaults(self):
-        from daemon.cli import _apply_serve_defaults, F9_SERVE_BUDGET_DEFAULTS
+        from cheetahclaws.daemon.cli import _apply_serve_defaults, F9_SERVE_BUDGET_DEFAULTS
         cfg = {
             "session_token_budget": None,
             "session_cost_budget":  None,
@@ -40,7 +40,7 @@ class TestApplyServeDefaults(unittest.TestCase):
     def test_existing_values_are_preserved(self):
         """An operator who already configured a budget keeps it. F-9
         defaults only fill in the gaps."""
-        from daemon.cli import _apply_serve_defaults
+        from cheetahclaws.daemon.cli import _apply_serve_defaults
         cfg = {
             "session_token_budget": 50,    # user-chosen
             "session_cost_budget":  None,  # default applies
@@ -55,7 +55,7 @@ class TestApplyServeDefaults(unittest.TestCase):
         self.assertEqual(cfg["session_cost_budget"], 2.0)
 
     def test_unrelated_keys_untouched(self):
-        from daemon.cli import _apply_serve_defaults
+        from cheetahclaws.daemon.cli import _apply_serve_defaults
         cfg = {"log_level": "info", "model": "claude-opus-4-7"}
         _apply_serve_defaults(cfg)
         self.assertEqual(cfg["log_level"], "info")
@@ -73,15 +73,15 @@ class _FakeDaemonState:
 
 
 def _build_system_registry(state):
-    from daemon.rpc import RpcRegistry
-    from daemon import system_methods
+    from cheetahclaws.daemon.rpc import RpcRegistry
+    from cheetahclaws.daemon import system_methods
     reg = RpcRegistry()
     system_methods.register(reg, state)
     return reg
 
 
 def _ctx():
-    from daemon.rpc import CallContext
+    from cheetahclaws.daemon.rpc import CallContext
     return CallContext(client_id="t", transport="unix", api_version="0")
 
 
@@ -131,8 +131,8 @@ class TestSystemStatus(unittest.TestCase):
 
 
 def _build_agent_registry(state):
-    from daemon.rpc import RpcRegistry
-    from daemon import agent_methods
+    from cheetahclaws.daemon.rpc import RpcRegistry
+    from cheetahclaws.daemon import agent_methods
     reg = RpcRegistry()
     agent_methods.register(reg, state)
     return reg
@@ -208,7 +208,7 @@ class TestAgentResume(unittest.TestCase):
         from unittest.mock import patch
         state = _FakeDaemonState({})
         reg = _build_agent_registry(state)
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
         with patch.object(rs, "resume", return_value=True) as mock_resume:
             result, err = _call(reg, "agent.resume", {
                 "name": "agent-x",

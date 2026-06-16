@@ -61,66 +61,15 @@ Issues = "https://github.com/SafeRL-Lab/cheetahclaws/issues"
 Documentation = "https://github.com/SafeRL-Lab/cheetahclaws/tree/main/docs"
 
 [project.scripts]
-cheetahclaws = "cheetahclaws:main"
+cheetahclaws = "cheetahclaws.cli:main"
 
-[tool.setuptools]
-# Top-level single-file modules. NOTE: never list a name here that also
-# exists as a directory package (e.g. "memory") — setuptools will refuse
-# to build or silently drop unrelated packages on some platforms (Windows
-# + Python 3.13 + setuptools ≥ 75 reported in #97).
-py-modules = [
-    "cheetahclaws",
-    "agent",
-    "agent_runner",
-    "auxiliary",
-    "bootstrap",
-    "circuit_breaker",
-    "cloudsave",
-    "compaction",
-    "config",
-    "context",
-    "error_classifier",
-    "health",
-    "jobs",
-    "logging_utils",
-    "providers",
-    "quota",
-    "runtime",
-    "session_store",
-    "skills",
-    "subagent",
-    "tmux_tools",
-    "tool_registry",
-]
-
-# Packages — use `find` so any new sub-package added under modular/, etc.
-# gets shipped automatically. The include patterns are deliberately
-# explicit (no bare wildcard) so we don't accidentally ship tests/, demos/,
-# docs/ etc. Add a new top-level package by appending one entry to
-# `include`; sub-packages auto-discover via the trailing `*`.
+# Everything ships inside the single top-level ``cheetahclaws`` package.  This
+# is the whole point of the package layout: a generic submodule name (config,
+# daemon, kernel …) can never be shadowed by something else on sys.path once
+# installed, because it is only ever imported as ``cheetahclaws.<name>``.
+# ``cheetahclaws*`` auto-discovers the package and every sub-package.
 [tool.setuptools.packages.find]
-include = [
-    "tools*",
-    "daemon*",
-    "kernel*",
-    "mcp_client*",
-    "memory*",
-    "monitor*",
-    "multi_agent*",
-    "plugin*",
-    "skill*",
-    "task*",
-    "voice*",
-    "video*",
-    "checkpoint*",
-    "ui*",
-    "web*",
-    "bridges*",
-    "commands*",
-    "research*",
-    "prompts*",
-    "modular*",
-]
+include = ["cheetahclaws*"]
 exclude = [
     "tests*",
     "demos*",
@@ -130,11 +79,14 @@ exclude = [
 ]
 
 [tool.setuptools.package-data]
-"web" = ["*.js", "*.css", "*.html", "*.ico", "*.png", "static/**/*"]
-"prompts" = ["base/*.md", "overlays/*.md", "fragments/*.md", "README.md"]
-"modular.video" = ["PLUGIN.md"]
-"modular.voice" = ["PLUGIN.md"]
-"modular.trading" = ["PLUGIN.md", "skills/*.md", "agent_templates/*.md"]
+# agent_templates/ is plain data (markdown) loaded by filesystem path from
+# agent_runner.py and research/lab/roles.py — ship it with the package.
+"cheetahclaws" = ["agent_templates/**/*.md", "agent_templates/**/*"]
+"cheetahclaws.web" = ["*.js", "*.css", "*.html", "*.ico", "*.png", "static/**/*"]
+"cheetahclaws.prompts" = ["base/*.md", "overlays/*.md", "fragments/*.md", "README.md"]
+"cheetahclaws.modular.video" = ["PLUGIN.md"]
+"cheetahclaws.modular.voice" = ["PLUGIN.md"]
+"cheetahclaws.modular.trading" = ["PLUGIN.md", "skills/*.md", "agent_templates/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

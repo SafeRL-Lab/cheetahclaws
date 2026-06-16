@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 from pathlib import Path
 
-import skill.loader as _loader
-from skill.loader import _parse_skill_file, _parse_list_field, find_skill, SkillDef
-from skill import load_skills, substitute_arguments
+import cheetahclaws.skill.loader as _loader
+from cheetahclaws.skill.loader import _parse_skill_file, _parse_list_field, find_skill, SkillDef
+from cheetahclaws.skill import load_skills, substitute_arguments
 
 
 COMMIT_MD = """\
@@ -238,7 +238,7 @@ def test_substitute_no_placeholders():
 # _iter_skill_files (nested directory support)
 # ------------------------------------------------------------------
 
-from skill.loader import _iter_skill_files
+from cheetahclaws.skill.loader import _iter_skill_files
 
 
 def test_iter_skill_files_flat(skill_dir):

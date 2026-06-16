@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from ui.input import HAS_PROMPT_TOOLKIT, SlashCompleter
+from cheetahclaws.ui.input import HAS_PROMPT_TOOLKIT, SlashCompleter
 
 if not HAS_PROMPT_TOOLKIT:
     pytest.skip("prompt_toolkit not installed", allow_module_level=True)
@@ -136,7 +136,7 @@ def test_symmetry_commands_only_also_visible():
 
 def test_setup_registers_module_level_providers():
     """Verify ui.input.setup() injects providers without requiring ctor args."""
-    import ui.input as ui_input
+    import cheetahclaws.ui.input as ui_input
 
     cmds = {"alpha": True, "beta": True}
     meta = {"alpha": ("A", []), "beta": ("B", [])}
@@ -153,7 +153,7 @@ def test_setup_registers_module_level_providers():
 def test_module_does_not_import_cheetahclaws():
     """Regression guard for the circular-import concern from review."""
     import sys
-    import ui.input as ui_input
+    import cheetahclaws.ui.input as ui_input
     # Reload ui.input in a clean state and confirm cheetahclaws is not pulled in.
     # (Running this in the test session where cheetahclaws may already be loaded
     # is acceptable — the assertion is about ui.input's own import graph.)

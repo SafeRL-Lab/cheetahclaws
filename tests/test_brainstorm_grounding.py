@@ -18,8 +18,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-import commands.advanced as adv
-from commands.advanced import (
+import cheetahclaws.commands.advanced as adv
+from cheetahclaws.commands.advanced import (
     _parse_ground_flag,
     _format_grounding_brief,
     _fetch_grounding,
@@ -144,7 +144,7 @@ def test_format_grounding_brief_empty_results():
 def test_fetch_grounding_returns_empty_on_research_exception(monkeypatch):
     """A flaky network or missing API keys must not break the brainstorm
     — _fetch_grounding swallows the exception and returns ""."""
-    import research.aggregator as _agg
+    import cheetahclaws.research.aggregator as _agg
 
     def raising_research(**kw):
         raise RuntimeError("network unreachable")
@@ -158,7 +158,7 @@ def test_fetch_grounding_returns_empty_on_empty_brief(monkeypatch):
     """A brief with zero results (every source 429'd, etc.) is also a
     'no grounding' case — return empty so the brainstorm continues
     un-grounded with a logged warning, not a crash."""
-    import research.aggregator as _agg
+    import cheetahclaws.research.aggregator as _agg
     monkeypatch.setattr(_agg, "research",
                          lambda **kw: _FakeBrief(results=[]))
     out = _fetch_grounding("topic", 15, {})
@@ -168,7 +168,7 @@ def test_fetch_grounding_returns_empty_on_empty_brief(monkeypatch):
 def test_fetch_grounding_returns_formatted_block_on_success(monkeypatch):
     """Happy path: research returns a brief, _fetch_grounding returns
     the formatted markdown ready to inline."""
-    import research.aggregator as _agg
+    import cheetahclaws.research.aggregator as _agg
     fake_brief = _FakeBrief(results=[
         _FakeResult("arxiv", "Real Paper", "https://arxiv.org/x",
                      "real snippet", "academic", 0.9),

@@ -54,7 +54,7 @@ def _make_template(tmp_dir: Path, name: str = "e2e_stub") -> str:
 def _isolate_schema(tmp_path: Path) -> Path:
     """Point :mod:`daemon.schema` at a fresh DB under tmp_path so the
     test sees its own agent_runs / agent_iterations rows."""
-    from daemon import schema
+    from cheetahclaws.daemon import schema
 
     db = tmp_path / "sessions.db"
     schema.set_db_path(db)
@@ -66,7 +66,7 @@ def _isolate_schema(tmp_path: Path) -> Path:
 
 
 def _restore_schema_default():
-    from daemon import schema
+    from cheetahclaws.daemon import schema
 
     if hasattr(schema._local, "conn") and schema._local.conn is not None:
         schema._local.conn.close()
@@ -113,7 +113,7 @@ class TestF4EndToEndRealRunner(unittest.TestCase):
 
     def tearDown(self):
         # Stop any leftover runner from this test method.
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
 
         for h in list(rs.list_all()):
             try:
@@ -131,7 +131,7 @@ class TestF4EndToEndRealRunner(unittest.TestCase):
     # ── #1: SQLite agent_runs row created on start ────────────────────────
 
     def test_start_creates_agent_runs_row(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
 
         handle = rs.start(
             name="e2e-row",
@@ -162,7 +162,7 @@ class TestF4EndToEndRealRunner(unittest.TestCase):
     # ── #2: iteration_done lands in agent_iterations + updates last_iter ──
 
     def test_iteration_lands_in_sqlite_under_real_runner(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
 
         handle = rs.start(
             name="e2e-iter",
@@ -216,7 +216,7 @@ class TestF4EndToEndRealRunner(unittest.TestCase):
     # ── #3: agent_runs status is finalised on graceful stop ───────────────
 
     def test_graceful_stop_finalises_agent_runs_status(self):
-        from daemon import runner_supervisor as rs
+        from cheetahclaws.daemon import runner_supervisor as rs
 
         handle = rs.start(
             name="e2e-final",
@@ -257,7 +257,7 @@ class TestF4EndToEndRealRunner(unittest.TestCase):
         PermissionRequest from the agent. Originator's answer flows
         back to the runner via real IPC; the runner advances past it."""
         os.environ["CHEETAHCLAWS_E2E_FAKE_PERMISSION"] = "1"
-        from daemon import permission, runner_supervisor as rs
+        from cheetahclaws.daemon import permission, runner_supervisor as rs
 
         store = permission.PermissionStore()
         store.start_janitor()

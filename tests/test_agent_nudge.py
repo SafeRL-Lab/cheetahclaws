@@ -17,9 +17,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-import agent
-from agent import _looks_like_investigation, AgentState, run
-from providers import AssistantTurn, TextChunk
+from cheetahclaws import agent
+from cheetahclaws.agent import _looks_like_investigation, AgentState, run
+from cheetahclaws.providers import AssistantTurn, TextChunk
 
 
 # ── Heuristic ────────────────────────────────────────────────────────────
