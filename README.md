@@ -57,6 +57,16 @@ For more news, see [here](docs/news.md).
 
 ---
 
+## Sponsor
+
+<div align="center">
+  <a href="https://www.atlascloud.ai/">
+    <img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/sponsors/atlas_cloud/ATLAS_CLOUD_LOGO_BLACK.svg" alt="Atlas Cloud" width="180"> 
+  </a>
+</div>
+
+---
+
 # CheetahClaws
 
 CheetahClaws: **A Fast** and **Easy-to-Use** Python native Agent Harness Infrastructure, **Supporting Any Model**, such as Claude, GPT, Gemini, Kimi, Qwen, Zhipu, DeepSeek, MiniMax, and local open-source models via Ollama or any OpenAI-compatible endpoint.
