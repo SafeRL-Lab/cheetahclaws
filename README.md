@@ -44,14 +44,9 @@ Other install methods: [pip install](#alternative-install-with-pip) | [uv instal
 - June 23, 2026 (latest) (**v3.5.83**): Docs slimmed (README news → one line each, Atlas 59-model list → usage.md, FAQ trimmed) and a native **desktop app** (Electron shell wrapping the web UI) added under `desktop/`; version-string format unified to `v3.5.x`. [Details](docs/news.md)
 - June 16, 2026: All internal modules now live under a single `cheetahclaws` package (`from cheetahclaws import kernel`), removing `sys.path` name-collision crashes at startup — breaking only if you import internals directly; full suite green (2449 passed). [Details](docs/news.md)
 - June 6, 2026 (**v3.5.82**): macOS install now reliably puts `cheetahclaws` on PATH, and local Ollama models that emit tool calls as text now actually execute them (two fixes from #131). [Details](docs/news.md)
-- June 5, 2026 (**v3.5.82**): User-controllable token/cost budgets — `/budget $5` / `/budget daily $20` cap spend per session or day, enforced before each model call. [Details](docs/news.md)
+- June 5, 2026: User-controllable token/cost budgets — `/budget $5` / `/budget daily $20` cap spend per session or day, enforced before each model call. [Details](docs/news.md)
 - June 5, 2026: Adaptive Markdown streaming keeps live output correct on every device by auto-selecting a per-device tier; also adds a visual `/context` grid and 1M context for `deepseek-v4-flash`. [Details](docs/news.md)
-- June 4, 2026 (**v3.5.81**): Claude-Code-style quiet output shows one summary line per turn with a live timer + `✻ Worked for…` footer (`/verbose` / `/quiet` toggle). [Details](docs/news.md)
-- June 4, 2026: Context-window override — `/config context_window=<N>` sets the length driving the prompt `%`, `/context`, compaction, and output cap (read live, no restart). [Details](docs/news.md)
-- June 4, 2026: Rich Live streaming keeps long responses live via a bounded tail window, fixing duplicate/stale frames (builds on PR #133). [Details](docs/news.md)
-- May 31, 2026: QQ bot bridge — `/qq` connects cheetahclaws to QQ groups + C2C private chats via the official `qq-botpy` SDK (PR #121). [Details](docs/news.md)
-- May 12, 2026: Security hardening sweep — env-var bot tokens, web CSRF cookie, terminal session owner-binding, and plugin/MCP/filesystem sandboxing (2347 tests green). [Details](docs/news.md)
-- May 12, 2026: Daemon foundation roadmap — all nine F-1…F-9 items landed (subprocess agent runners, on-crash restart, daemonized bridges, budget guardrails). [Details](docs/news.md)
+
 
 For more news, see [here](docs/news.md).
 
