@@ -76,7 +76,7 @@ def draw_frame(lines_segments):
 
 def banner(session_label, date_str):
     return [
-        [seg("╭─ CheetahClaws v3.05.5 ──────────────────────────────────╮", SUBTEXT)],
+        [seg("╭─ CheetahClaws v3.5.5 ──────────────────────────────────╮", SUBTEXT)],
         [seg("│  ", SUBTEXT), seg("Model: ", SUBTEXT), seg("claude-sonnet-4-6", CYAN, True),
          seg(f"   {session_label}", SUBTEXT)],
         [seg("│  ", SUBTEXT), seg("Session: ", SUBTEXT), seg(date_str, YELLOW)],

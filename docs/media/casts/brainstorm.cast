@@ -1,6 +1,6 @@
 {"version": 2, "width": 110, "height": 32, "timestamp": 1747262400, "env": {"SHELL": "/bin/zsh", "TERM": "xterm-256color"}, "title": "CheetahClaws /brainstorm \u2014 5 personas debate event sourcing", "idle_time_limit": 1.5}
 [0.0, "o", "[32m~/projects/checkout[0m [36m\u276f[0m cheetahclaws\r\n"]
-[0.3, "o", "[2m[CheetahClaws v3.05.79 \u00b7 claude-sonnet-4-6][0m\r\n\r\n"]
+[0.3, "o", "[2m[CheetahClaws v3.5.79 \u00b7 claude-sonnet-4-6][0m\r\n\r\n"]
 [0.5, "o", "[1m[36m[checkout] \u00bb[0m "]
 [1.0, "o", ""]
 [1.05, "o", "/"]

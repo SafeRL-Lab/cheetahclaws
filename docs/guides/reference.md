@@ -54,7 +54,7 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/model` | Show current model + list all available models |
 | `/model <name>` | Switch model (takes effect immediately) |
 | `/config` | Show all current config values |
-| `/config key=value` | Set a config value (persisted to disk). v3.05.78+ parses JSON values: `["a","b"]`, `{"k":"v"}`, signed numbers, quoted strings — list/dict configs no longer get silently saved as literal strings. |
+| `/config key=value` | Set a config value (persisted to disk). v3.5.78+ parses JSON values: `["a","b"]`, `{"k":"v"}`, signed numbers, quoted strings — list/dict configs no longer get silently saved as literal strings. |
 | `/config context_window=<N>` | Override the context window (tokens) for the session. `0` = use the model's default. Drives the prompt `%` indicator, `/context`, the compaction trigger, **and** the per-call output-token cap — all consistently. Distinct from `max_tokens` (which is the **output** cap, not the window). Bidirectional: a smaller value forces earlier compaction; a larger value corrects a stale default. Read live, so it takes effect on the next prompt (no restart). Warns if set above the model's real window (that would disable compaction and the API may reject oversized prompts). |
 | `/config stream_mode=<mode>` | Force the Markdown streaming tier: `live` (full in-place Rich redraw), `commit` (append-only progressive Markdown — safe over SSH / Apple Terminal / pipes), or `plain` (raw tokens). Unset = auto-detected per device (`ui.render.auto_stream_mode`). Legacy `/config rich_live=true\|false` still works (`true`→`live`, `false`→`commit`). |
 | `/save` | Save session (auto-named by timestamp) |

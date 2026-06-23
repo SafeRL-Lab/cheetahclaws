@@ -18,13 +18,13 @@ from cheetahclaws.daemon import discovery
 
 def test_make_info_has_required_fields():
     info = discovery.make_info(pid=1234, transport="unix",
-                                address="/tmp/x.sock", version="3.05.72")
+                                address="/tmp/x.sock", version="3.5.72")
     for key in ("pid", "started_at", "transport", "address", "version", "schema"):
         assert key in info
     assert info["pid"] == 1234
     assert info["transport"] == "unix"
     assert info["address"] == "/tmp/x.sock"
-    assert info["version"] == "3.05.72"
+    assert info["version"] == "3.5.72"
     assert info["schema"] == discovery.SCHEMA_VERSION
 
 

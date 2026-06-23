@@ -1,0 +1,51 @@
+{
+  "name": "cheetahclaws-desktop",
+  "productName": "CheetahClaws",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop shell for CheetahClaws \u2014 wraps the local web UI in a native window",
+  "author": "SafeRL-Lab",
+  "license": "Apache-2.0",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "node test/sidecar.smoke.js",
+    "fix-electron": "node scripts/fix-electron.mjs",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "ai.saferl.cheetahclaws",
+    "productName": "CheetahClaws",
+    "files": [
+      "src/**/*",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "server/dist/cheetahclaws-server",
+        "to": "server"
+      }
+    ],
+    "directories": {
+      "output": "out"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.png"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.png"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Development",
+      "icon": "assets/icon.png"
+    }
+  }
+}

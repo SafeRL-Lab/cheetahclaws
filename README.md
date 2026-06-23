@@ -37,18 +37,21 @@ cheetahclaws        # start chatting!
 
 Other install methods: [pip install](#alternative-install-with-pip) | [uv install](#alternative-install-with-uv) | [run from source](#alternative-run-directly-from-source-no-install) | [full details](#installation)
 
+> 🖥️ **Prefer a native app?** A desktop build (Electron) wraps the full chat UI in a window — no terminal needed. See [`desktop/`](desktop/README.md).
+
 ## 🔥🔥🔥 News (Pacific Time)
 
-- June 16, 2026 (latest): **All internal modules now live under a single `cheetahclaws` package — import as `cheetahclaws.config`, `cheetahclaws.kernel`, … instead of bare `config` / `kernel`.** The old flat top-level layout let generic names (`config`, `daemon`) get shadowed by other things on `sys.path` once the app was *installed* and launched from its entry point — another project's `config/` dir, the PyPI `python-daemon` package — which broke `cheetahclaws` at startup (`ImportError: … from 'config' (unknown location)`). Owning one `cheetahclaws.*` namespace removes that whole class of bug — a prerequisite for shipping as a broadly-installable app. **Breaking only if you import internals directly** (`import kernel` → `from cheetahclaws import kernel`). A built wheel ships everything under `cheetahclaws/` with no bare top-level modules; full suite green (**2449 passed, 3 skipped**). Details: [docs/news.md](docs/news.md).
-- June 6, 2026 (**v3.5.82**): **macOS install reliably puts `cheetahclaws` on PATH, and local Ollama models that emit tool calls as text now actually execute them** (two fixes from issue #131). **(1) Install/PATH on macOS:** the installer `source`s the dedicated venv it creates, which made the post-install `command -v cheetahclaws` check succeed *inside the script's own shell* — so it reported "on PATH" and **skipped the entire rc-file step**, leaving `~/.zshrc` untouched and the binary unreachable in new terminals. It now symlinks only the `cheetahclaws` entry point into `~/.local/bin` (pipx-style, so the venv's `python`/`pip` don't shadow yours), creates `~/.zshrc` / `.bash_profile` if missing, and appends `~/.local/bin` to PATH there — without trusting the venv-polluted `command -v` (`scripts/install.sh`). **(2) Ollama tool calls:** `stream_ollama` only read Ollama's structured `message.tool_calls` field, while the cloud path already recovers calls a model emits as **text**, so Qwen-coder / Gemma / Mistral over Ollama produced "tool-calling-style chat" that streamed as plain text and never ran — the model seemed to "just keep talking." `stream_ollama` now mirrors the cloud path's interceptor: it buffers from the first `<tool_call>` / `<|tool_call|>` / `[TOOL_CALLS]` marker (so raw markup never reaches the user) and parses it into real tool calls at end-of-stream (`providers.py`). Details: [docs/guides/usage.md](docs/guides/usage.md#usage-open-source-models-local) · [docs/guides/faq.md](docs/guides/faq.md) · [docs/news.md](docs/news.md).
-- June 5, 2026 (**v3.5.82**): **User-controllable token/cost budgets** — `/budget $5` / `/budget 200k` / `/budget daily $20` cap spend per session or per day, enforced before each model call; on hit the session auto-saves and you're shown how to `/resume` or raise the cap and continue (warns at ≥80%/95%; `--budget` sets it at startup). Details: [docs/guides/features.md](docs/guides/features.md) · [docs/news.md](docs/news.md).
-- June 5, 2026: **Adaptive Markdown streaming — live output stays correct on every device** by auto-selecting a per-device tier (`live` in-place redraw on capable terminals incl. modern SSH emulators, append-only `commit` for SSH/Apple Terminal/pipes/CJK text so frames never duplicate, `plain` fallback); also ships a visual `/context` usage grid and a 1M context window for `deepseek-v4-flash`. Details: [docs/guides/features.md](docs/guides/features.md) · [docs/news.md](docs/news.md).
-- June 4, 2026 (**v3.05.81**): **Claude-Code-style quiet output** hides per-tool execution and shows one summary line per turn (on by default), with a live spinner timer + token estimate and a `✻ Worked for…` footer; `/verbose` overrides, toggle with `/quiet`. Details: [docs/guides/features.md](docs/guides/features.md) · [docs/news.md](docs/news.md).
-- June 4, 2026: **Context-window override** — `/config context_window=<N>` sets the context length that drives the prompt `%`, `/context`, the compaction trigger, and the output cap consistently (distinct from `max_tokens`; read live, no restart). Details: [docs/guides/reference.md](docs/guides/reference.md) · [docs/news.md](docs/news.md).
-- June 4, 2026: **Rich Live streaming** keeps long responses live via a bounded tail window — redrawing only the most recent screenful and committing the full output when done, fixing duplicate/stale frames (builds on PR #133). Details: [docs/guides/features.md](docs/guides/features.md) · [docs/news.md](docs/news.md).
-- May 31, 2026: **QQ bot bridge — `/qq` connects cheetahclaws to QQ groups + C2C private chats via the official `qq-botpy` SDK (PR #121).** Details: [docs/guides/bridges.md](docs/guides/bridges.md#qq-bridge) · [docs/news.md](docs/news.md).
-- May 12, 2026: **Security hardening sweep — env-var bot tokens, web CSRF cookie, terminal session owner-binding, and plugin/MCP/filesystem sandboxing (two CRITICAL + HIGH rounds, 2347 tests green).** Details: [docs/guides/security.md](docs/guides/security.md) · [docs/news.md](docs/news.md).
-- May 12, 2026: **Daemon foundation roadmap — all nine F-1…F-9 items landed: subprocess agent runners, on-crash restart policy, daemonized Telegram/Slack/WeChat bridges, and budget guardrails.** Details: [docs/news.md](docs/news.md).
+- June 23, 2026 (latest) (**v3.5.83**): Docs slimmed (README news → one line each, Atlas 59-model list → usage.md, FAQ trimmed) and a native **desktop app** (Electron shell wrapping the web UI) added under `desktop/`; version-string format unified to `v3.5.x`. [Details](docs/news.md)
+- June 16, 2026: All internal modules now live under a single `cheetahclaws` package (`from cheetahclaws import kernel`), removing `sys.path` name-collision crashes at startup — breaking only if you import internals directly; full suite green (2449 passed). [Details](docs/news.md)
+- June 6, 2026 (**v3.5.82**): macOS install now reliably puts `cheetahclaws` on PATH, and local Ollama models that emit tool calls as text now actually execute them (two fixes from #131). [Details](docs/news.md)
+- June 5, 2026 (**v3.5.82**): User-controllable token/cost budgets — `/budget $5` / `/budget daily $20` cap spend per session or day, enforced before each model call. [Details](docs/news.md)
+- June 5, 2026: Adaptive Markdown streaming keeps live output correct on every device by auto-selecting a per-device tier; also adds a visual `/context` grid and 1M context for `deepseek-v4-flash`. [Details](docs/news.md)
+- June 4, 2026 (**v3.5.81**): Claude-Code-style quiet output shows one summary line per turn with a live timer + `✻ Worked for…` footer (`/verbose` / `/quiet` toggle). [Details](docs/news.md)
+- June 4, 2026: Context-window override — `/config context_window=<N>` sets the length driving the prompt `%`, `/context`, compaction, and output cap (read live, no restart). [Details](docs/news.md)
+- June 4, 2026: Rich Live streaming keeps long responses live via a bounded tail window, fixing duplicate/stale frames (builds on PR #133). [Details](docs/news.md)
+- May 31, 2026: QQ bot bridge — `/qq` connects cheetahclaws to QQ groups + C2C private chats via the official `qq-botpy` SDK (PR #121). [Details](docs/news.md)
+- May 12, 2026: Security hardening sweep — env-var bot tokens, web CSRF cookie, terminal session owner-binding, and plugin/MCP/filesystem sandboxing (2347 tests green). [Details](docs/news.md)
+- May 12, 2026: Daemon foundation roadmap — all nine F-1…F-9 items landed (subprocess agent runners, on-crash restart, daemonized bridges, budget guardrails). [Details](docs/news.md)
 
 For more news, see [here](docs/news.md).
 
@@ -324,7 +327,7 @@ The name after `custom/` must match the server's `--served-model-name`. For the 
 
 ### Atlas Cloud (hosted, OpenAI-compatible)
 
-> 🎁 **[Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=cheetahclaws)** is a full-modal AI inference platform with an OpenAI-compatible API — DeepSeek, Qwen, GLM, Kimi, MiniMax and more behind one endpoint. It plugs into the zero-dependency `custom/` adapter:
+> 🎁 **[Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=cheetahclaws)** serves DeepSeek, Qwen, GLM, Kimi, MiniMax and more behind one OpenAI-compatible endpoint, via the zero-dependency `custom/` adapter:
 
 ```bash
 export CUSTOM_BASE_URL=https://api.atlascloud.ai/v1
@@ -332,24 +335,7 @@ export CUSTOM_API_KEY=your_atlascloud_api_key
 cheetahclaws --model custom/deepseek-ai/deepseek-v4-pro
 ```
 
-`deepseek-ai/deepseek-v4-pro` is a reasoning model; any other Atlas chat model id works the same way.
-
-<details>
-<summary>All Atlas Cloud chat models (59)</summary>
-
-- **Anthropic (Claude):** `anthropic/claude-haiku-4.5-20251001`, `anthropic/claude-opus-4.8`, `anthropic/claude-sonnet-4.6`
-- **OpenAI (GPT):** `openai/gpt-5.4`, `openai/gpt-5.5`
-- **Google (Gemini):** `google/gemini-3.1-flash-lite`, `google/gemini-3.1-pro-preview`, `google/gemini-3.5-flash`
-- **Qwen:** `qwen/qwen2.5-7b-instruct`, `Qwen/Qwen3-235B-A22B-Instruct-2507`, `qwen/qwen3-235b-a22b-thinking-2507`, `qwen/qwen3-30b-a3b`, `Qwen/Qwen3-30B-A3B-Instruct-2507`, `qwen/qwen3-30b-a3b-thinking-2507`, `qwen/qwen3-32b`, `qwen/qwen3-8b`, `Qwen/Qwen3-Coder`, `qwen/qwen3-coder-next`, `qwen/qwen3-max-2026-01-23`, `Qwen/Qwen3-Next-80B-A3B-Instruct`, `Qwen/Qwen3-Next-80B-A3B-Thinking`, `Qwen/Qwen3-VL-235B-A22B-Instruct`, `qwen/qwen3-vl-235b-a22b-thinking`, `qwen/qwen3-vl-30b-a3b-instruct`, `qwen/qwen3-vl-30b-a3b-thinking`, `qwen/qwen3-vl-8b-instruct`, `qwen/qwen3.5-122b-a10b`, `qwen/qwen3.5-27b`, `qwen/qwen3.5-35b-a3b`, `qwen/qwen3.5-397b-a17b`, `qwen/qwen3.6-35b-a3b`, `qwen/qwen3.6-plus`
-- **DeepSeek:** `deepseek-ai/deepseek-ocr`, `deepseek-ai/deepseek-r1-0528`, `deepseek-ai/DeepSeek-V3-0324`, `deepseek-ai/DeepSeek-V3.1`, `deepseek-ai/DeepSeek-V3.1-Terminus`, `deepseek-ai/deepseek-v3.2`, `deepseek-ai/DeepSeek-V3.2-Exp`, `deepseek-ai/deepseek-v4-flash`, `deepseek-ai/deepseek-v4-pro`
-- **Moonshot (Kimi):** `moonshotai/Kimi-K2-Instruct`, `moonshotai/Kimi-K2-Instruct-0905`, `moonshotai/Kimi-K2-Thinking`, `moonshotai/kimi-k2.5`, `moonshotai/kimi-k2.6`
-- **Zhipu (GLM):** `zai-org/GLM-4.6`, `zai-org/glm-4.7`, `zai-org/glm-5`, `zai-org/glm-5-turbo`, `zai-org/glm-5.1`, `zai-org/glm-5v-turbo`
-- **MiniMax:** `MiniMaxAI/MiniMax-M2`, `minimaxai/minimax-m2.1`, `minimaxai/minimax-m2.5`, `minimaxai/minimax-m2.7`
-- **xAI:** `xai/grok-4.3`
-- **Kwaipilot:** `kwaipilot/kat-coder-pro-v2`
-- **Other:** `owl`
-
-</details>
+> Any Atlas chat model id works the same way — **full list of all 59 models:** [docs/guides/usage.md](docs/guides/usage.md#option-d--atlas-cloud-hosted-openai-compatible).
 
 ---
 
@@ -395,7 +381,7 @@ cheetahclaws --web --no-auth        # skip login (localhost dev only)
 
 Open `http://localhost:<port>/chat` — first account becomes admin. Includes streaming chat (WS) + SSE slash commands, persistent sessions with folders/search/Markdown export, tool cards, inline permission approval, settings panel, light/dark/system theme, and `/health` + `/metrics` endpoints. A full xterm.js PTY terminal lives at `/` (100% CLI parity).
 
-> **Full guide:** [docs/guides/web-ui.md](docs/guides/web-ui.md) · **Docker / home server:** [docs/guides/docker.md](docs/guides/docker.md)
+> **Full guide:** [docs/guides/web-ui.md](docs/guides/web-ui.md) · **Docker / home server:** [docs/guides/docker.md](docs/guides/docker.md) · **Native desktop app:** [desktop/README.md](desktop/README.md)
 
 ---
 
@@ -408,6 +394,7 @@ Detailed guides live in [`docs/guides/`](docs/guides/) to keep this README focus
 | [**Features (full)**](docs/guides/features.md) | The complete feature table — every row with full detail (context compression, auto-fanout, themes, Trading/Research/Agents writeups) |
 | [**Usage (all providers)**](docs/guides/usage.md) | Per-provider setup + example commands: Anthropic/OpenAI/Gemini/Kimi/Qwen/Zhipu/DeepSeek/MiniMax/litellm, and local Ollama/LM Studio/vLLM |
 | [**Web UI**](docs/guides/web-ui.md) | Chat UI, PTY terminal, API endpoints, settings, auth, SSE streaming |
+| [**Desktop app**](desktop/README.md) | Native-window shell (Electron) that wraps the local web UI; build a self-contained `.dmg`/`.exe`/`.AppImage` |
 | [**Docker / Home Server**](docs/guides/docker.md) | Dockerfile + compose: web UI + bridges in one container, host Ollama, workspace mount |
 | [**Reference**](docs/guides/reference.md) | CLI, 50+ commands, 33 built-in tools, session search, error classification, tool cache |
 | [**Extensions**](docs/guides/extensions.md) | Memory, Skills, Sub-Agents, MCP servers, Plugins, Monitor, Autonomous Agents |
@@ -486,25 +473,7 @@ CheetahClaws now auto-recovers tool calls that local models emit as **text** (`<
 **Q: After installing on macOS, `cheetahclaws: command not found` and no `~/.zshrc` was created.**
 Reload your shell first: `source ~/.zshrc` (zsh) or `source ~/.bash_profile` (bash). The installer creates `~/.zshrc` if missing, symlinks the binary into `~/.local/bin`, and adds it to PATH. If you installed an older version, either re-run the installer or add this line yourself: `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc`.
 
-**Q: How do I connect to a remote GPU server running vLLM?**
-```
-/config custom_base_url=http://your-server-ip:8000/v1
-/config custom_api_key=your-token
-/model custom/your-model-name
-```
-
-**Q: How do I check my API cost?** Run `/cost` (shows input/output tokens + estimated USD).
-
-**Q: Can I use multiple API keys in one session?** Yes — set all keys upfront (env or `/config`), then switch models freely; each call uses the active provider's key.
-
-**Q: How do I set a default model across projects?** Add keys to `~/.bashrc`/`~/.zshrc` and set `{ "model": "claude-sonnet-4-6" }` in `~/.cheetahclaws/config.json`.
-
-**Q: Can I pipe input to cheetahclaws?**
-```bash
-cat error.log | cheetahclaws -p "What is causing this error?"
-```
-
-**Q: How do I set up voice input?** `pip install sounddevice faster-whisper numpy`, then `/voice` in the REPL (downloads a ~150 MB Whisper model on first use). See the [full FAQ](docs/guides/faq.md) for languages + keyterm tuning.
+More — remote vLLM, API cost (`/cost`), multiple keys per session, default model across projects, piping input, voice setup, garbled-text fixes — are all answered in [docs/guides/faq.md](docs/guides/faq.md).
 
 ---
 

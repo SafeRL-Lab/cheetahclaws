@@ -87,7 +87,7 @@ English | [中文](README.CN.MD) | [Français](README.FR.MD) | [한국어](READM
     跨渠道的归一化由 `tools/interaction.py` 三个纯函数完成:`_format_menu_block(options)`(渲染编号菜单文本)、`_build_value_map(options)`(数字 + 规范值 + label 词的查找表,冲突时 first-write-wins)、`_resolve_choice(raw, value_map)`(去空白 / 大小写不敏感 / 未知输入直通,这样 callers 用 `options=` 同时也想接收自由文本时仍然 work)。完全向后兼容:既有所有 `ask_input_interactive` 调用方(`/checkpoint`、`/session`、`/agent`、`/config`、`/voice` 等)都没传 `options=`,行为零变化。`RuntimeContext` 新字段:`tg_callback_prompt_id: str`、`tg_callback_message_id: int`。
   - **测试** —— 新增 49 个 pytest 用例。`tests/test_telegram_bridge.py`(27 个):`urllib.request.urlopen` 与 `_tg_api` 全程 mock,`threading.Thread` 替换为同步 stub,端到端由工作线程跑 `ask_input_interactive(options=…)`、主线程通过 `_handle_callback_query` 模拟点击、断言工作线程返回点击值。覆盖文本切片+Markdown 回退、multipart body 字段断言、`_tg_send_document` 六条失败路径、`_bg_runner` Write 自动发送四种变体、`_tg_send_keyboard` 四条路径、`_handle_callback_query` 五条路径、端到端点击两种值。`tests/test_options_menu.py`(22 个):三个纯函数(emoji-stripped label tokens、大小写不敏感、空白处理、防御性非字符串、冲突 first-write-wins)+ Slack(4 种回复)/ WeChat(2 种回复)/ 终端(数字 / label / 规范值 / 不传 options 的回归)端到端。完整套件 **718 passed in 43s**,既有 669 个测试零回归。
 
-- 2026 年 4 月 7 日（**v3.05.53**）：**Telegram 图片/语音支持、Bash 超时时进程树终止、Windows shell 提示、worker 修复**
+- 2026 年 4 月 7 日（**v3.5.53**）：**Telegram 图片/语音支持、Bash 超时时进程树终止、Windows shell 提示、worker 修复**
   - **Telegram 图片视觉支持** —— 向 Telegram 桥发送图片后，CheetahClaws 会使用当前激活的视觉模型（GPT-4o、Gemini 2.0 Flash、Claude 等）对图片进行描述。机器人会下载最高分辨率版本，将其编码为 Base64，并通过与 `/img` 相同的 `_pending_image` 路径进行处理。图片标题文本（或默认的 “describe this image” 提示）会与图片一起转发。
   - **Telegram 语音/音频 STT** —— 向 Telegram 桥发送语音消息或音频文件时，CheetahClaws 会自动转写。OGG 语音会通过 `ffmpeg` 转为 PCM 并传给本地 Whisper 后端；如果 `ffmpeg` 不可用，则回退到 OpenAI Whisper API。转写结果会先回显到聊天中，再作为查询提交。
   - **Bash 超时时终止整个进程树** —— 当 `Bash` 命令超时时，CheetahClaws 现在会终止整个子进程树，而不是只杀掉 shell 本身。在 Unix 上，`os.killpg` 会向进程组发送 `SIGKILL`；在 Windows 上，`taskkill /F /T` 会终止所有子进程。Agent 启动的 GUI 应用（如 PyQt 游戏）在超时后也不会再留下僵尸进程。内部实现为保证线程安全，使用 `start_new_session=True` 代替了 `preexec_fn=os.setsid`。
@@ -96,20 +96,20 @@ English | [中文](README.CN.MD) | [Français](README.FR.MD) | [한국어](READM
   - **Bash 超时提示** —— `Bash` 工具说明现在建议模型对较慢命令（`npm install`、`npx`、`pip install`、构建等）使用 `timeout=120–300`，从而减少包安装类操作上误触发的 30 秒超时。
   - **Bug 修复：后台事件提示显示真实 cwd** —— 后台事件完成后打印的黄色重新提示之前被硬编码为 `[claude-code-local]`；现在会显示真实的工作目录名（`[{cwd.name}]`），与主 REPL 提示保持一致。
 
-- 2026 年 4 月 6 日（**v3.05.53**）：**Telegram 交互菜单、`/img` 别名、`/voice device`、OpenAI/Gemini 视觉支持**
+- 2026 年 4 月 6 日（**v3.5.53**）：**Telegram 交互菜单、`/img` 别名、`/voice device`、OpenAI/Gemini 视觉支持**
   - **修复 Telegram 交互菜单** —— 带交互输入的斜杠命令（如 `/ollama`、`/permission`、`/checkpoint`）之前会阻塞 Telegram 轮询循环，导致无法回复菜单提示。现在斜杠命令会像普通查询一样在守护线程中运行，从而保持轮询循环空闲。所有交互菜单（`ask_input_interactive`）都可以在 Telegram 上正常工作。
   - **`/img` 别名** —— `/img` 现在是 `/image` 的别名，便于更快的剪贴板图片工作流。
   - **`/voice device`** —— 新子命令，用于列出所有可用输入麦克风并以交互方式选择一个。选中的设备索引会持久化到会话配置中，并显示在 `/voice status` 中。对有多个音频接口的系统（如 USB 耳机 + 内置麦克风）很有用。
   - **OpenAI / Gemini 模型的视觉支持** —— `/img`（以及 `/image`）现在除了已有的 Ollama 原生格式外，也会将图片以 OpenAI multipart `image_url` 格式发送给云端视觉模型（GPT-4o、Gemini 2.0 Flash 等）。无需改配置——系统会根据当前 provider 自动选择正确格式。
   - **Bug 修复：线程竞态条件** —— `_in_telegram_turn` 现在通过每个斜杠执行线程的 `threading.local()` 跟踪，而不是共享配置键，从而消除了当常规消息在交互式斜杠命令等待输入时到达所导致的竞态问题。
 
-- 2026 年 4 月 6 日（**v3.05.52**）：**Checkpoint 系统、计划模式、compact 与实用命令、支持 MiniMax 模型、修复 Telegram bug** 
+- 2026 年 4 月 6 日（**v3.5.52**）：**Checkpoint 系统、计划模式、compact 与实用命令、支持 MiniMax 模型、修复 Telegram bug** 
   - **Checkpoint 系统**（`checkpoint/` 包）：每轮后自动快照对话状态和文件变更。`/checkpoint` 列出所有快照；`/checkpoint <id>` 可将文件与对话历史同时回滚到任意之前状态；`/checkpoint clear` 删除当前会话的所有快照。`/rewind` 是别名。使用 100 个快照的滑动窗口；会话启动时捕获初始快照。节流策略：若无任何变化则跳过。文件备份使用 copy-on-write；快照捕获的是编辑后的状态。
   - **计划模式**：`/plan <desc>` 进入只读分析模式 —— Claude 只能读取代码库，并只允许写入专用计划文件（`.nano_claude/plans/<session_id>.md`）。其他所有写操作都会被静默阻止并显示友好提示。`/plan` 显示当前计划；`/plan done` 退出计划模式并恢复原权限；`/plan status` 显示计划模式是否激活。两个新的 Agent 工具 —— `EnterPlanMode` 与 `ExitPlanMode` —— 允许 Claude 在复杂多文件任务中自主进入和退出计划模式；在所有权限模式下都会自动批准。
   - **`/compact [focus]`**：可随时手动触发对话压缩。可选的 focus 字符串可引导 LLM 总结器保留哪些上下文。自动压缩与手动压缩都会在压缩后恢复计划文件上下文。
   - **实用命令**：`/init` 会在当前目录创建 `CLAUDE.md` 模板；`/export [filename]` 可将对话导出为 Markdown（默认）或 JSON；`/copy` 可将上一条 assistant 回复复制到剪贴板（Windows/macOS/Linux）；`/status` 显示版本、模型、provider、权限、session ID、token 使用量与上下文占比；`/doctor` 用于诊断安装健康状况（Python 版本、git、API key 与实时连接测试、可选依赖、CLAUDE.md 是否存在、checkpoint 磁盘占用、权限模式）。
 
-- 2026 年 4 月 6 日（**v3.05.51**）：**项目从 Nano Claude Code 重命名为 CheetahClaws**
+- 2026 年 4 月 6 日（**v3.5.51**）：**项目从 Nano Claude Code 重命名为 CheetahClaws**
   - 项目已从 **Nano Claude Code** 更名为 **CheetahClaws** —— 一个更有辨识度的名字，更能体现这个工具的气质：一个锐利、敏捷的编程助手。CheetahClaws 中的 `Cl` 也暗含了对 Claude 的致意。
   - CLI 命令：`nano_claude` → `cheetahclaws`
   - PyPI 包：`nano-claude-code` → `cheetahclaws`
@@ -1677,7 +1677,7 @@ Generating diverse perspectives...
 - Brainstorm 会使用**当前选中的模型**（用 `/model` 查看）。使用能力较强的模型（Claude Sonnet/Opus、GPT-4o 或较大的本地模型）效果最佳。
 - 当 agent 数较多（20+）时，根据模型速度不同，整个会话可能持续数分钟。
 - 安装 `faker`（`pip install faker`）可获得随机 persona 名称；若缺失则退回内置名称。
-- 输出文件会持续积累在 `brainstorm_outputs/` 中 —— 从 v3.05.5 起该目录已被加入 `.gitignore`。
+- 输出文件会持续积累在 `brainstorm_outputs/` 中 —— 从 v3.5.5 起该目录已被加入 `.gitignore`。
 - 过长的回复在可能超出终端时仍保持实时渲染，但只显示最近一屏内容（有界尾窗），直到该回复结束才提交完整内容，因此重复/陈旧行会被自动避免。若在 SSH 中输出仍然混乱（重复行），可运行 `/config rich_live=false` 彻底关闭 Rich Live 流式渲染。
 
 ---
@@ -1914,7 +1914,7 @@ Phone (Telegram)                  cheetahclaws terminal
 
 ## 主动后台监控
 
-CheetahClaws v3.05.2 增加了一个 **sentinel 守护线程**，它会在设定的无交互时长之后自动唤醒 agent —— 无需用户再次提示。这支持持续日志监控、行情轮询、定时代码检查等场景。
+CheetahClaws v3.5.2 增加了一个 **sentinel 守护线程**，它会在设定的无交互时长之后自动唤醒 agent —— 无需用户再次提示。这支持持续日志监控、行情轮询、定时代码检查等场景。
 
 ### 快速开始
 
@@ -2263,7 +2263,7 @@ cheetahclaws
 
 ## 云同步（GitHub Gist）
 
-CheetahClaws v3.05.3 增加了通过 **GitHub Gist** 进行会话云备份的可选功能。会话以私有 Gist（JSON）形式保存，可在 GitHub UI 中浏览。无需额外依赖 —— 使用 Python 标准库 `urllib`。
+CheetahClaws v3.5.3 增加了通过 **GitHub Gist** 进行会话云备份的可选功能。会话以私有 Gist（JSON）形式保存，可在 GitHub UI 中浏览。无需额外依赖 —— 使用 Python 标准库 `urllib`。
 
 ### 设置（一次性）
 
@@ -2375,7 +2375,7 @@ cheetahclaws/
 │   ├── stt.py            # STT：faster-whisper → openai-whisper → OpenAI API
 │   └── keyterms.py       # 来自 git branch + 项目文件的编码词汇
 │
-├── checkpoint/           # Checkpoint 系统（v3.05.6）
+├── checkpoint/           # Checkpoint 系统（v3.5.6）
 │   ├── __init__.py       # 公共 API 导出
 │   ├── types.py          # FileBackup + Snapshot dataclasses；MAX_SNAPSHOTS = 100
 │   ├── store.py          # 文件级备份、快照持久化、回滚、清理

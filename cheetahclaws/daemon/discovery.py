@@ -11,7 +11,7 @@ Schema::
       "transport":  "unix" | "tcp",
       "address":    "/run/user/1000/cheetahclaws/daemon.sock"
                   | "127.0.0.1:8765",
-      "version":    "3.05.72",
+      "version":    "3.5.72",
       "schema":     1 }
 
 Atomic write semantics: writes go through a sibling ``.tmp`` file then

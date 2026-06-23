@@ -74,7 +74,7 @@ Español | [中文](README.CN.MD) | [Français](README.FR.MD) | [한국어](READ
 ## 🔥🔥🔥 Novedades (hora del Pacífico)
 
 
-- 07 de abril de 2026 (**v3.05.53**): **soporte de fotos/voz en Telegram, eliminación del árbol de procesos al expirar Bash, sugerencias de shell para Windows, corrección del worker**
+- 07 de abril de 2026 (**v3.5.53**): **soporte de fotos/voz en Telegram, eliminación del árbol de procesos al expirar Bash, sugerencias de shell para Windows, corrección del worker**
   - **Visión con fotos de Telegram** — envía una foto al puente de Telegram y CheetahClaws la describirá usando el modelo de visión activo (GPT-4o, Gemini 2.0 Flash, Claude, etc.). El bot descarga la versión de mayor resolución, la codifica en Base64 y la enruta por la misma ruta `_pending_image` que `/img`. El texto del pie de foto (o un prompt por defecto, “describe esta imagen”) se reenvía junto con la imagen.
   - **STT para voz/audio de Telegram** — envía un mensaje de voz o un archivo de audio al puente de Telegram y CheetahClaws lo transcribirá automáticamente. Las notas de voz en OGG se convierten a PCM mediante `ffmpeg` y se pasan al backend local de Whisper; si `ffmpeg` no está disponible, se usa como alternativa la API Whisper de OpenAI. La transcripción se devuelve al chat antes de enviarse como consulta.
   - **Eliminación del árbol de procesos al expirar Bash** — cuando un comando `Bash` excede el tiempo límite, CheetahClaws ahora elimina todo el árbol de procesos hijo en lugar de solo la shell. En Unix, `os.killpg` envía `SIGKILL` al grupo de procesos; en Windows, `taskkill /F /T` termina todos los procesos hijo. Las aplicaciones GUI (por ejemplo, juegos PyQt lanzados por el agente) ya no dejan procesos zombis tras un timeout. La implementación interna usa `start_new_session=True` en lugar de `preexec_fn=os.setsid` por seguridad en entornos con hilos.
@@ -83,20 +83,20 @@ Español | [中文](README.CN.MD) | [Français](README.FR.MD) | [한국어](READ
   - **Sugerencias para timeouts de Bash** — la descripción de la herramienta `Bash` ahora aconseja al modelo usar `timeout=120–300` para comandos lentos (`npm install`, `npx`, `pip install`, compilaciones), reduciendo falsos timeouts de 30 segundos en operaciones de paquetes.
   - **Corrección: el prompt de eventos en segundo plano muestra el cwd real** — el re-prompt amarillo que aparecía tras finalizar un evento en segundo plano estaba fijado a `[claude-code-local]`; ahora muestra el nombre real del directorio de trabajo (`[{cwd.name}]`), consistente con el prompt principal del REPL.
 
-- 06 de abril de 2026 (**v3.05.53**): **menús interactivos de Telegram, alias `/img`, `/voice device`, soporte de visión para OpenAI/Gemini**
+- 06 de abril de 2026 (**v3.5.53**): **menús interactivos de Telegram, alias `/img`, `/voice device`, soporte de visión para OpenAI/Gemini**
   - **Menús interactivos de Telegram corregidos** — los comandos slash con entrada interactiva (por ejemplo, `/ollama`, `/permission`, `/checkpoint`) bloqueaban el bucle de sondeo de Telegram, impidiendo responder a los menús. Ahora los comandos slash se ejecutan en un hilo daemon (igual que las consultas normales), manteniendo libre el bucle de sondeo. Todos los menús interactivos (`ask_input_interactive`) funcionan correctamente sobre Telegram.
   - **Alias `/img`** — `/img` ahora es un alias de `/image`, para flujos de trabajo más rápidos con imágenes del portapapeles.
   - **`/voice device`** — nuevo subcomando para listar todos los micrófonos de entrada disponibles y seleccionar uno de forma interactiva. El índice del dispositivo elegido se guarda en la configuración de la sesión y se muestra en `/voice status`. Útil en sistemas con múltiples interfaces de audio (por ejemplo, auriculares USB + micrófono integrado).
   - **Soporte de visión para modelos OpenAI / Gemini** — `/img` (y `/image`) ahora envía imágenes en el formato OpenAI multipart `image_url` a modelos de visión en la nube (GPT-4o, Gemini 2.0 Flash, etc.), además del formato nativo existente de Ollama. No se necesita cambiar la configuración: el formato correcto se selecciona automáticamente según el proveedor activo.
   - **Corrección: condición de carrera de hilos** — `_in_telegram_turn` ahora se rastrea mediante `threading.local()` por hilo ejecutor de slash, en lugar de una clave compartida de configuración, eliminando una condición de carrera que podía corromper la bandera cuando llegaba un mensaje normal mientras un comando slash interactivo esperaba entrada.
 
-- 06 de abril de 2026 (**v3.05.52**): **sistema de checkpoints, modo plan, compactación y utilidades, soporte para MiniMax, correcciones de Telegram**
+- 06 de abril de 2026 (**v3.5.52**): **sistema de checkpoints, modo plan, compactación y utilidades, soporte para MiniMax, correcciones de Telegram**
   - **Sistema de checkpoints** (`checkpoint/`): instantáneas automáticas del estado de la conversación y de los cambios en archivos tras cada turno. `/checkpoint` lista todas las instantáneas; `/checkpoint <id>` revierte tanto archivos como historial de conversación a cualquier estado anterior; `/checkpoint clear` elimina todas las instantáneas de la sesión. `/rewind` es un alias. Ventana deslizante de 100 instantáneas; se captura una instantánea inicial al comienzo de la sesión. Limitación: se omite cuando nada ha cambiado. Las copias de seguridad de archivos usan copy-on-write; las instantáneas capturan el estado posterior a la edición.
   - **Modo plan**: `/plan <desc>` entra en un modo de análisis de solo lectura — Claude solo puede leer el código y escribir en un archivo de plan dedicado (`.nano_claude/plans/<session_id>.md`). Todas las demás escrituras se bloquean silenciosamente con un mensaje útil. `/plan` muestra el plan actual; `/plan done` sale del modo plan y restaura los permisos originales; `/plan status` informa si el modo plan está activo. Dos nuevas herramientas del agente — `EnterPlanMode` y `ExitPlanMode` — permiten a Claude entrar y salir autónomamente del modo plan para tareas complejas de múltiples archivos; ambas se aprueban automáticamente en todos los modos de permiso.
   - **`/compact [focus]`**: activa manualmente la compactación de la conversación en cualquier momento. Una cadena de enfoque opcional guía al resumidor LLM sobre qué contexto preservar. Tanto la compactación automática como la manual restauran el contexto del archivo de plan después de compactar.
   - **Comandos utilitarios**: `/init` crea una plantilla `CLAUDE.md` en el directorio actual; `/export [filename]` exporta la conversación como Markdown (por defecto) o JSON; `/copy` copia al portapapeles la última respuesta del asistente (Windows/macOS/Linux); `/status` muestra versión, modelo, proveedor, permisos, ID de sesión, uso de tokens y porcentaje de contexto; `/doctor` diagnostica el estado de la instalación (versión de Python, git, clave API + prueba real de conectividad, dependencias opcionales, presencia de CLAUDE.md, uso de disco de checkpoints, modo de permisos).
 
-- 06 de abril de 2026 (**v3.05.51**): **el proyecto cambió de nombre de Nano Claude Code a CheetahClaws**
+- 06 de abril de 2026 (**v3.5.51**): **el proyecto cambió de nombre de Nano Claude Code a CheetahClaws**
   - El proyecto ha sido renombrado de **Nano Claude Code** a **CheetahClaws** — un nombre más distintivo que captura el espíritu de la herramienta: un asistente de programación ágil y afilado. El `Cl` de CheetahClaws es una sutil referencia a Claude.
   - Comando CLI: `nano_claude` → `cheetahclaws`
   - Paquete PyPI: `nano-claude-code` → `cheetahclaws`
@@ -1664,7 +1664,7 @@ Generando perspectivas diversas...
 - Brainstorm usa el **modelo actualmente seleccionado** (`/model` para comprobarlo). Un modelo potente (Claude Sonnet/Opus, GPT-4o o un gran modelo local) da los mejores resultados.
 - Con muchos agentes (20+) la sesión puede tardar varios minutos según la velocidad del modelo.
 - Instala `faker` (`pip install faker`) para nombres de persona aleatorios; si no, usa nombres integrados.
-- Los archivos de salida se acumulan en `brainstorm_outputs/`; desde v3.05.5 ya está añadido a `.gitignore`.
+- Los archivos de salida se acumulan en `brainstorm_outputs/`; desde v3.5.5 ya está añadido a `.gitignore`.
 - Las respuestas largas siguen renderizándose en vivo pero solo muestran la última pantalla (una ventana de cola acotada) hasta que terminan, por lo que las líneas duplicadas/obsoletas se evitan automáticamente. Si la salida aún se ve corrupta en SSH (líneas repetidas), ejecuta `/config rich_live=false` para desactivar por completo Rich Live streaming.
 
 ---
@@ -1901,7 +1901,7 @@ Si tanto `telegram_token` como `telegram_chat_id` están establecidos en `~/.che
 
 ## Monitoreo proactivo en segundo plano
 
-CheetahClaws v3.05.2 añade un **daemon centinela** que despierta automáticamente al agente tras un período configurable de inactividad, sin necesidad de prompt del usuario. Esto permite casos de uso como monitoreo continuo de logs, sondeo de scripts de mercado o comprobaciones de código programadas.
+CheetahClaws v3.5.2 añade un **daemon centinela** que despierta automáticamente al agente tras un período configurable de inactividad, sin necesidad de prompt del usuario. Esto permite casos de uso como monitoreo continuo de logs, sondeo de scripts de mercado o comprobaciones de código programadas.
 
 ### Inicio rápido
 
@@ -2250,7 +2250,7 @@ Reanudar un archivo específico:
 
 ## Sincronización en la nube (GitHub Gist)
 
-CheetahClaws v3.05.3 añade respaldo opcional en la nube de sesiones de conversación mediante **GitHub Gist**. Las sesiones se almacenan como Gists privados (JSON), navegables en la interfaz de GitHub. Sin dependencias adicionales: usa `urllib` de la stdlib de Python.
+CheetahClaws v3.5.3 añade respaldo opcional en la nube de sesiones de conversación mediante **GitHub Gist**. Las sesiones se almacenan como Gists privados (JSON), navegables en la interfaz de GitHub. Sin dependencias adicionales: usa `urllib` de la stdlib de Python.
 
 ### Configuración (una vez)
 
@@ -2362,7 +2362,7 @@ cheetahclaws/
 │   ├── stt.py             # STT: faster-whisper → openai-whisper → API de OpenAI
 │   └── keyterms.py        # Vocabulario técnico a partir de rama git + archivos del proyecto
 │
-├── checkpoint/            # Sistema de checkpoints (v3.05.6)
+├── checkpoint/            # Sistema de checkpoints (v3.5.6)
 │   ├── __init__.py        # Exportaciones de API pública
 │   ├── types.py           # Dataclasses FileBackup + Snapshot; MAX_SNAPSHOTS = 100
 │   ├── store.py           # Backup a nivel de archivo, persistencia de snapshots, rewind, limpieza

@@ -50,7 +50,7 @@ def type_string(s, base=0.04, jitter=0.02):
 
 # Scene 1 — launch + /lab start
 out(0.0, f"{GREEN}~{RST} {CYAN}❯{RST} cheetahclaws\r\n")
-out(0.3, f"{DIM}[CheetahClaws v3.05.79 · claude-sonnet-4-6][/lab engine v0]{RST}\r\n\r\n")
+out(0.3, f"{DIM}[CheetahClaws v3.5.79 · claude-sonnet-4-6][/lab engine v0]{RST}\r\n\r\n")
 out(0.2, f"{BOLD}{CYAN}[~] »{RST} ")
 out(0.5, "")
 type_string("/lab start \"Compare logistic regression vs random forest on iris, k-fold CV\"")

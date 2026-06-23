@@ -51,7 +51,7 @@ out(0.0, f"{GREEN}~/projects/parser{RST} {CYAN}❯{RST} ")
 out(0.7, "")
 type_string("cheetahclaws")
 out(0.4, "\r\n")
-out(0.3, f"{DIM}[CheetahClaws v3.05.79 · claude-sonnet-4-6 · auto mode]{RST}\r\n")
+out(0.3, f"{DIM}[CheetahClaws v3.5.79 · claude-sonnet-4-6 · auto mode]{RST}\r\n")
 out(0.2, f"{DIM}Type /help for commands, /model to switch, !cmd for shell, Ctrl+C to quit{RST}\r\n\r\n")
 out(0.2, f"{BOLD}{CYAN}[project] »{RST} ")
 

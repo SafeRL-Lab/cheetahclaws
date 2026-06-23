@@ -416,7 +416,7 @@ A previous run's reports stay in `~/.cheetahclaws/research_papers/`.
 then halts; it does **not** kill mid-stage. Use `/lab abort <run_id>`
 for that.
 
-### Output paths (v3.05.78+)
+### Output paths (v3.5.78+)
 
 Reports save to a **human-readable directory** instead of the cryptic
 `lab_<hex>/` form:
@@ -469,7 +469,7 @@ Warning:  Reviewers span only 1 model family; homogeneous review
           OpenAI / Gemini / DeepSeek / Qwen) for diversity.
 ```
 
-### Surveyor grounding (v3.05.78+)
+### Surveyor grounding (v3.5.78+)
 
 Before invoking the surveyor LLM, the orchestrator now runs
 `research.aggregator.research()` against `topic + selected_RQ`
@@ -491,7 +491,7 @@ To get real grounding, set at least one web-search key:
 /config brave_api_key=BSA...        # https://api.search.brave.com (free 2000/mo)
 ```
 
-### Verifier hard timeout (v3.05.78+)
+### Verifier hard timeout (v3.5.78+)
 
 The citation verifier used to occasionally hang for 11+ minutes when
 arxiv / Semantic Scholar returned a slow-loris socket (urllib's socket

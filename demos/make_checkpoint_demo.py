@@ -75,7 +75,7 @@ def draw_frame(lines_segments):
 # ── Reusable line builders ────────────────────────────────────────────────
 
 BANNER = [
-    [seg("╭─ CheetahClaws v3.05.5 ──────────────────────────────────╮", SUBTEXT)],
+    [seg("╭─ CheetahClaws v3.5.5 ──────────────────────────────────╮", SUBTEXT)],
     [seg("│  ", SUBTEXT), seg("Model: ", SUBTEXT), seg("claude-sonnet-4-6", CYAN, True)],
     [seg("│  ", SUBTEXT), seg("Permissions: ", SUBTEXT), seg("auto", YELLOW)],
     [seg("│  Type /help for commands, Ctrl+C to cancel                  │", SUBTEXT)],

@@ -289,7 +289,7 @@ If `wechat_token` is set in `~/.cheetahclaws/config.json`, the bridge starts aut
 
 Also auto-starts in `cheetahclaws --web` (Docker / headless deployments).
 
-### Smart-reply panel (v3.05.78+)
+### Smart-reply panel (v3.5.78+)
 
 When a whitelisted contact sends an inbound message, the auxiliary
 cheap model drafts 3 candidate replies and pushes a panel to your
