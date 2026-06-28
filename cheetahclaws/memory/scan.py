@@ -48,7 +48,12 @@ class MemoryHeader:
 # ── Scanning ───────────────────────────────────────────────────────────────
 
 def scan_memory_dir(mem_dir: Path, scope: str) -> list[MemoryHeader]:
-    """Scan a single memory directory and return headers sorted newest-first.
+    """Scan a single memory directory and return headers, freshest-first.
+
+    "Freshest" = most recently verified (verified_epoch: last_verified ->
+    created -> mtime), matching how MemorySearch ranks. Anchoring to
+    verification rather than mtime keeps a mere retrieval from reordering the
+    injected manifest.
 
     Reads only the frontmatter (first ~30 lines) for efficiency.
     Silently skips unreadable files. Caps at MAX_MEMORY_FILES entries.
@@ -79,12 +84,16 @@ def scan_memory_dir(mem_dir: Path, scope: str) -> list[MemoryHeader]:
         except Exception:
             continue
 
-    headers.sort(key=lambda h: h.mtime_s, reverse=True)
+    headers.sort(key=lambda h: verified_epoch(h.last_verified, h.created, h.mtime_s),
+                 reverse=True)
     return headers[:MAX_MEMORY_FILES]
 
 
 def scan_all_memories() -> list[MemoryHeader]:
-    """Scan both user and project memory directories, merged newest-first."""
+    """Scan both user and project memory directories, merged freshest-first.
+
+    Freshest = most recently verified (see scan_memory_dir / verified_epoch).
+    """
     user_dir = get_memory_dir("user")
     proj_dir = get_memory_dir("project")
 
@@ -92,7 +101,8 @@ def scan_all_memories() -> list[MemoryHeader]:
     proj_headers = scan_memory_dir(proj_dir, "project")
 
     combined = user_headers + proj_headers
-    combined.sort(key=lambda h: h.mtime_s, reverse=True)
+    combined.sort(key=lambda h: verified_epoch(h.last_verified, h.created, h.mtime_s),
+                  reverse=True)
     return combined[:MAX_MEMORY_FILES]
 
 
@@ -198,7 +208,9 @@ def format_memory_manifest(headers: list[MemoryHeader]) -> str:
     lines = []
     for h in headers:
         tag = f"[{h.type}/{h.scope}]" if h.type else f"[{h.scope}]"
-        age = memory_age_str(h.mtime_s)
+        # Age since last verified (claim freshness), not since file edit — keeps
+        # the manifest consistent with verified_epoch-anchored staleness.
+        age = memory_age_str(verified_epoch(h.last_verified, h.created, h.mtime_s))
         if h.description:
             lines.append(f"- {tag} {h.filename} ({age}): {h.description}")
         else:

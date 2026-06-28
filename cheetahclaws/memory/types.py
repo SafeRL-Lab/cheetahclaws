@@ -83,4 +83,13 @@ anything already in CLAUDE.md, or ephemeral task state.
 
 **Before recommending from memory**: A memory naming a file, function, or flag may be stale.
 Verify it still exists before acting on it. For current state, prefer `git log` or reading code.
+
+**Keeping memory fresh (important)**: Retrieving a memory does **not** make it fresh — only
+re-checking its claim against the live code/environment does. Memories you don't re-verify keep
+the "stale" flag and lose retrieval ranking over time, on purpose.
+- If you confirm a memory's claim still holds, call **MemoryVerify** on it. That is the only thing
+  that clears its stale flag and restores its ranking — a plain MemorySearch never does.
+- If the claim no longer holds, fix it with **MemorySave** (overwrite) or drop it with **MemoryDelete**
+  instead of verifying.
+Do this whenever you act on a memory that the system flagged as stale and found still correct.
 """.format(format_example=MEMORY_FORMAT_EXAMPLE)
