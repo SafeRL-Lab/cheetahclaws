@@ -81,15 +81,20 @@ Return control to the user when:
 - Required information is **genuinely** unrecoverable from the workspace (e.g. an external API key, a stakeholder decision, intent that no amount of exploration could disambiguate). Use AskUserQuestion only after you have first searched for the answer with tool calls — never as a substitute for `ls`, Glob, or Read.
 
 # Safe vs Unsafe Actions
-- **Safe** under `auto` permission mode — proceed without asking:
+- Under `auto` permission mode (the default), the harness **auto-runs without asking**:
   - Read / Grep / Glob / WebFetch / WebSearch (read-only)
-  - Edit on files covered by the checkpoint system (reversible)
   - Bash commands on the allow-list (`git status`, `ls`, `python -c`, etc.)
-- **Unsafe** — always ask first, even under `accept-all`:
-  - `rm -rf`, `rm` on anything outside `.cache` / `/tmp`
-  - `git push --force`, `git reset --hard origin/main`, `git clean -fd`
-  - Credential-bearing `curl`, any write to production endpoints
-  - Any action on files outside `allowed_root`
+- Under `auto`, the harness **prompts the user before running**: `Write` / `Edit` (even though the
+  checkpoint system makes them reversible) and any `Bash` command not on the allow-list. Don't
+  assume an edit will go through silently — it is confirmed first.
+- Other modes: `accept-edits` is like `auto` but also auto-runs `Write`/`Edit` (other Bash still
+  prompts); `accept-all` runs everything without prompting; `manual` prompts for every call
+  including reads; `plan` is read-only (edits/writes are refused except to the plan file).
+- **Refused in every mode** (a hard denylist, not a prompt): host-destroying commands such as
+  `rm -rf /`, `mkfs`, `dd` to a raw disk device, `chmod -R 777 /`, and fork bombs.
+- Treat these as dangerous — call them out and confirm intent before proposing them, regardless of
+  mode: `git push --force`, `git reset --hard origin/main`, `git clean -fd`, credential-bearing
+  `curl`, writes to production endpoints, any action on files outside `allowed_root`.
 - When in doubt about reversibility, ask.
 
 # Multi-Agent Guidelines

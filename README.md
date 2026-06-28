@@ -172,7 +172,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Context compression | Four cooperating layers — dynamic `max_tokens` cap, per-model context-window registry, two-layer snip + AI summarize at 70%, and auto-fanout for oversized tool outputs. [Details](docs/guides/reference.md) |
 | Persistent memory | Dual-scope (user + project), 4 types, confidence/source metadata, conflict detection, recency-weighted search, `/memory consolidate`. Verification-anchored staleness — freshness tracks a `last_verified` date (not file mtime), so reading a memory can't fake-refresh it; only `MemoryVerify` resets the clock. [Details](docs/guides/features.md) |
 | Multi-agent | Spawn typed sub-agents (coder/reviewer/researcher/…), git-worktree isolation, background mode |
-| Permission system | `auto` / `accept-all` / `manual` / `plan` modes |
+| Permission system | `auto` / `accept-edits` / `accept-all` / `manual` / `plan` modes (`accept-edits` = auto-run edits, still ask for other Bash; hard denylist blocks host-destroying commands in every mode) |
 | Checkpoints & plan mode | Auto-snapshot conversation + files each turn (`/checkpoint`, `/rewind`); `/plan` read-only analysis mode |
 | Slash commands & themes | 50+ slash commands with Tab-complete; `/theme` offers 15 curated palettes |
 | Brainstorm → Worker | `/brainstorm` runs an N-persona debate → `todo_list.txt`; `/worker` auto-implements the pending tasks |

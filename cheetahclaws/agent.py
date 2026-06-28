@@ -654,7 +654,14 @@ def _check_permission(tc: dict, config: dict) -> bool:
             return _is_safe_bash(tc["input"].get("command", ""))
         return True  # reads are fine
 
-    # "auto" mode: only ask for writes and non-safe bash
+    # "accept-edits" mode: same as "auto", but file edits are pre-approved.
+    # Bash and everything else still follow the auto rules below, so a
+    # non-allow-listed shell command is still prompted (and the hard denylist
+    # still applies at execution time).
+    if perm_mode == "accept-edits" and name in ("Write", "Edit", "NotebookEdit"):
+        return True
+
+    # "auto" mode (and accept-edits fall-through): only ask for writes and non-safe bash
     if name in ("Read", "Glob", "Grep", "WebFetch", "WebSearch"):
         return True
     if name == "Bash":

@@ -622,7 +622,7 @@ _CMD_META: dict[str, tuple[str, list[str]]] = {
     "verbose":     ("Toggle verbose output",              []),
     "quiet":       ("Toggle compact tool display",        []),
     "thinking":    ("Toggle extended thinking",           []),
-    "permissions": ("Set permission mode",                ["auto", "accept-all", "manual"]),
+    "permissions": ("Set permission mode",                ["auto", "accept-edits", "accept-all", "manual", "plan"]),
     "cwd":         ("Show / change working directory",    []),
     "skills":      ("List available skills",              []),
     "memory":      ("Search / list / consolidate memories", ["consolidate"]),

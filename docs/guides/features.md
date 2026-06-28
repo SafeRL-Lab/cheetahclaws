@@ -22,7 +22,7 @@ and indexed in the [README Documentation section](../../README.md#documentation)
 | Multi-agent | Spawn typed sub-agents (coder/reviewer/researcher/…), git worktree isolation, background mode |
 | Skills | Built-in `/commit` · `/review` + custom markdown skills with argument substitution and fork/inline execution |
 | Plugin tools | Register custom tools via `tool_registry.py` |
-| Permission system | `auto` / `accept-all` / `manual` / `plan` modes |
+| Permission system | `auto` / `accept-edits` / `accept-all` / `manual` / `plan` modes. `accept-edits` auto-runs file edits but still prompts for non-allow-listed Bash (the middle ground between `auto` and `accept-all`); a hard denylist blocks host-destroying commands in every mode |
 | Checkpoints | Auto-snapshot conversation + file state after each turn; `/checkpoint` to list, `/checkpoint <id>` to rewind; `/rewind` alias; 100-snapshot sliding window |
 | Plan mode | `/plan <desc>` enters read-only analysis mode; Claude writes only to the plan file; `EnterPlanMode` / `ExitPlanMode` agent tools for autonomous planning |
 | 50+ slash commands | `/model` · `/config` · `/save` · `/cost` · `/memory` · `/skills` · `/agents` · `/voice` · `/proactive` · `/checkpoint` · `/plan` · `/compact` · `/status` · `/doctor` · `/theme` · … |

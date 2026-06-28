@@ -71,7 +71,7 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/quiet` | Toggle compact tool display — hide per-tool execution lines and show one summary line per turn (on by default; `/verbose` overrides it) |
 | `/thinking` | Toggle Extended Thinking (Claude only) |
 | `/permissions` | Show current permission mode |
-| `/permissions <mode>` | Set permission mode: `auto` / `accept-all` / `manual` |
+| `/permissions <mode>` | Set permission mode: `auto` / `accept-edits` / `accept-all` / `manual` / `plan` |
 | `/cwd` | Show current working directory |
 | `/cwd <path>` | Change working directory |
 | `/memory` | List all persistent memories |
@@ -350,10 +350,13 @@ Keys are saved to `~/.cheetahclaws/config.json` and loaded automatically on next
 
 | Mode | Behavior |
 |---|---|
-| `auto` (default) | Read-only operations always allowed. Prompts before Bash commands and file writes. |
-| `accept-all` | Never prompts. All operations proceed automatically. |
+| `auto` (default) | Reads + allow-listed Bash run automatically; prompts before file writes (`Write`/`Edit`) and any other Bash command. |
+| `accept-edits` | Like `auto`, but also auto-runs file edits (`Write`/`Edit`/`NotebookEdit`); other (non-allow-listed) Bash still prompts. The middle ground between `auto` and `accept-all`. |
+| `accept-all` | Never prompts; all operations proceed automatically. |
 | `manual` | Prompts before every single operation, including reads. |
-| `plan` | Read-only analysis mode. Only the plan file (`.nano_claude/plans/`) is writable. Entered via `/plan <desc>` or the `EnterPlanMode` tool. |
+| `plan` | Read-only analysis mode: reads + safe Bash run, all writes are refused except the plan file. Entered via `/plan <desc>` or the `EnterPlanMode` tool. |
+
+A **hard denylist** (`rm -rf /`, `mkfs`, `dd` to a raw disk device, `chmod -R 777 /`, fork bombs) is refused at execution time in **every** mode — including `accept-all`, and even if you approve it under `manual`.
 
 **When prompted:**
 

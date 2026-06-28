@@ -179,11 +179,13 @@ def cmd_thinking(_args: str, _state, config) -> bool:
 def cmd_permissions(args: str, _state, config) -> bool:
     from cheetahclaws.config import save_config
     from cheetahclaws.tools import ask_input_interactive
-    modes = ["auto", "accept-all", "manual"]
+    modes = ["auto", "accept-edits", "accept-all", "manual", "plan"]
     mode_desc = {
-        "auto":       "Prompt for each tool call (default)",
-        "accept-all": "Allow all tool calls silently",
-        "manual":     "Prompt for each tool call (strict)",
+        "auto":         "Auto-run reads + allow-listed Bash; ask before edits and other commands (default)",
+        "accept-edits": "Like auto, but also auto-run file edits (Write/Edit); other Bash still asks",
+        "accept-all":   "Run everything without asking (host-destroying commands are still hard-blocked)",
+        "manual":       "Ask before every tool call, including reads",
+        "plan":         "Read-only: reads + safe Bash run, all edits/writes are refused (see /plan for the plan-file workflow)",
     }
     if not args.strip():
         current = config.get("permission_mode", "auto")
