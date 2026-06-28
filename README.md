@@ -41,7 +41,8 @@ Other install methods: [pip install](#alternative-install-with-pip) | [uv instal
 
 ## 🔥🔥🔥 News (Pacific Time)
 
-- June 23, 2026 (latest) (**v3.5.83**): Docs slimmed (README news → one line each, Atlas 59-model list → usage.md, FAQ trimmed) and a native **desktop app** (Electron shell wrapping the web UI) added under `desktop/`; version-string format unified to `v3.5.x`. [Details](docs/news.md)
+- June 28, 2026 (latest): **Memory staleness** now anchors to a `last_verified` date instead of file mtime, so reading a memory can't fake-refresh a stale one (PR #150); new **`MemoryVerify`** tool is the only thing that resets the clock, the prompt tells the agent to call it after re-checking, and the injected memory manifest ranks by verified recency. [Details](docs/news.md)
+- June 23, 2026 (**v3.5.83**): Docs slimmed (README news → one line each, Atlas 59-model list → usage.md, FAQ trimmed) and a native **desktop app** (Electron shell wrapping the web UI) added under `desktop/`; version-string format unified to `v3.5.x`. [Details](docs/news.md)
 - June 16, 2026: All internal modules now live under a single `cheetahclaws` package (`from cheetahclaws import kernel`), removing `sys.path` name-collision crashes at startup — breaking only if you import internals directly; full suite green (2449 passed). [Details](docs/news.md)
 - June 6, 2026 (**v3.5.82**): macOS install now reliably puts `cheetahclaws` on PATH, and local Ollama models that emit tool calls as text now actually execute them (two fixes from #131). [Details](docs/news.md)
 - June 5, 2026: User-controllable token/cost budgets — `/budget $5` / `/budget daily $20` cap spend per session or day, enforced before each model call. [Details](docs/news.md)
@@ -164,12 +165,12 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 |---|---|
 | Multi-provider | Anthropic · OpenAI · Gemini · Kimi · Qwen · Zhipu · DeepSeek · MiniMax · Ollama · LM Studio · Custom endpoint |
 | Agent loop | Streaming API + automatic tool-use loop; the whole loop is in `agent.py` |
-| 27 built-in tools | Read · Write · Edit · Bash · Glob · Grep · WebFetch · WebSearch · NotebookEdit · GetDiagnostics · Memory* · Agent/SendMessage · Skill · AskUserQuestion · Task* · SleepTimer · EnterPlanMode/ExitPlanMode · *(MCP + plugin tools auto-added)* |
+| 28 built-in tools | Read · Write · Edit · Bash · Glob · Grep · WebFetch · WebSearch · NotebookEdit · GetDiagnostics · Memory* · Agent/SendMessage · Skill · AskUserQuestion · Task* · SleepTimer · EnterPlanMode/ExitPlanMode · *(MCP + plugin tools auto-added)* |
 | MCP integration | Connect any MCP server (stdio/SSE/HTTP); tools auto-registered — see [extensions guide](docs/guides/extensions.md) |
 | Plugin system | Install/enable/update plugins from git URLs or local paths; multi-scope; recommendation engine |
 | Task management | `TaskCreate/Update/Get/List`, sequential IDs, dependency edges, persisted to `.cheetahclaws/tasks.json` |
 | Context compression | Four cooperating layers — dynamic `max_tokens` cap, per-model context-window registry, two-layer snip + AI summarize at 70%, and auto-fanout for oversized tool outputs. [Details](docs/guides/reference.md) |
-| Persistent memory | Dual-scope (user + project), 4 types, confidence/source metadata, conflict detection, recency-weighted search, `/memory consolidate` |
+| Persistent memory | Dual-scope (user + project), 4 types, confidence/source metadata, conflict detection, recency-weighted search, `/memory consolidate`. Verification-anchored staleness — freshness tracks a `last_verified` date (not file mtime), so reading a memory can't fake-refresh it; only `MemoryVerify` resets the clock. [Details](docs/guides/features.md) |
 | Multi-agent | Spawn typed sub-agents (coder/reviewer/researcher/…), git-worktree isolation, background mode |
 | Permission system | `auto` / `accept-all` / `manual` / `plan` modes |
 | Checkpoints & plan mode | Auto-snapshot conversation + files each turn (`/checkpoint`, `/rewind`); `/plan` read-only analysis mode |

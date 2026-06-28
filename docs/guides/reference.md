@@ -75,7 +75,7 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/cwd` | Show current working directory |
 | `/cwd <path>` | Change working directory |
 | `/memory` | List all persistent memories |
-| `/memory <query>` | Search memories by keyword (ranked by confidence × recency) |
+| `/memory <query>` | Search memories by keyword (ranked by confidence × recency, where recency decays from when the memory was last *verified*, not last read) |
 | `/memory consolidate` | AI-extract up to 3 long-term insights from the current session |
 | `/skills` | List available skills |
 | `/agents` | Show sub-agent task status |
@@ -400,6 +400,7 @@ Keys are saved to `~/.cheetahclaws/config.json` and loaded automatically on next
 | `MemoryDelete` | Delete a memory by name | `name`, `scope` |
 | `MemorySearch` | Search memories by keyword (or AI ranking) | `query`, `scope`, `use_ai`, `max_results` |
 | `MemoryList` | List all memories with age and metadata | `scope` |
+| `MemoryVerify` | Mark a memory as re-checked against the live environment, resetting its staleness clock. The **only** thing that clears the stale flag / restores ranking — a plain `MemorySearch` never does. Call after confirming the memory's claim still holds. | `name`, `scope` |
 
 ### Sub-Agent Tools
 
