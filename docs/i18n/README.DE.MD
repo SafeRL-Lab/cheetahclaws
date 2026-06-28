@@ -320,7 +320,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Multi-agent | Spawn typed sub-agents (coder/reviewer/researcher/…), git worktree isolation, background mode |
 | Skills | Built-in `/commit` · `/review` + custom markdown skills with argument substitution and fork/inline execution |
 | Plugin tools | Register custom tools via `tool_registry.py` |
-| Permission system | `auto` / `accept-all` / `manual` / `plan` modes |
+| Permission system | `auto` / `accept-edits` / `accept-all` / `manual` / `plan` modes |
 | Checkpoints | Auto-snapshot conversation + file state after each turn; `/checkpoint` to list, `/checkpoint <id>` to rewind; `/rewind` alias; 100-snapshot sliding window |
 | Plan mode | `/plan <desc>` enters read-only analysis mode; Claude writes only to the plan file; `EnterPlanMode` / `ExitPlanMode` agent tools for autonomous planning |
 | 37 slash commands | `/model` · `/config` · `/save` · `/cost` · `/memory` · `/skills` · `/agents` · `/voice` · `/proactive` · `/checkpoint` · `/plan` · `/compact` · `/status` · `/doctor` · `/theme` · … |
@@ -809,7 +809,7 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/verbose` | Toggle verbose mode (tokens + thinking) |
 | `/thinking` | Toggle Extended Thinking (Claude only) |
 | `/permissions` | Show current permission mode |
-| `/permissions <mode>` | Set permission mode: `auto` / `accept-all` / `manual` |
+| `/permissions <mode>` | Set permission mode: `auto` / `accept-edits` / `accept-all` / `manual` / `plan` |
 | `/cwd` | Show current working directory |
 | `/cwd <path>` | Change working directory |
 | `/memory` | List all persistent memories |

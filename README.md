@@ -41,7 +41,8 @@ Other install methods: [pip install](#alternative-install-with-pip) | [uv instal
 
 ## 🔥🔥🔥 News (Pacific Time)
 
-- June 23, 2026 (latest) (**v3.5.83**): Docs slimmed (README news → one line each, Atlas 59-model list → usage.md, FAQ trimmed) and a native **desktop app** (Electron shell wrapping the web UI) added under `desktop/`; version-string format unified to `v3.5.x`. [Details](docs/news.md)
+- June 28, 2026 (latest): New **`accept-edits`** permission mode (auto-run file edits, still ask before non-allow-listed Bash) — the middle ground between `auto` and `accept-all`; also exposes the existing `plan` mode in `/permissions` and corrects the prompt's misleading `auto` description. [Details](docs/news.md)
+- June 23, 2026 (**v3.5.83**): Docs slimmed (README news → one line each, Atlas 59-model list → usage.md, FAQ trimmed) and a native **desktop app** (Electron shell wrapping the web UI) added under `desktop/`; version-string format unified to `v3.5.x`. [Details](docs/news.md)
 - June 16, 2026: All internal modules now live under a single `cheetahclaws` package (`from cheetahclaws import kernel`), removing `sys.path` name-collision crashes at startup — breaking only if you import internals directly; full suite green (2449 passed). [Details](docs/news.md)
 - June 6, 2026 (**v3.5.82**): macOS install now reliably puts `cheetahclaws` on PATH, and local Ollama models that emit tool calls as text now actually execute them (two fixes from #131). [Details](docs/news.md)
 - June 5, 2026: User-controllable token/cost budgets — `/budget $5` / `/budget daily $20` cap spend per session or day, enforced before each model call. [Details](docs/news.md)
