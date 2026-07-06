@@ -1024,14 +1024,33 @@ def cmd_image(args: str, state, config) -> Union[bool, tuple]:
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    size_kb = len(buf.getvalue()) / 1024
+    png_bytes = buf.getvalue()
+    b64 = base64.b64encode(png_bytes).decode("utf-8")
+    size_kb = len(png_bytes) / 1024
 
     info(f"📷 Clipboard image captured ({size_kb:.0f} KB, {img.size[0]}x{img.size[1]})")
     from cheetahclaws import runtime
     runtime.get_ctx(config).pending_image = b64
 
     prompt = args.strip() if args.strip() else "What do you see in this image? Describe it in detail."
+
+    # Local OCR enrichment: append the verbatim text content of the image to
+    # the prompt. This makes /image useful even on NON-vision models (the
+    # dominant case for local Ollama setups) — screenshots of error dumps,
+    # code, receipts, and tables become actionable text. Vision models get
+    # both the pixels and the exact text (OCR beats vision models at
+    # transcribing dense text). Zero-cost no-op when pytesseract/tesseract
+    # is not installed or the image has no text.
+    from cheetahclaws.tools.files import ocr_image_bytes
+    ocr_text = ocr_image_bytes(png_bytes)
+    if ocr_text:
+        info(f"🔎 OCR: extracted {len(ocr_text)} chars of text from image")
+        prompt += (
+            "\n\n[Text extracted from the attached image via local OCR — "
+            "verbatim, may contain recognition errors:]\n"
+            f"{ocr_text[:8000]}"
+        )
+
     return ("__image__", prompt)
 
 

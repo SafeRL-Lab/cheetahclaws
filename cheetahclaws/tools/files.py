@@ -115,6 +115,27 @@ def _read_image(params: dict, config: dict) -> str:
         return f"OCR error: {type(e).__name__}: {e}"
 
 
+def ocr_image_bytes(image_bytes: bytes, lang: str = "eng") -> str:
+    """Best-effort local OCR on raw image bytes. Returns extracted text or ''.
+
+    Never raises: missing pytesseract/Pillow/tesseract-binary, corrupt bytes,
+    or an empty result all collapse to ''. Used by the ``/image`` command to
+    enrich the prompt with the verbatim text content of a clipboard image so
+    that NON-vision models can still act on screenshots (error dumps, code,
+    receipts, tables). Vision models simply get both signals.
+    """
+    try:
+        import pytesseract
+        from PIL import Image
+    except ImportError:
+        return ""
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        return pytesseract.image_to_string(img, lang=lang).strip()
+    except Exception:
+        return ""
+
+
 def _read_excel(params: dict, config: dict) -> str:
     """Read data from Excel (.xlsx) or CSV files."""
     file_path = params["file_path"]
