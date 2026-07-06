@@ -1041,15 +1041,20 @@ def cmd_image(args: str, state, config) -> Union[bool, tuple]:
     # both the pixels and the exact text (OCR beats vision models at
     # transcribing dense text). Zero-cost no-op when pytesseract/tesseract
     # is not installed or the image has no text.
-    from cheetahclaws.tools.files import ocr_image_bytes
-    ocr_text = ocr_image_bytes(png_bytes)
-    if ocr_text:
-        info(f"🔎 OCR: extracted {len(ocr_text)} chars of text from image")
-        prompt += (
-            "\n\n[Text extracted from the attached image via local OCR — "
-            "verbatim, may contain recognition errors:]\n"
-            f"{ocr_text[:8000]}"
-        )
+    #
+    # OCR runs synchronously and can add noticeable latency on large images;
+    # it also injects possibly-imperfect text alongside the pixels, which a
+    # vision model may not want. Set CHEETAHCLAWS_IMAGE_OCR=0 to disable.
+    if os.environ.get("CHEETAHCLAWS_IMAGE_OCR", "1") != "0":
+        from cheetahclaws.tools.files import ocr_image_bytes
+        ocr_text = ocr_image_bytes(png_bytes)
+        if ocr_text:
+            info(f"🔎 OCR: extracted {len(ocr_text)} chars of text from image")
+            prompt += (
+                "\n\n[Text extracted from the attached image via local OCR — "
+                "verbatim, may contain recognition errors:]\n"
+                f"{ocr_text[:8000]}"
+            )
 
     return ("__image__", prompt)
 
