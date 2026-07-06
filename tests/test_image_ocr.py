@@ -143,3 +143,34 @@ def test_cmd_image_still_sets_pending_image(monkeypatch, _clipboard_image):
 
     sctx = runtime.get_ctx(config)
     assert sctx.pending_image, "pending_image should still carry the base64 PNG"
+
+
+def test_cmd_image_ocr_disabled_via_env(monkeypatch, _clipboard_image):
+    """CHEETAHCLAWS_IMAGE_OCR=0 skips OCR entirely (no latency, no injection)."""
+    from cheetahclaws.commands import core as core_mod
+
+    called = {"n": 0}
+
+    def _tracker(*_a, **_k):
+        called["n"] += 1
+        return "should not be appended"
+
+    monkeypatch.setattr(files_mod, "ocr_image_bytes", _tracker)
+    monkeypatch.setenv("CHEETAHCLAWS_IMAGE_OCR", "0")
+    config = {"_session_id": "test-ocr-5"}
+    result = core_mod.cmd_image("describe", state=None, config=config)
+
+    assert result[1] == "describe"
+    assert called["n"] == 0, "ocr_image_bytes must not run when disabled"
+
+
+def test_cmd_image_ocr_enabled_by_default(monkeypatch, _clipboard_image):
+    """With the env var unset, OCR enrichment stays on (PR default preserved)."""
+    from cheetahclaws.commands import core as core_mod
+
+    monkeypatch.delenv("CHEETAHCLAWS_IMAGE_OCR", raising=False)
+    monkeypatch.setattr(files_mod, "ocr_image_bytes", lambda *_a, **_k: "hello ocr")
+    config = {"_session_id": "test-ocr-6"}
+    result = core_mod.cmd_image("describe", state=None, config=config)
+
+    assert "hello ocr" in result[1]
