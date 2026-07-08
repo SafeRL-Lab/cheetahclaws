@@ -1,0 +1,15 @@
+# Node
+node_modules/
+
+# Capacitor-generated native projects — regenerate with `npx cap add ios/android`.
+# Commit these only if you add native code you can't reproduce from config.
+/ios/
+/android/
+
+# Capacitor assets tool output (generated from assets/icon.png + assets/splash.png)
+/www/icons/
+/www/splash/
+
+# Build artifacts
+*.log
+.DS_Store

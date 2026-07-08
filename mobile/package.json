@@ -1,0 +1,30 @@
+{
+  "name": "cheetahclaws-mobile",
+  "productName": "CheetahClaws",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native mobile shell (iOS/Android) for CheetahClaws — connects to a remote `cheetahclaws --web` server and renders its Chat UI",
+  "author": "SafeRL-Lab",
+  "license": "Apache-2.0",
+  "scripts": {
+    "init:ios": "cap add ios",
+    "init:android": "cap add android",
+    "sync": "cap sync",
+    "assets": "capacitor-assets generate --iconBackgroundColor '#0b0b0e' --splashBackgroundColor '#0b0b0e'",
+    "ios": "cap open ios",
+    "android": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/ios": "^6.0.0",
+    "@capacitor/preferences": "^6.0.0",
+    "@capacitor/splash-screen": "^6.0.0",
+    "@capacitor/status-bar": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.0.0"
+  }
+}

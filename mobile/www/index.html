@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>CheetahClaws</title>
+<style>
+  :root { --bg:#0b0b0e; --surface:#15151b; --border:#2a2a34; --text:#dcdce8;
+          --dim:#9494ae; --accent:#e8a045; --red:#f87171; --green:#4ade80; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+  body { display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+    text-align:center; }
+  .logo { width:96px; height:96px; border-radius:22px; margin-bottom:18px;
+    box-shadow:0 8px 30px rgba(0,0,0,.5); }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--dim); font-size:14px; margin:0 0 26px; max-width:340px; line-height:1.5; }
+  .card { width:100%; max-width:380px; }
+  label { display:block; text-align:left; font-size:12px; color:var(--dim);
+    margin:0 0 6px 2px; text-transform:uppercase; letter-spacing:.04em; }
+  input { width:100%; background:var(--surface); border:1px solid var(--border);
+    color:var(--text); border-radius:12px; padding:14px 16px; font-size:16px; outline:none; }
+  input:focus { border-color:var(--accent); }
+  .row { display:flex; gap:10px; margin-top:14px; }
+  button { flex:1; border:none; border-radius:12px; padding:14px 16px; font-size:15px;
+    font-weight:600; cursor:pointer; }
+  .primary { background:var(--accent); color:#1a1206; }
+  .primary:active { opacity:.85; }
+  .ghost { background:var(--surface); color:var(--text); border:1px solid var(--border); }
+  .status { min-height:20px; margin-top:16px; font-size:13px; color:var(--dim); }
+  .status.ok { color:var(--green); }
+  .status.err { color:var(--red); }
+  .hint { margin-top:26px; font-size:12px; color:var(--dim); line-height:1.6; max-width:360px; }
+  .hint code { background:var(--surface); padding:2px 6px; border-radius:5px; font-size:11px; }
+  a { color:var(--accent); }
+  .spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--border);
+    border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite;
+    vertical-align:-2px; margin-right:6px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+  <img class="logo" src="icon.png" alt="CheetahClaws">
+  <h1>CheetahClaws</h1>
+  <p class="sub">Connect to your CheetahClaws server to start chatting from your phone.</p>
+
+  <div class="card">
+    <label for="url">Server URL</label>
+    <input id="url" type="url" inputmode="url" autocapitalize="off" autocorrect="off"
+           spellcheck="false" placeholder="https://your-server.example.com">
+    <div class="row">
+      <button class="ghost" id="test">Test</button>
+      <button class="primary" id="connect">Connect</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <p class="hint">
+    Run <code>cheetahclaws --web</code> on your machine and expose it over HTTPS,
+    e.g. <code>cloudflared tunnel --url http://localhost:8080</code>, then paste
+    the <code>https://…</code> URL above. First connection lets you register an
+    admin account.
+  </p>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const KEY = 'cc-server-url';
+
+  // Hide the native splash once the shell is interactive.
+  function hideSplash() {
+    try { window.Capacitor?.Plugins?.SplashScreen?.hide(); } catch (_) {}
+  }
+  // Dark status bar to match the app.
+  function styleStatusBar() {
+    try { window.Capacitor?.Plugins?.StatusBar?.setStyle({ style: 'DARK' }); } catch (_) {}
+  }
+
+  // Normalize whatever the user typed into an origin (scheme + host[:port]).
+  function normalize(raw) {
+    let s = (raw || '').trim();
+    if (!s) return '';
+    if (!/^https?:\/\//i.test(s)) s = 'https://' + s;   // default to https
+    let u;
+    try { u = new URL(s); } catch (_) { return ''; }
+    // Drop any path the user pasted (e.g. trailing /chat) — we append it.
+    return u.origin;
+  }
+
+  function go(origin) {
+    try { localStorage.setItem(KEY, origin); } catch (_) {}
+    try { window.Capacitor?.Plugins?.Preferences?.set({ key: KEY, value: origin }); } catch (_) {}
+    // Full-page navigation into the remote web UI (allowed via
+    // capacitor.config server.allowNavigation). The whole Chat UI is reused.
+    window.location.href = origin + '/chat';
+  }
+
+  async function test(origin) {
+    const status = $('status');
+    status.className = 'status';
+    status.innerHTML = '<span class="spinner"></span>Checking ' + origin + ' …';
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch(origin + '/health', { signal: ctrl.signal, cache: 'no-store' });
+      clearTimeout(t);
+      if (r.ok) {
+        status.className = 'status ok';
+        status.textContent = '✓ Reachable — tap Connect.';
+        return true;
+      }
+      status.className = 'status err';
+      status.textContent = '✗ Server responded ' + r.status + '.';
+    } catch (e) {
+      status.className = 'status err';
+      status.textContent = '✗ Could not reach server. Check the URL / that it is running over HTTPS.';
+    }
+    return false;
+  }
+
+  $('connect').addEventListener('click', () => {
+    const origin = normalize($('url').value);
+    if (!origin) { $('status').className = 'status err'; $('status').textContent = 'Enter a valid URL.'; return; }
+    go(origin);
+  });
+  $('test').addEventListener('click', () => {
+    const origin = normalize($('url').value);
+    if (!origin) { $('status').className = 'status err'; $('status').textContent = 'Enter a valid URL.'; return; }
+    $('url').value = origin;
+    test(origin);
+  });
+  $('url').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('connect').click(); });
+
+  // On launch: if we have a saved server, prefill and auto-connect after a beat
+  // (so a returning user goes straight to chat). The ?setup=1 flag or an empty
+  // store shows the form instead, which is also where Android-back lands.
+  (function init() {
+    hideSplash(); styleStatusBar();
+    const params = new URLSearchParams(location.search);
+    let saved = '';
+    try { saved = localStorage.getItem(KEY) || ''; } catch (_) {}
+    if (saved) $('url').value = saved;
+    if (saved && !params.has('setup')) {
+      const status = $('status');
+      status.innerHTML = '<span class="spinner"></span>Connecting to ' + saved + ' …';
+      const timer = setTimeout(() => go(saved), 900);
+      // Let the user bail out to change the server.
+      const cancel = document.createElement('button');
+      cancel.className = 'ghost';
+      cancel.textContent = 'Change server';
+      cancel.style.marginTop = '14px';
+      cancel.style.width = '100%';
+      cancel.onclick = () => { clearTimeout(timer); status.textContent = ''; cancel.remove(); $('url').focus(); };
+      $('status').after(cancel);
+    } else {
+      $('url').focus();
+    }
+  })();
+</script>
+</body>
+</html>
