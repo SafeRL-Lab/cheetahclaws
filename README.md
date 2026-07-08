@@ -16,7 +16,9 @@ English | [中文](docs/i18n/README.CN.MD) | [한국어](docs/i18n/README.KO.MD)
     ·
     <a href="https://github.com/SafeRL-Lab/cheetahclaws/issues">Issue</a>
     ·
-    <a href="https://pypi.org/project/cheetahclaws/">Downloads 3K</a>    
+    <a href="https://pypi.org/project/cheetahclaws/">
+      <img src="https://img.shields.io/badge/downloads-4.5K-blue" alt="Downloads 4.5K" align="absmiddle">
+    </a>
   </p>
 </div>
 
