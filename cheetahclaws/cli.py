@@ -30,6 +30,7 @@ Slash commands in REPL:
   /thinking   Toggle extended thinking
   /permissions [mode]  Set permission mode
   /cwd [path] Show or change working directory
+  /workspace [cmd] Manage CheetahClaws workspaces (list/switch/create/delete)
   /compact    Compact conversation history to save context space
   /init       Initialize a CLAUDE.md file in the current directory
   /export [f] Export conversation history to a Markdown file
@@ -237,6 +238,7 @@ from cheetahclaws.commands.config_cmd import (
     cmd_model, cmd_config, cmd_verbose, cmd_thinking, cmd_quiet,
     cmd_permissions, cmd_cwd, _interactive_ollama_picker,
 )
+from cheetahclaws.commands.workspace_cmd import cmd_workspace, _apply_workspace
 
 # ── Core commands ──────────────────────────────────────────────────────────
 from cheetahclaws.commands.core import (
@@ -460,6 +462,7 @@ COMMANDS = {
     "thinking":    cmd_thinking,
     "permissions": cmd_permissions,
     "cwd":         cmd_cwd,
+    "workspace":   cmd_workspace,
     "skills":      cmd_skills,
     "memory":      cmd_memory,
     "agents":      cmd_agents,
@@ -624,6 +627,7 @@ _CMD_META: dict[str, tuple[str, list[str]]] = {
     "thinking":    ("Toggle extended thinking",           []),
     "permissions": ("Set permission mode",                ["auto", "accept-edits", "accept-all", "manual", "plan"]),
     "cwd":         ("Show / change working directory",    []),
+    "workspace":   ("Manage CheetahClaws workspaces",       ["list", "switch", "default", "create", "delete"]),
     "skills":      ("List available skills",              []),
     "memory":      ("Search / list / consolidate memories", ["consolidate"]),
     "agents":      ("Show background agents",             []),
@@ -2014,6 +2018,13 @@ def main():
     from cheetahclaws.providers import detect_provider, PROVIDERS
 
     config = load_config()
+
+    # ── Workspace: start in the last-used workspace (or workspace1) ──────────
+    try:
+        _apply_workspace(config)
+    except Exception as _e:
+        if config.get("verbose", False):
+            warn(f"Could not apply workspace: {_e}")
 
     # Apply persisted console theme (if any) before any output is rendered.
     try:

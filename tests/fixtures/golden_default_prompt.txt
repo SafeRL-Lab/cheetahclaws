@@ -170,3 +170,4 @@ These commands the **user** can invoke at the REPL prompt — they are NOT tools
 - `/web` `[status | --no-auth | --host]` — Start the web terminal / chat UI in background
 - `/wechat` `[stop | status]` — WeChat bridge (iLink Bot API)
 - `/worker` — Auto-implement pending tasks
+- `/workspace` `[list | switch | default | create | delete]` — Manage CheetahClaws workspaces
