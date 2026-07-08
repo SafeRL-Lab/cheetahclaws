@@ -75,6 +75,7 @@ _MIME = {
     ".jpeg": "image/jpeg",
     ".woff": "font/woff",
     ".woff2": "font/woff2",
+    ".webmanifest": "application/manifest+json",
 }
 
 
@@ -131,6 +132,12 @@ class _PtySession:
         env["COLUMNS"] = "120"
         env["LINES"] = "30"
         env["CHEETAHCLAWS_WEB_TERMINAL"] = "1"
+        # Don't let the *host's* terminal identity leak into the browser PTY —
+        # otherwise the CLI thinks it's running in iTerm/WezTerm/etc. and picks
+        # cursor-redraw streaming that duplicates frames on the xterm.js client.
+        for _leak in ("TERM_PROGRAM", "TERM_PROGRAM_VERSION", "WT_SESSION",
+                      "KITTY_WINDOW_ID", "ALACRITTY_WINDOW_ID", "WEZTERM_PANE"):
+            env.pop(_leak, None)
         self.proc = subprocess.Popen(
             _server_cmd, stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
             env=env, preexec_fn=os.setsid,
@@ -785,6 +792,12 @@ def _handle_websocket(sock: socket.socket, extra: bytes,
     env["COLUMNS"] = "120"
     env["LINES"] = "30"
     env["CHEETAHCLAWS_WEB_TERMINAL"] = "1"
+    # Don't let the *host's* terminal identity leak into the browser PTY —
+    # otherwise the CLI thinks it's running in iTerm/WezTerm/etc. and picks
+    # cursor-redraw streaming that duplicates frames on the xterm.js client.
+    for _leak in ("TERM_PROGRAM", "TERM_PROGRAM_VERSION", "WT_SESSION",
+                  "KITTY_WINDOW_ID", "ALACRITTY_WINDOW_ID", "WEZTERM_PANE"):
+        env.pop(_leak, None)
     proc = subprocess.Popen(
         _server_cmd, stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
         env=env, preexec_fn=os.setsid,
@@ -815,9 +828,18 @@ def _handle_websocket(sock: socket.socket, extra: bytes,
             if msg is None:
                 break
             if isinstance(msg, str):
+                obj = None
                 try:
                     obj = json.loads(msg)
-                    if obj.get("type") == "resize":
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                # Only a JSON *object* carries a control message; anything else
+                # (a bare number/string/array that happens to be valid JSON, or
+                # plain typed text) is forwarded verbatim to the PTY. Guarding on
+                # dict avoids `'int' object has no attribute 'get'` crashing the
+                # whole connection handler.
+                if isinstance(obj, dict) and obj.get("type") == "resize":
+                    try:
                         import fcntl, termios
                         rows, cols = int(obj["rows"]), int(obj["cols"])
                         winsize = struct.pack("HHHH", rows, cols, 0, 0)
@@ -826,9 +848,9 @@ def _handle_websocket(sock: socket.socket, extra: bytes,
                             os.killpg(os.getpgid(proc.pid), signal.SIGWINCH)
                         except (OSError, ProcessLookupError):
                             pass
-                        continue
-                except (json.JSONDecodeError, KeyError, ValueError):
-                    pass
+                    except (KeyError, ValueError, OSError):
+                        pass
+                    continue
                 os.write(master_fd, msg.encode())
             elif isinstance(msg, bytes):
                 os.write(master_fd, msg)

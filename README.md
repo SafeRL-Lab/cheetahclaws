@@ -16,7 +16,9 @@ English | [中文](docs/i18n/README.CN.MD) | [한국어](docs/i18n/README.KO.MD)
     ·
     <a href="https://github.com/SafeRL-Lab/cheetahclaws/issues">Issue</a>
     ·
-    <a href="https://pypi.org/project/cheetahclaws/">Downloads 3K</a>    
+    <a href="https://pypi.org/project/cheetahclaws/">
+      <img src="https://img.shields.io/badge/downloads-6.7K-blue" alt="Downloads 6.7K" align="absmiddle">
+    </a>
   </p>
 </div>
 
@@ -41,6 +43,7 @@ Other install methods: [pip install](#alternative-install-with-pip) | [uv instal
 
 ## 🔥🔥🔥 News (Pacific Time)
 
+- July 8, 2026: **The Web UI Chat is now an installable mobile PWA.** Open `/chat` on a phone and *Add to Home Screen* for a full-screen app with an offline shell (manifest + service worker + icons); mobile fixes keep the text box above the on-screen keyboard (`visualViewport`/`100dvh`) and add safe-area + a tap-to-close sidebar. Also fixes two web-terminal bugs surfaced on mobile: a non-dict-JSON WebSocket crash, and duplicated stream frames (the browser PTY now forces append-only rendering). [Details](docs/news.md)
 - July 8, 2026: New **`/workspace`** command manages isolated working directories under `~/.cheetahclaws/workspaces` (`list`/`switch`/`default`/`create`/`delete`) (PR #162); startup auto-switching is **opt-in** via `workspace_auto` (off by default, so launching in a project directory is unchanged), and `default` is now a sticky key separate from last-used. [Details](docs/news.md)
 - July 6, 2026 (**v3.5.84**): **`/image` now enriches the prompt with local OCR text** so even non-vision models can act on clipboard screenshots (error dumps, code, tables); runs only when `pytesseract`/`tesseract` are installed and is fully opt-out via `CHEETAHCLAWS_IMAGE_OCR=0`. [Details](docs/news.md)
 - June 28, 2026: New **`accept-edits`** permission mode (auto-run file edits, still ask before non-allow-listed Bash) — the middle ground between `auto` and `accept-all`; also exposes the existing `plan` mode in `/permissions` and corrects the prompt's misleading `auto` description. [Details](docs/news.md)
@@ -73,18 +76,36 @@ CheetahClaws: **A Fast** and **Easy-to-Use** Python native Agent Harness Infrast
 ---
 
 ## Content
-  * [Why CheetahClaws](#why-cheetahclaws)
-  * [CheetahClaws vs OpenClaw](#cheetahclaws-vs-openclaw)
-  * [Features](#features)
-  * [Supported Models](#supported-models)
-  * [Installation](#installation)
-  * [Usage: Closed-Source API Models](#usage-closed-source-api-models)
-  * [Usage: Open-Source Models (Local)](#usage-open-source-models-local)
-  * [Model Name Format](#model-name-format)
-  * [Trading Agent](#trading-agent)
-  * [Web UI](#web-ui)
-  * [Documentation](#documentation) (guides for all features)
-  * [Contributing](#contributing) · [FAQ](#faq) · [Citation](#citation)
+- [CheetahClaws](#cheetahclaws)
+  - [Content](#content)
+    - [Demos](#demos)
+  - [Why CheetahClaws](#why-cheetahclaws)
+  - [CheetahClaws vs OpenClaw](#cheetahclaws-vs-openclaw)
+  - [Features](#features)
+  - [Supported Models](#supported-models)
+    - [Closed-Source (API)](#closed-source-api)
+    - [Open-Source (Local via Ollama)](#open-source-local-via-ollama)
+  - [Installation](#installation)
+    - [Alternative: install with `pip`](#alternative-install-with-pip)
+    - [Alternative: install with `pip` from source code](#alternative-install-with-pip-from-source-code)
+      - [Optional extras](#optional-extras)
+    - [Alternative: install with `uv`](#alternative-install-with-uv)
+    - [Alternative: run directly from source (no install)](#alternative-run-directly-from-source-no-install)
+  - [Usage: Closed-Source API Models](#usage-closed-source-api-models)
+  - [Usage: Open-Source Models (Local)](#usage-open-source-models-local)
+    - [Ollama (recommended)](#ollama-recommended)
+    - [LM Studio](#lm-studio)
+    - [vLLM / self-hosted OpenAI-compatible server](#vllm--self-hosted-openai-compatible-server)
+    - [Atlas Cloud (hosted, OpenAI-compatible)](#atlas-cloud-hosted-openai-compatible)
+  - [Model Name Format](#model-name-format)
+  - [Trading Agent](#trading-agent)
+  - [Web UI](#web-ui)
+  - [Documentation](#documentation)
+  - [Quick Reference](#quick-reference)
+  - [Contributing](#contributing)
+  - [FAQ](#faq)
+  - [Citation](#citation)
+  - [Thanks to all contributors:](#thanks-to-all-contributors)
 
 
 ### Demos
@@ -230,8 +251,6 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/SafeRL-Lab/cheetahclaws/main/scripts/install.sh | bash
-# or:
-pip install cheetahclaws
 ```
 
 Works on **Linux, macOS, WSL2, and Android (Termux)** (Python 3.10+). First run guides you through provider + API-key setup; re-run anytime with `cheetahclaws --setup`.
@@ -239,6 +258,12 @@ Works on **Linux, macOS, WSL2, and Android (Termux)** (Python 3.10+). First run 
 > **Windows:** native Windows is not supported — use [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install). **Android/Termux:** `pkg install python git && pip install cheetahclaws`.
 
 ### Alternative: install with `pip`
+
+```bash
+pip install cheetahclaws
+```
+
+### Alternative: install with `pip` from source code
 
 ```bash
 git clone https://github.com/SafeRL-Lab/cheetahclaws.git
@@ -389,6 +414,8 @@ cheetahclaws --web --no-auth        # skip login (localhost dev only)
 ```
 
 Open `http://localhost:<port>/chat` — first account becomes admin. Includes streaming chat (WS) + SSE slash commands, persistent sessions with folders/search/Markdown export, tool cards, inline permission approval, settings panel, light/dark/system theme, and `/health` + `/metrics` endpoints. A full xterm.js PTY terminal lives at `/` (100% CLI parity).
+
+The Chat UI is also an **installable mobile PWA** — open `/chat` on a phone and *Add to Home Screen* for a full-screen app with offline shell (needs HTTPS for a real install; expose with `cloudflared tunnel --url http://localhost:8080`). See the [Web UI guide](docs/guides/web-ui.md#mobile-install-the-chat-ui-as-an-app-pwa).
 
 > **Full guide:** [docs/guides/web-ui.md](docs/guides/web-ui.md) · **Docker / home server:** [docs/guides/docker.md](docs/guides/docker.md) · **Native desktop app:** [desktop/README.md](desktop/README.md)
 

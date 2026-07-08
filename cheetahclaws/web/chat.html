@@ -6,7 +6,15 @@
 <title>CheetahClaws Chat</title>
 <link rel="icon" type="image/png" sizes="256x256" href="/static/favicon.png">
 <link rel="icon" type="image/x-icon" sizes="any" href="/favicon.ico">
-<link rel="apple-touch-icon" href="/static/favicon.png">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<!-- PWA: installable web app (Add to Home Screen) -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0b0e" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CheetahClaws">
 <script>
   // Apply the saved theme BEFORE first paint to avoid a flash of the wrong
   // theme. Keep in sync with initTheme() in /static/js/settings.js.
@@ -89,8 +97,12 @@
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:var(--bg); color:var(--text); font-family:var(--font);
-       height:100vh; display:flex; overflow:hidden; font-size:14px;
+       height:100vh; height:100dvh; display:flex; overflow:hidden; font-size:14px;
        transition:background .3s ease, color .3s ease; }
+/* On phones the on-screen keyboard doesn't shrink 100vh/100dvh, so the bottom
+   input area gets hidden behind it. A tiny visualViewport script (end of body)
+   sets --app-h to the *visible* height; prefer it when present. */
+@media (max-width:768px) { body { height:var(--app-h, 100dvh); } }
 #sidebar, #main, #topbar, #input-area, #settings-panel, .tool-card, .approval-card,
 .activity-indicator, .msg .bubble, #prompt-input, #send-btn,
 .sp-select, .sp-input, .sp-toggle, .sess-item {
@@ -537,16 +549,26 @@ body.resizing { cursor:col-resize; user-select:none; }
 #topbar .settings-btn:hover { border-color:var(--accent); color:var(--accent); }
 
 /* ── Responsive ───────────────────────────────────────────────── */
+/* Dim backdrop behind the off-canvas sidebar; tap it to close (see markup). */
+#nav-backdrop { display:none; }
 @media (max-width:768px) {
   #sidebar {
     position:fixed; top:0; left:0; height:100vh; z-index:200;
     transform:translateX(-100%);
+    box-shadow:2px 0 18px var(--shadow);
   }
   #sidebar.open { transform:translateX(0); }
+  #sidebar.open ~ #nav-backdrop {
+    display:block; position:fixed; inset:0; z-index:150;
+    background:rgba(0,0,0,0.42);
+  }
   #sidebar-resizer { display:none; }
   #topbar .menu-btn { display:block; }
   .msg { max-width:95%; }
   .msg.user { max-width:90%; }
+  /* Respect notch / home-indicator safe areas when installed full-screen. */
+  #topbar { padding-top:max(10px, env(safe-area-inset-top)); }
+  #input-area { padding-bottom:max(14px, calc(14px + env(safe-area-inset-bottom))); }
 }
 </style>
 </head>
@@ -605,6 +627,9 @@ body.resizing { cursor:col-resize; user-select:none; }
 
 <!-- Resizable divider between sidebar and main -->
 <div id="sidebar-resizer" title="Drag to resize"></div>
+
+<!-- Mobile: tap-outside backdrop that closes the off-canvas sidebar -->
+<div id="nav-backdrop" onclick="document.getElementById('sidebar').classList.remove('open')"></div>
 
 <!-- Session context menu (right-click) -->
 <div id="sess-menu" style="display:none;position:fixed;z-index:400;background:var(--surface);
@@ -724,6 +749,45 @@ body.resizing { cursor:col-resize; user-select:none; }
 <script src="/static/js/settings.js"></script>
 <script src="/static/js/welcome.js"></script>
 <script src="/static/js/init.js"></script>
+
+<!-- Mobile: keep the input above the on-screen keyboard.
+     iOS/Android don't shrink 100vh/100dvh when the keyboard opens, so the
+     bottom input area ends up hidden behind it ("can't type"). We track the
+     *visible* height via visualViewport and expose it as --app-h. -->
+<script>
+  (function () {
+    var vv = window.visualViewport;
+    if (!vv) return;  // desktop / unsupported → CSS 100dvh handles it
+    var mq = window.matchMedia('(max-width:768px)');
+    var root = document.documentElement;
+    function apply() {
+      if (mq.matches) {
+        root.style.setProperty('--app-h', vv.height + 'px');
+        // Keep the caret/input in view once the layout has shrunk.
+        var msgs = document.getElementById('messages');
+        if (document.activeElement === document.getElementById('prompt-input') && msgs) {
+          msgs.scrollTop = msgs.scrollHeight;
+        }
+      } else {
+        root.style.removeProperty('--app-h');
+      }
+    }
+    vv.addEventListener('resize', apply);
+    vv.addEventListener('scroll', apply);
+    if (mq.addEventListener) mq.addEventListener('change', apply);
+    window.addEventListener('orientationchange', function () { setTimeout(apply, 300); });
+    apply();
+  })();
+</script>
+
+<!-- PWA: register the service worker for installability + offline app shell -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js').catch(function () { /* non-fatal */ });
+    });
+  }
+</script>
 
 </body>
 </html>

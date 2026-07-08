@@ -82,7 +82,7 @@ exclude = [
 # agent_templates/ is plain data (markdown) loaded by filesystem path from
 # agent_runner.py and research/lab/roles.py — ship it with the package.
 "cheetahclaws" = ["agent_templates/**/*.md", "agent_templates/**/*"]
-"cheetahclaws.web" = ["*.js", "*.css", "*.html", "*.ico", "*.png", "static/**/*"]
+"cheetahclaws.web" = ["*.js", "*.css", "*.html", "*.ico", "*.png", "*.webmanifest", "static/**/*"]
 "cheetahclaws.prompts" = ["base/*.md", "overlays/*.md", "fragments/*.md", "README.md"]
 "cheetahclaws.modular.video" = ["PLUGIN.md"]
 "cheetahclaws.modular.voice" = ["PLUGIN.md"]

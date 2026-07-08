@@ -230,6 +230,13 @@ def auto_stream_mode(config: dict | None = None) -> str:
     if not getattr(console, "is_terminal", False):
         return "commit"
 
+    # The web terminal renders through xterm.js over a network of unknown
+    # latency, where in-place cursor redraw ('live') reprints/duplicates every
+    # frame. Force the append-only 'commit' tier there. (An explicit
+    # stream_mode set above still wins for a user who knows their client.)
+    if _os.environ.get("CHEETAHCLAWS_WEB_TERMINAL") == "1":
+        return "commit"
+
     term = _os.environ.get("TERM", "") or ""
     term_program = _os.environ.get("TERM_PROGRAM", "") or ""
     in_ssh = bool(_os.environ.get("SSH_CLIENT") or _os.environ.get("SSH_TTY"))

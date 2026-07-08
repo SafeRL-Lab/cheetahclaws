@@ -227,6 +227,48 @@ Streaming events from the agent are rendered as distinct UI components, not raw 
 
 ---
 
+## Mobile: install the Chat UI as an app (PWA)
+
+The Chat UI (`/chat`) is a Progressive Web App — it can be installed to a phone's
+home screen and launched full-screen like a native app, with an offline app
+shell. It is also mobile-responsive: the sidebar becomes a swipe-in drawer, the
+input stays above the on-screen keyboard (`visualViewport` + `100dvh`), and
+notch/home-indicator safe areas are respected.
+
+**Install steps**
+
+1. Open the **`/chat`** URL on the phone (not the bare `/`, which is the desktop
+   PTY terminal and is not designed for touch input).
+2. **iOS Safari:** Share → *Add to Home Screen*. **Android Chrome:** menu →
+   *Install app* / *Add to Home Screen*.
+3. The installed icon launches straight into `/chat` (the manifest `start_url`).
+
+**HTTPS is required for a real install.** Service workers — hence installability
+and offline caching — only run in a *secure context* (HTTPS, or `localhost`).
+Over plain LAN HTTP (`http://<ip>:<port>`) the responsive UI works and iOS can
+still add a home-screen shortcut, but Android's install prompt and offline
+caching will not engage. To get full PWA install from a phone:
+
+```bash
+# Terminal 1: run the server (keep auth ON — this will be reachable publicly)
+cheetahclaws --web
+
+# Terminal 2: expose it over HTTPS (no account needed for a quick tunnel)
+cloudflared tunnel --url http://localhost:8080
+# → open the printed https://<random>.trycloudflare.com/chat on the phone
+```
+
+Any HTTPS reverse proxy (Caddy, nginx + certs) or tunnel (cloudflared, ngrok,
+`tailscale serve`) works. Do **not** pass `--no-auth` on a publicly reachable
+tunnel.
+
+**What ships:** `web/manifest.webmanifest`, `web/sw.js` (network-first for
+navigations, stale-while-revalidate for static assets, and a hard bypass for
+`/api/*`, SSE, and WebSockets so streaming/login are never cached), and the
+`web/static/icon-{192,512}.png` + `icon-maskable-512.png` icons.
+
+---
+
 ## PTY terminal (`/`)
 
 A full xterm.js (v5.5) terminal emulator in the browser — identical to running `cheetahclaws` in a native shell. 100% feature parity.
