@@ -150,6 +150,24 @@ def test_setup_registers_module_level_providers():
         ui_input.setup(lambda: {}, lambda: {})
 
 
+def test_dynamic_completions_used_when_static_subcommands_empty():
+    """Commands with no static subcommands can register a dynamic completer."""
+    def _fake_model_completions(partial: str):
+        candidates = ["openai/gpt-4o", "openai/gpt-4o-mini", "anthropic/claude-sonnet"]
+        return [c for c in candidates if c.startswith(partial)]
+
+    completer = SlashCompleter(
+        lambda: COMMANDS,
+        lambda: META,
+        dynamic_completions_provider=lambda: {"model": _fake_model_completions},
+    )
+    completions = _completions(completer, "/model openai/g")
+    texts = [c.text for c in completions]
+    assert "openai/gpt-4o" in texts
+    assert "openai/gpt-4o-mini" in texts
+    assert "anthropic/claude-sonnet" not in texts
+
+
 def test_module_does_not_import_cheetahclaws():
     """Regression guard for the circular-import concern from review."""
     import sys

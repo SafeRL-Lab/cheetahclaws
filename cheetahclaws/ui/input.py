@@ -33,20 +33,26 @@ except ImportError:
 # Callers (cheetahclaws.repl) must call setup() before read_line().
 _commands_provider: Optional[Callable[[], dict]] = None
 _meta_provider: Optional[Callable[[], dict]] = None
+_dynamic_completions_provider: Optional[Callable[[], dict]] = None
 
 
 def setup(
     commands_provider: Callable[[], dict],
     meta_provider: Callable[[], dict],
+    dynamic_completions_provider: Optional[Callable[[], dict]] = None,
 ) -> None:
     """Register providers for the live command registry and metadata.
 
     `commands_provider` returns the dispatcher's COMMANDS dict.
     `meta_provider` returns the _CMD_META dict (descriptions + subcommands).
+    `dynamic_completions_provider` returns a dict mapping command names to
+    callables: fn(partial: str) -> Iterable[str]. Used for context-aware
+    completions beyond static subcommand lists (e.g. /model providers).
     """
-    global _commands_provider, _meta_provider
+    global _commands_provider, _meta_provider, _dynamic_completions_provider
     _commands_provider = commands_provider
     _meta_provider = meta_provider
+    _dynamic_completions_provider = dynamic_completions_provider
 
 
 # ── Completer ────────────────────────────────────────────────────────────────
@@ -66,9 +72,11 @@ if HAS_PROMPT_TOOLKIT:
             self,
             commands_provider: Optional[Callable[[], dict]] = None,
             meta_provider: Optional[Callable[[], dict]] = None,
+            dynamic_completions_provider: Optional[Callable[[], dict]] = None,
         ):
             self._commands_override = commands_provider
             self._meta_override = meta_provider
+            self._dynamic_completions_override = dynamic_completions_provider
             self._cache_key: Optional[tuple] = None
             self._cache_names: list[str] = []
 
@@ -78,6 +86,10 @@ if HAS_PROMPT_TOOLKIT:
 
         def _get_meta(self) -> dict:
             provider = self._meta_override or _meta_provider
+            return (provider() if provider else {}) or {}
+
+        def _get_dynamic_completions(self) -> dict:
+            provider = self._dynamic_completions_override or _dynamic_completions_provider
             return (provider() if provider else {}) or {}
 
         def _live_command_names(self) -> list[str]:
@@ -118,19 +130,31 @@ if HAS_PROMPT_TOOLKIT:
             head, _, tail = text.partition(" ")
             cmd = head[1:]
             meta_entry = meta.get(cmd)
-            if not meta_entry:
-                return
-            subs = meta_entry[1]
-            if not subs:
-                return
-            partial = tail.rsplit(" ", 1)[-1]
-            for sub in subs:
-                if sub.startswith(partial):
-                    yield Completion(
-                        sub,
-                        start_position=-len(partial),
-                        display_meta=f"{cmd} subcommand",
-                    )
+            if meta_entry:
+                subs = meta_entry[1]
+                partial = tail.rsplit(" ", 1)[-1]
+                if subs:
+                    for sub in subs:
+                        if sub.startswith(partial):
+                            yield Completion(
+                                sub,
+                                start_position=-len(partial),
+                                display_meta=f"{cmd} subcommand",
+                            )
+                    return
+
+            # ── Dynamic command-specific completions (e.g. /model) ──
+            dynamic = self._get_dynamic_completions()
+            completer_fn = dynamic.get(cmd)
+            if completer_fn:
+                partial = tail.rsplit(" ", 1)[-1]
+                for match in completer_fn(partial):
+                    if match.startswith(partial):
+                        yield Completion(
+                            match,
+                            start_position=-len(partial),
+                            display_meta=f"{cmd} completion",
+                        )
 
 else:  # pragma: no cover — unreachable when prompt_toolkit is installed
     class SlashCompleter:

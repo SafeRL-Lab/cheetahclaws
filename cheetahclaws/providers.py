@@ -163,7 +163,22 @@ PROVIDERS: dict[str, dict] = {
         # Conservative default; the actual cap comes from the real
         # underlying model. dynamic_cap_max_tokens never exceeds this.
         "context_limit": 128000,
-        "models":        [],   # dynamic — see docs/guides/litellm.md
+        # Curated starting set for the /model picker. LiteLLM supports
+        # ~1000 model strings; any valid string works regardless of this list.
+        "models": [
+            "openrouter/anthropic/claude-3-5-sonnet",
+            "openrouter/openai/gpt-4o",
+            "openrouter/google/gemini-pro-1.5",
+            "openrouter/meta-llama/llama-3.3-70b-instruct",
+            "openrouter/x-ai/grok-2-1212",
+            "groq/llama-3.3-70b-versatile",
+            "groq/mixtral-8x7b-32768",
+            "together_ai/meta-llama/Llama-3-70b-chat-hf",
+            "perplexity/sonar-large-online",
+            "cohere/command-r-plus",
+            "mistral/mistral-large-latest",
+            "fireworks_ai/accounts/fireworks/models/llama-v3p3-70b-instruct",
+        ],
     },
     # NVIDIA NIM (build.nvidia.com) — free tier, no payment info required.
     # OpenAI-compatible. Get a key at https://build.nvidia.com (free signup).

@@ -684,6 +684,96 @@ _CMD_META: dict[str, tuple[str, list[str]]] = {
 _load_external_commands_into(COMMANDS)
 
 
+# ── Dynamic command completers (prompt_toolkit + readline) ─────────────────
+
+def _model_dynamic_completions(partial: str) -> list[str]:
+    """Return /model completion suggestions in provider/model format.
+
+    Mirrors the Dulus /model picker: native providers + a two-level LiteLLM
+    tree. Only uses public providers that CheetahClaws already supports.
+    LM Studio and custom endpoints are excluded because they are dynamic or
+    user-defined.
+    """
+    from cheetahclaws.providers import PROVIDERS
+
+    suggestions: list[str] = []
+    partial = partial.lstrip()
+
+    # Providers with a curated static model list (exclude dynamic/user-defined).
+    static_providers = {
+        pname for pname, pdata in PROVIDERS.items()
+        if pdata.get("models") and pname not in {"lmstudio", "custom", "litellm"}
+    }
+
+    # Group LiteLLM models by backend for the two-level tree.
+    litellm_models = PROVIDERS.get("litellm", {}).get("models", [])
+    litellm_backends: dict[str, list[str]] = {}
+    for m in litellm_models:
+        if "/" in m:
+            backend, rest = m.split("/", 1)
+            litellm_backends.setdefault(backend, []).append(rest)
+
+    if not partial:
+        # First tab after `/model ` — one default model per native provider +
+        # LiteLLM backend prefixes so the user can drill down.
+        for pname in sorted(static_providers):
+            models = PROVIDERS[pname]["models"]
+            if models:
+                suggestions.append(f"{pname}/{models[0]}")
+        for backend in sorted(litellm_backends):
+            suggestions.append(f"litellm/{backend}/")
+        return suggestions[:50]
+
+    # Native provider already typed: complete its models.
+    if "/" in partial:
+        provider_prefix, rest = partial.split("/", 1)
+        if provider_prefix in static_providers:
+            for m in PROVIDERS[provider_prefix]["models"]:
+                if m.startswith(rest):
+                    suggestions.append(f"{provider_prefix}/{m}")
+            return suggestions[:50]
+
+    # LiteLLM two-level tree.
+    if partial.startswith("litellm/"):
+        rest = partial[len("litellm/"):]
+        if not rest or "/" not in rest:
+            # Level 1: backends (with trailing slash to invite level 2).
+            for backend in sorted(litellm_backends):
+                if backend.startswith(rest):
+                    suggestions.append(f"litellm/{backend}/")
+            # Also offer full model strings for users who skip the slash.
+            for m in litellm_models:
+                if m.startswith(rest):
+                    suggestions.append(f"litellm/{m}")
+        else:
+            # Level 2: models under chosen backend.
+            backend, model_partial = rest.split("/", 1)
+            for model_rest in litellm_backends.get(backend, []):
+                if model_rest.startswith(model_partial):
+                    suggestions.append(f"litellm/{backend}/{model_rest}")
+        return suggestions[:50]
+
+    # General fallback: match any native provider/model or LiteLLM full string.
+    for pname in sorted(static_providers):
+        for m in PROVIDERS[pname]["models"]:
+            candidate = f"{pname}/{m}"
+            if candidate.startswith(partial):
+                suggestions.append(candidate)
+    for m in litellm_models:
+        candidate = f"litellm/{m}"
+        if candidate.startswith(partial):
+            suggestions.append(candidate)
+
+    return suggestions[:50]
+
+
+def _dynamic_completions_provider() -> dict:
+    """Registry of dynamic command completers used by the input UI."""
+    return {
+        "model": _model_dynamic_completions,
+    }
+
+
 _rl_current_prompt = ""   # set by _read_input before each input() call
 
 
@@ -720,7 +810,14 @@ def setup_readline(history_file: Path):
             cmd = line.split()[0][1:]          # e.g. "mcp"
             if cmd in _CMD_META:
                 subs = _CMD_META[cmd][1]
-                matches = sorted(s for s in subs if s.startswith(text))
+                if subs:
+                    matches = sorted(s for s in subs if s.startswith(text))
+                    return matches[state] if state < len(matches) else None
+            # Dynamic command-specific completions (e.g. /model)
+            dynamic = _dynamic_completions_provider()
+            completer_fn = dynamic.get(cmd)
+            if completer_fn:
+                matches = sorted(completer_fn(text))
                 return matches[state] if state < len(matches) else None
 
         return None
@@ -908,7 +1005,11 @@ def repl(config: dict, initial_prompt: str = None):
     if HAS_PROMPT_TOOLKIT:
         # Inject live providers so ui.input's completer enumerates the same
         # command set the dispatcher accepts (includes plugin/modular adds).
-        _ui_input.setup(lambda: COMMANDS, lambda: _CMD_META)
+        _ui_input.setup(
+            lambda: COMMANDS,
+            lambda: _CMD_META,
+            dynamic_completions_provider=_dynamic_completions_provider,
+        )
     else:
         setup_readline(HISTORY_FILE)
 
