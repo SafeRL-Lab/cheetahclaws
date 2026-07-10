@@ -35,7 +35,7 @@ Then just run:
 cheetahclaws        # start chatting!
 ```
 
-Other install methods: [one-line install script](#alternative-one-line-install-script) | [install from source](#alternative-install-with-pip-from-source-code) | [uv install](#alternative-install-with-uv) | [run from source install](#alternative-run-directly-from-source-no-install) | [full install details](#installation)
+Other install methods: [one-line install script](#alternative-one-line-install-script) | [install from source](#alternative-install-with-pip-from-source-code) | [uv install](#alternative-install-with-uv) | [run from source install](#alternative-run-directly-from-source-no-install) | [full install details](#installation) | [docker install](https://hub.docker.com/r/chauncygu/cheetahclaws)
 
 > 🖥️ **Prefer a native app?** A desktop build (Electron) wraps the full chat UI in a window — no terminal needed. See [`desktop/`](desktop/README.md).
 
