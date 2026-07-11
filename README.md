@@ -41,6 +41,7 @@ Other install methods: [one-line install script](#alternative-one-line-install-s
 
 ## 🔥🔥🔥 News (Pacific Time)
 
+- July 10, 2026 (**v3.5.85**): **REPL quality-of-life.** Live typing-time completion now works on *every* install — `prompt_toolkit` is a **core dependency** (no `[autosuggest]` extra needed, so `pip install` / `uv tool install` both get it out of the box); **`/model` gained a Tab-completion picker** (provider/model + a two-level LiteLLM tree, PR #166); and sessions now **autosave every turn** (atomic write + `fsync`) so a crash or power-loss mid-conversation stays recoverable via `/resume` — the loud daily/history save still happens once on exit. [Details](docs/news.md)
 - July 9, 2026: **Official Docker image + one-command publish.** Pre-built image on Docker Hub (`docker pull chauncygu/cheetahclaws`) so you can run the Web UI without cloning; fixes a first-run `PermissionError` by pre-creating the `.cheetahclaws`/`workspace` dirs owned by the non-root user, makes the compose `image` overridable via `CHEETAH_IMAGE`, and adds `scripts/docker-publish.sh` (auto-reads the version, multi/single-arch). New docs sections: **Pull from Docker Hub** and **Interactive setup / CLI mode**. [Details](docs/news.md)
 - July 8, 2026: New **`/workspace`** command manages isolated working directories under `~/.cheetahclaws/workspaces` (`list`/`switch`/`default`/`create`/`delete`) (PR #162); startup auto-switching is **opt-in** via `workspace_auto` (off by default, so launching in a project directory is unchanged), and `default` is now a sticky key separate from last-used. [Details](docs/news.md)
 - July 6, 2026 (**v3.5.84**): **`/image` now enriches the prompt with local OCR text** so even non-vision models can act on clipboard screenshots (error dumps, code, tables); runs only when `pytesseract`/`tesseract` are installed and is fully opt-out via `CHEETAHCLAWS_IMAGE_OCR=0`. [Details](docs/news.md)
@@ -188,7 +189,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Bridges + remote control | Telegram · WeChat · Slack · QQ — chat round-trip, slash passthrough, per-bridge job queue (`!jobs`/`!retry`/`!cancel`). [Guide](docs/guides/bridges.md) |
 | Voice / Vision / Video / TTS | Offline Whisper `/voice`; `/image` clipboard vision (local + cloud); `/video` + `/tts` content factories. [Guide](docs/guides/voice-and-video.md) |
 | Web UI | `--web` — multi-user browser chat + PTY terminal. [Guide](docs/guides/web-ui.md) |
-| More | Tmux integration · `!cmd` shell escape · proactive monitoring · 3×Ctrl+C force-quit · session persistence · `/cloudsave` GitHub-Gist sync · cost tracking · `--print` non-interactive mode |
+| More | Tmux integration · `!cmd` shell escape · proactive monitoring · 3×Ctrl+C force-quit · crash-safe session autosave (every turn, `fsync` + atomic write; `/resume` to recover) · `/cloudsave` GitHub-Gist sync · cost tracking · `--print` non-interactive mode |
 
 > **Full feature reference** — every row above with complete detail (context-compression layers, auto-fanout, 15 themes, the full Trading/Research/Agents writeups, …): [docs/guides/features.md](docs/guides/features.md).
 
@@ -265,7 +266,8 @@ git pull && pip install --force-reinstall .   # to update
 ```bash
 pip install ".[voice]"      # voice input (sounddevice + faster-whisper)
 pip install ".[vision]"     # clipboard image capture (Pillow)
-pip install ".[autosuggest]"# typing-time slash autosuggest (prompt_toolkit)
+# note: typing-time completion (prompt_toolkit) is now built in — no extra needed.
+#       the [autosuggest] extra is kept as a no-op alias for backward compat.
 pip install ".[browser]"    # headless browser (playwright); then: playwright install chromium
 pip install ".[files]"      # PDF + Excel reading (pymupdf, openpyxl)
 pip install ".[ocr]"        # image OCR (pytesseract)
@@ -372,6 +374,8 @@ cheetahclaws --model kimi:moonshot-v1-32k    # 3. provider:model
 ```
 
 **Auto-detection by prefix:** `claude-`→anthropic · `gpt-`/`o1`/`o3`→openai · `gemini-`→gemini · `moonshot-`/`kimi-`→kimi · `qwen`/`qwq-`→qwen · `glm-`→zhipu · `deepseek-`→deepseek · `MiniMax-`/`abab`→minimax · `llama`/`mistral`/`phi`/`gemma`/`mixtral`/`codellama`→ollama.
+
+**Tab-completion (PR #166):** inside the REPL, type `/model ` and press **Tab** for a `provider/model` picker — one default per provider, plus a two-level `litellm/<backend>/<model>` tree you can drill into. Completions appear as you type when `prompt_toolkit` is present (now a core dependency, so always); otherwise readline serves them on Tab.
 
 ---
 

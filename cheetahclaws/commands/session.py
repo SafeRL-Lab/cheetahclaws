@@ -7,6 +7,7 @@ Also exports: save_latest, _build_session_data (used by repl.py)
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -157,6 +158,49 @@ def save_latest(args: str, state, config=None) -> bool:
     if str(daily_path) != "(skipped)":
         ok(f"             → {daily_path}  (id: {sid})")
     return True
+
+
+# ── autosave (per-turn crash safety) ──────────────────────────────────────
+# A running session keeps one stable id so every autosave rewrites the SAME
+# session_latest.json instead of churning new ids each turn.
+_autosave_sid: str | None = None
+
+
+def autosave_session(state, config=None) -> None:
+    """Silently persist the live transcript to session_latest.json after every
+    turn, so a crash or power loss mid-conversation stays recoverable via
+    /resume.
+
+    Unlike save_latest(), this ONLY rewrites session_latest.json — no daily
+    copy, no history.json append, no SQLite row, no console output. Those are
+    exit-time finalization steps; doing them every turn would spam daily/ and
+    history.json with dozens of partial sessions. Best-effort: this must never
+    raise into the REPL loop.
+    """
+    from cheetahclaws.config import MR_SESSION_DIR
+    if not getattr(state, "messages", None):
+        return
+
+    global _autosave_sid
+    if _autosave_sid is None:
+        import uuid
+        _autosave_sid = uuid.uuid4().hex[:8]
+
+    try:
+        data = _build_session_data(state, session_id=_autosave_sid)
+        payload = json.dumps(data, indent=2, default=str)
+        MR_SESSION_DIR.mkdir(parents=True, exist_ok=True)
+        latest_path = MR_SESSION_DIR / "session_latest.json"
+        # Temp + fsync + atomic replace: fsync forces the bytes to disk so a
+        # power cut can't leave session_latest.json pointing at unflushed data.
+        tmp = latest_path.with_suffix(".autosave.tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, latest_path)
+    except Exception:
+        pass  # autosave is best-effort; never disrupt the conversation
 
 
 # ── /load ──────────────────────────────────────────────────────────────────

@@ -51,3 +51,30 @@ Also on explicit command exit:
 3. Session autosaves to `mr_sessions/session_latest.json`.
 4. Restart agent and run `/resume`.
 5. Continue from restored conversation state.
+
+## Update — per-turn crash-safe autosave
+
+The original flow above only wrote `session_latest.json` on **exit** (clean quit,
+`Ctrl+C`/`Ctrl+D`, or when a budget cap was hit). A power-loss or hard kill
+mid-conversation therefore lost everything since the session started.
+
+`autosave_session(state, config)` (in `commands/session.py`) closes that gap:
+
+- Called from `run_query` at the **end of every turn** (right after the
+  per-turn checkpoint snapshot), so the on-disk transcript is never more than
+  one turn stale.
+- **Only** rewrites `session_latest.json`. It deliberately does *not* write a
+  `daily/` copy, append to `history.json`, touch SQLite, or print — those remain
+  exit-time finalization steps in `save_latest()`. Doing them every turn would
+  spam `daily/` and `history.json` with dozens of partial sessions.
+- **Durable + atomic**: writes to a temp file, `flush()` + `os.fsync()` to force
+  bytes to disk (survives a power cut), then `os.replace()` for an atomic swap —
+  a crash can never leave a half-written `session_latest.json`.
+- **Best-effort**: wrapped so it can never raise into the REPL loop, and reuses
+  one stable `session_id` for the running session so each turn overwrites the
+  same file instead of churning new ids.
+
+Net effect: `/resume` now recovers a conversation after a crash or power-loss,
+not just after a clean exit. File edits (Write/Edit tools) were already written
+to disk immediately, and explicit `/remember` writes are already immediate, so
+those were never at risk — the transcript was the only gap.

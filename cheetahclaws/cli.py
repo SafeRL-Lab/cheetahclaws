@@ -230,7 +230,7 @@ from cheetahclaws.bridges.qq import cmd_qq, _qq_start_bridge, _qq_send
 # ── Session commands ───────────────────────────────────────────────────────
 from cheetahclaws.commands.session import (
     cmd_save, cmd_load, cmd_resume, cmd_history, cmd_search,
-    cmd_cloudsave, cmd_exit, save_latest,
+    cmd_cloudsave, cmd_exit, save_latest, autosave_session,
 )
 
 # ── Config commands ────────────────────────────────────────────────────────
@@ -1472,6 +1472,11 @@ def repl(config: dict, initial_prompt: str = None):
             ckpt.reset_tracked()
         except Exception:
             pass  # never let checkpoint errors break the REPL
+
+        # ── Silent autosave so a crash/power-loss mid-conversation is
+        # recoverable via /resume. Only rewrites session_latest.json; the
+        # loud daily/history save still happens once on exit (save_latest).
+        autosave_session(state, config)
 
         session_ctx.last_interaction_time = time.time()
 

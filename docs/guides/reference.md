@@ -52,7 +52,7 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/help` | Show all commands |
 | `/clear` | Clear conversation history |
 | `/model` | Show current model + list all available models |
-| `/model <name>` | Switch model (takes effect immediately) |
+| `/model <name>` | Switch model (takes effect immediately). Type `/model ` and press **Tab** for a `provider/model` completion picker — one default per provider + a two-level `litellm/<backend>/<model>` tree (PR #166) |
 | `/config` | Show all current config values |
 | `/config key=value` | Set a config value (persisted to disk). v3.5.78+ parses JSON values: `["a","b"]`, `{"k":"v"}`, signed numbers, quoted strings — list/dict configs no longer get silently saved as literal strings. |
 | `/config context_window=<N>` | Override the context window (tokens) for the session. `0` = use the model's default. Drives the prompt `%` indicator, `/context`, the compaction trigger, **and** the per-call output-token cap — all consistently. Distinct from `max_tokens` (which is the **output** cap, not the window). Bidirectional: a smaller value forces earlier compaction; a larger value corrects a stale default. Read live, so it takes effect on the next prompt (no restart). Warns if set above the model's real window (that would disable compaction and the API may reject oversized prompts). |
@@ -61,7 +61,7 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/save <filename>` | Save session to named file |
 | `/load` | Interactive list grouped by date; enter number, `1,2,3` to merge, or `H` for full history |
 | `/load <filename>` | Load a saved session by filename |
-| `/resume` | Restore the last auto-saved session (`mr_sessions/session_latest.json`) |
+| `/resume` | Restore the last auto-saved session (`mr_sessions/session_latest.json`). This file is rewritten **after every turn** (atomic `fsync` write), so `/resume` recovers a conversation even after a crash or power-loss — not only after a clean exit |
 | `/resume <filename>` | Load a specific file from `mr_sessions/` (or absolute path) |
 | `/history` | Print full conversation history |
 | `/context` | Visualize context-window usage as a Claude-Code-style cell grid, broken down by category (system prompt, system tools, memory files, skills, messages, free space) with per-category token counts and percentages. Honors a `context_window` override; falls back to `#`/`.` when the terminal isn't UTF-8. |
