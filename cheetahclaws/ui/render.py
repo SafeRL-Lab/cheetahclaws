@@ -624,6 +624,10 @@ def _run_tool_spinner():
             tip = _spinner_tip
             tokens = _spinner_tokens
         frame = chars[i % len(chars)]
+        # Animate the terminal tab title in lock-step with the spinner while a
+        # turn is in flight (same thread → no stdout race with the line below).
+        if _title_enabled and _title_working:
+            _tick_working_title(i)
         elapsed = _fmt_elapsed(time.monotonic() - _spinner_start)
         # Claude-Code-style meta: "(7s · ↓ 435 tokens)". Token part appears
         # only once we've streamed enough to estimate a non-zero count.
@@ -688,6 +692,97 @@ def _stop_tool_spinner():
     else:
         sys.stdout.write(f"\r{' ' * 50}\r")
     sys.stdout.flush()
+
+
+# ── Terminal window/tab title (OSC 2) ───────────────────────────────────────
+# CheetahClaws never set the terminal title, so the tab showed the shell
+# default (user@host: /path). Claude-Code-style, reflect live state instead:
+# a pulsing glyph + the current task while the model works, a static badge
+# when idle. Only real TTYs get the escape bytes — pipes / CI / dumb terminals
+# are left untouched. Animation is driven from the existing spinner thread, so
+# no extra thread is spawned; _emit_title de-dupes so the tab is rewritten only
+# when the glyph or task actually changes (no per-frame flicker).
+
+_title_enabled  = False
+_title_task     = ""      # short label of what the user is currently doing
+_title_working  = False   # True between turn start and turn end
+_TITLE_PULSE    = "✶✳✻✳"  # glyph cycle shown while working
+_last_title_written = None
+
+
+def _title_supported() -> bool:
+    import os as _os
+    if _os.environ.get("TERM", "") in ("", "dumb"):
+        return False
+    return bool(getattr(sys.stdout, "isatty", lambda: False)())
+
+
+def _title_label() -> str:
+    if _title_task:
+        return _title_task
+    import os as _os
+    return _os.path.basename(_os.getcwd()) or "session"
+
+
+def _emit_title(text: str) -> None:
+    global _last_title_written
+    if not _title_enabled or text == _last_title_written:
+        return
+    _last_title_written = text
+    try:
+        # OSC 0 = set BOTH icon name and window title. Use 0 (not 2) because
+        # VS Code's integrated terminal drives its tab label from the icon
+        # name (OSC 0/1) and ignores the window-title-only OSC 2 — so OSC 2
+        # reaches the terminal but never appears on the tab. OSC 0 is also
+        # what virtually every CLI (incl. Claude Code) emits, so it is the
+        # most widely honored across VS Code / iTerm2 / Terminal.app. BEL
+        # (\a) terminator is invisible to the on-screen line, so it never
+        # disturbs the spinner's carriage-return redraw.
+        sys.stdout.write(f"\033]0;{text}\a")
+        sys.stdout.flush()
+    except Exception:
+        pass
+
+
+def _set_idle_title() -> None:
+    _emit_title(f"● CheetahClaws — {_title_label()}")
+
+
+def _tick_working_title(i: int) -> None:
+    """Called from the spinner loop each tick; advances the glyph every ~0.4s."""
+    glyph = _TITLE_PULSE[(i // 4) % len(_TITLE_PULSE)]
+    _emit_title(f"{glyph} CheetahClaws — {_title_label()}")
+
+
+def set_terminal_title_enabled(enabled: bool) -> None:
+    """Apply the terminal_title config setting (auto-off on non-TTYs)."""
+    global _title_enabled
+    _title_enabled = bool(enabled) and _title_supported()
+    if _title_enabled:
+        _set_idle_title()
+
+
+def set_task_title(task: str) -> None:
+    """Record a short label of the current task (usually the user's prompt).
+    Refreshes the idle title immediately when no turn is in flight."""
+    global _title_task
+    t = " ".join((task or "").split())
+    _title_task = (t[:47] + "…") if len(t) > 48 else t
+    if not _title_working:
+        _set_idle_title()
+
+
+def terminal_working_start() -> None:
+    """Mark the start of a turn — the spinner then animates the title glyph."""
+    global _title_working
+    _title_working = True
+
+
+def terminal_working_stop() -> None:
+    """Mark a turn done — drop back to the static idle title."""
+    global _title_working
+    _title_working = False
+    _set_idle_title()
 
 
 # ── Tool call display ──────────────────────────────────────────────────────
