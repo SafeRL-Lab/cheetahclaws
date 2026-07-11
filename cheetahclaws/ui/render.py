@@ -708,6 +708,7 @@ _title_task     = ""      # short label of what the user is currently doing
 _title_working  = False   # True between turn start and turn end
 _TITLE_PULSE    = "✶✳✻✳"  # glyph cycle shown while working
 _last_title_written = None
+_title_atexit_registered = False
 
 
 def _title_supported() -> bool:
@@ -754,12 +755,36 @@ def _tick_working_title(i: int) -> None:
     _emit_title(f"{glyph} CheetahClaws — {_title_label()}")
 
 
+def clear_terminal_title() -> None:
+    """Restore the terminal title on exit (OSC 0 with an empty string), so the
+    tab doesn't linger on a stale '● CheetahClaws — …' after the process ends.
+    The returning shell prompt then re-sets its own title as usual. Bypasses
+    the de-dupe guard so the clear is always sent."""
+    global _title_working, _last_title_written
+    _title_working = False
+    if not _title_enabled:
+        return
+    try:
+        sys.stdout.write("\033]0;\a")
+        sys.stdout.flush()
+        _last_title_written = ""
+    except Exception:
+        pass
+
+
 def set_terminal_title_enabled(enabled: bool) -> None:
     """Apply the terminal_title config setting (auto-off on non-TTYs)."""
-    global _title_enabled
+    global _title_enabled, _title_atexit_registered
     _title_enabled = bool(enabled) and _title_supported()
     if _title_enabled:
         _set_idle_title()
+        # Restore the title on interpreter exit (normal quit, /exit, Ctrl+D,
+        # sys.exit). os._exit paths (3x-Ctrl+C force quit) bypass atexit and
+        # clear the title explicitly at their call site.
+        if not _title_atexit_registered:
+            import atexit
+            atexit.register(clear_terminal_title)
+            _title_atexit_registered = True
 
 
 def set_task_title(task: str) -> None:

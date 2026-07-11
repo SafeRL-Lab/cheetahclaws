@@ -207,6 +207,7 @@ from cheetahclaws.ui.render import (
     _start_tool_spinner, _stop_tool_spinner, _change_spinner_phrase,
     set_spinner_phrase, set_rich_live, set_stream_mode, auto_stream_mode, set_spinner_tips,
     set_terminal_title_enabled, set_task_title, terminal_working_start, terminal_working_stop,
+    clear_terminal_title,
     print_tool_start, print_tool_end,
     set_quiet, reset_turn_stats, print_turn_summary,
     set_spinner_tokens, print_turn_stats,
@@ -1546,6 +1547,7 @@ def repl(config: dict, initial_prompt: str = None):
         _ctrl_c_times[:] = [t for t in _ctrl_c_times if now - t <= 2.0]
         if len(_ctrl_c_times) >= 3:
             _stop_tool_spinner()
+            clear_terminal_title()   # os._exit bypasses the atexit handler
             print(clr("\n\n  Force quit (3x Ctrl+C).", "red", "bold"))
             os._exit(1)
         return False
