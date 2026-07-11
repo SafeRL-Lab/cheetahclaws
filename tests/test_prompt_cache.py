@@ -193,6 +193,45 @@ def test_no_tools_no_system_still_safe(fake_anthropic):
     assert _count_cache_controls(kw) == 1   # only the message breakpoint
 
 
+def test_volatile_env_block_excluded_from_cached_system_span(fake_anthropic):
+    """The per-run '# Environment' block (git status / date) mutates turn to
+    turn. The cache breakpoint must land on the STABLE span before it — so a
+    changed git status can't invalidate the large static base prompt across
+    turns — while the volatile tail carries no breakpoint of its own. The two
+    system blocks must still concatenate to the original string byte-for-byte
+    (the model sees identical content)."""
+    base = "You are a helpful agent.\nFollow the rules."
+    env = ("# Environment\n- Current date: 2026-07-11 Saturday\n"
+           "- Git status:\n  M providers.py\n")
+    system = base + "\n\n" + env          # exactly how build_system_prompt joins
+    _call_stream({"model": "claude-sonnet-4-5"},
+                 [{"role": "user", "content": "q"}], _make_tools(), system=system)
+    sys_blocks = fake_anthropic["system"]
+    assert isinstance(sys_blocks, list) and len(sys_blocks) == 2
+    stable, volatile = sys_blocks
+    # Breakpoint on the stable prefix only; volatile tail uncached.
+    assert stable["cache_control"] == {"type": "ephemeral"}
+    assert "cache_control" not in volatile
+    # The volatile git status lives entirely in the uncached tail.
+    assert "Git status" in volatile["text"]
+    assert "Git status" not in stable["text"]
+    # Byte-for-byte identical content — caching boundary only, not a prompt change.
+    assert stable["text"] + volatile["text"] == system
+    # Still within the API's 4-breakpoint budget: tools + stable system + msg.
+    assert _count_cache_controls(fake_anthropic) == 3
+
+
+def test_marker_free_system_still_cached_whole(fake_anthropic):
+    """A custom system prompt without the environment marker (e.g. the
+    autonomous agent-runner) is cached as a single block, exactly as before."""
+    _call_stream({"model": "claude-sonnet-4-5"},
+                 [{"role": "user", "content": "q"}], _make_tools(),
+                 system="CUSTOM AUTONOMOUS PROMPT")
+    sys_blocks = fake_anthropic["system"]
+    assert sys_blocks == [{"type": "text", "text": "CUSTOM AUTONOMOUS PROMPT",
+                           "cache_control": {"type": "ephemeral"}}]
+
+
 # ── 2: copy-on-write ───────────────────────────────────────────────────────
 
 def test_registry_tool_schemas_not_mutated(fake_anthropic):

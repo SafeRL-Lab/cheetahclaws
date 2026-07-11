@@ -1139,10 +1139,44 @@ def _is_cache_control_rejection(e: Exception) -> bool:
             or "unexpected field" in msg)
 
 
+# build_system_prompt appends the per-run environment block (date / cwd /
+# git status / recent commits) under this exact header. It is the one span
+# of an otherwise-static system prompt that is regenerated every turn and
+# mutates as the agent edits files. Anthropic caches by prefix, so a single
+# breakpoint at the END of the whole system string is invalidated across
+# turns the moment git status changes — dragging the large, static base
+# prompt down with it (within-turn caching is unaffected because the prompt
+# is frozen for the turn; the loss is purely turn-to-turn). Placing the
+# breakpoint on the stable span that PRECEDES this marker keeps the base
+# prompt cacheable turn-to-turn; the volatile remainder rides along without
+# its own breakpoint (still covered by the trailing message breakpoint
+# within a turn). Absent the marker (e.g. the autonomous agent-runner's
+# custom prompt), the whole block is cached as before.
+_ENV_BLOCK_MARKER = "\n# Environment\n"
+
+
+def _split_system_for_cache(system: str) -> list:
+    """Split the system prompt so the cache breakpoint lands on the stable
+    span before the volatile environment block. The returned text blocks
+    concatenate to ``system`` byte-for-byte, so the model sees identical
+    content — this is purely a caching-boundary change, not a prompt change.
+    """
+    idx = system.find(_ENV_BLOCK_MARKER)
+    if idx <= 0:
+        # No volatile block found (or it is the whole prompt) — cache it whole.
+        return [{"type": "text", "text": system,
+                 "cache_control": dict(_CACHE_EPHEMERAL)}]
+    return [
+        {"type": "text", "text": system[:idx],
+         "cache_control": dict(_CACHE_EPHEMERAL)},
+        {"type": "text", "text": system[idx:]},   # volatile tail: no breakpoint
+    ]
+
+
 def _apply_anthropic_cache_control(kwargs: dict) -> dict:
     """Return a copy of the request kwargs with ≤3 cache_control breakpoints:
-    last tool schema, system block, last content block of the final message.
-    Never mutates the input structures. Unexpected shapes skip their
+    last tool schema, stable system span, last content block of the final
+    message. Never mutates the input structures. Unexpected shapes skip their
     breakpoint rather than raise."""
     out = dict(kwargs)
 
@@ -1153,8 +1187,7 @@ def _apply_anthropic_cache_control(kwargs: dict) -> dict:
 
     system = out.get("system")
     if isinstance(system, str) and system:
-        out["system"] = [{"type": "text", "text": system,
-                          "cache_control": dict(_CACHE_EPHEMERAL)}]
+        out["system"] = _split_system_for_cache(system)
 
     msgs = out.get("messages")
     if msgs:

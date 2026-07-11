@@ -69,6 +69,7 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/budget` | View or set token/cost budgets. No args = show usage vs each budget (bars + %). `/budget $5` = session cost cap (USD); `/budget 200k` = session token cap (supports `200k`/`1.5m`); `/budget daily $20` / `/budget daily 2m` = daily caps; `/budget clear` = remove all. **One budget per scope** — a new cap *replaces* the other unit for that scope (so `/budget $5` after `/budget 200k` switches the session cap to cost, it doesn't stack). Enforced before each model call (projects the next request's input + clamps its output, so overshoot stays ≈ 0); warns at ≥80%/95%; on hit, auto-saves the session and prints how to `/resume` or raise the **same** cap (the hint matches the breached unit) and continue. Backed by the `session_token_budget` / `session_cost_budget` / `daily_token_budget` / `daily_cost_budget` config keys. |
 | `/verbose` | Toggle verbose mode (tokens + thinking) |
 | `/quiet` | Toggle compact tool display — hide per-tool execution lines and show one summary line per turn (on by default; `/verbose` overrides it) |
+| `/terminal-setup` | Make the terminal tab title show the live task (see [Terminal Tab Title](#terminal-tab-title)). In VS Code / Cursor / Windsurf it configures `terminal.integrated.tabs.title` (backup + validation, never overwrites your value); other terminals show it natively so it reports nothing to do. Runs automatically once on first launch; this re-runs it on demand. |
 | `/thinking` | Toggle Extended Thinking (Claude only) |
 | `/permissions` | Show current permission mode |
 | `/permissions <mode>` | Set permission mode: `auto` / `accept-edits` / `accept-all` / `manual` / `plan` |
@@ -273,6 +274,21 @@ Available themes:
 
 ---
 
+## Terminal Tab Title
+
+The terminal window/tab title reflects what CheetahClaws is doing — a **pulsing glyph + your current prompt while it works** (`✶ ✳ ✻ CheetahClaws — <task>`), and a **static badge when idle** (`● CheetahClaws — <folder>`). It is emitted as an OSC 0 escape sequence, so it costs nothing on the visible output and updates in lock-step with the spinner.
+
+- **Config:** `terminal_title` (default `true`). Turn it off with `/config terminal_title=false` to leave the shell's own title untouched. Auto-disabled on non-TTYs, pipes, CI, and `TERM=dumb`, so escape bytes never leak into redirected output.
+- **iTerm2 / Terminal.app / most terminals:** works out of the box — they display OSC titles in the tab/title bar by default.
+- **VS Code / Cursor / Windsurf:** these hide program-set titles by default (the tab shows `${process}`). On **first launch** CheetahClaws configures `terminal.integrated.tabs.title` for you — once, with a backup and a re-parse safety check, and never overwriting a value you already set. Reopen the terminal for it to take effect. Run [`/terminal-setup`](#slash-commands-repl) any time to re-apply, or set it by hand:
+
+  ```jsonc
+  // VS Code settings.json
+  "terminal.integrated.tabs.title": "${sequence}${separator}${process}"
+  ```
+
+---
+
 ## Configuring API Keys
 
 ### Method 1: Environment Variables (recommended)
@@ -340,6 +356,8 @@ Keys are saved to `~/.cheetahclaws/config.json` and loaded automatically on next
   "quiet": true,
   "thinking": false,
   "stream_mode": null,
+  "terminal_title": true,
+  "prompt_cache": true,
   "session_token_budget": null,
   "session_cost_budget": null,
   "daily_token_budget": null,

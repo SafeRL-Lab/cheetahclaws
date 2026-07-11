@@ -167,6 +167,19 @@ def cmd_quiet(_args: str, _state, config) -> bool:
     return True
 
 
+def cmd_terminal_setup(_args: str, _state, _config) -> bool:
+    """Configure the current editor so its terminal tab shows the live task.
+
+    In VS Code / Cursor / Windsurf this flips
+    ``terminal.integrated.tabs.title`` to include ``${sequence}`` (backing up
+    settings.json first). Other terminals already show it natively, so this
+    reports there's nothing to do. Runs automatically once on first launch;
+    this command re-runs it on demand."""
+    from cheetahclaws.ui.vscode_setup import run_terminal_setup
+    run_terminal_setup()
+    return True
+
+
 def cmd_thinking(_args: str, _state, config) -> bool:
     from cheetahclaws.config import save_config
     config["thinking"] = not config.get("thinking", False)

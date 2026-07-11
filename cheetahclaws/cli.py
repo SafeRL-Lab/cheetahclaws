@@ -206,6 +206,7 @@ from cheetahclaws.ui.render import (
     stream_text, stream_thinking, flush_response,
     _start_tool_spinner, _stop_tool_spinner, _change_spinner_phrase,
     set_spinner_phrase, set_rich_live, set_stream_mode, auto_stream_mode, set_spinner_tips,
+    set_terminal_title_enabled, set_task_title, terminal_working_start, terminal_working_stop,
     print_tool_start, print_tool_end,
     set_quiet, reset_turn_stats, print_turn_summary,
     set_spinner_tokens, print_turn_stats,
@@ -236,7 +237,7 @@ from cheetahclaws.commands.session import (
 # ── Config commands ────────────────────────────────────────────────────────
 from cheetahclaws.commands.config_cmd import (
     cmd_model, cmd_config, cmd_verbose, cmd_thinking, cmd_quiet,
-    cmd_permissions, cmd_cwd, _interactive_ollama_picker,
+    cmd_permissions, cmd_cwd, _interactive_ollama_picker, cmd_terminal_setup,
 )
 from cheetahclaws.commands.workspace_cmd import cmd_workspace, _apply_workspace
 
@@ -459,6 +460,7 @@ COMMANDS = {
     "budget":      cmd_budget,
     "verbose":     cmd_verbose,
     "quiet":       cmd_quiet,
+    "terminal-setup": cmd_terminal_setup,
     "thinking":    cmd_thinking,
     "permissions": cmd_permissions,
     "cwd":         cmd_cwd,
@@ -1188,6 +1190,19 @@ def repl(config: dict, initial_prompt: str = None):
     _spinner_tips_default = not _is_dumb and not _is_macos_terminal
     set_spinner_tips(config.get("spinner_tips", _spinner_tips_default))
 
+    # Claude-Code-style terminal tab title: pulses while working, static when
+    # idle, and reads out the current task instead of the shell default.
+    # Auto-disabled on non-TTYs by set_terminal_title_enabled.
+    set_terminal_title_enabled(config.get("terminal_title", True))
+    # VS Code hides program-set titles by default; offer to flip the one
+    # setting that surfaces them — once, safely, only inside VS Code/Cursor/
+    # Windsurf. No-op elsewhere. See ui/vscode_setup.py.
+    try:
+        from cheetahclaws.ui.vscode_setup import maybe_setup_vscode_terminal_title
+        maybe_setup_vscode_terminal_title(config)
+    except Exception:
+        pass
+
     # Initialize proactive polling state via RuntimeContext (defaults already set)
     session_ctx.last_interaction_time = time.time()
     if session_ctx.proactive_thread is None:
@@ -1227,6 +1242,10 @@ def repl(config: dict, initial_prompt: str = None):
 
             thinking_started = False
             spinner_shown = True
+            # Terminal tab title: show what the user is doing + start the pulse.
+            if not is_background:
+                set_task_title(user_input)
+            terminal_working_start()
             _start_tool_spinner()
             _pre_tool_text = []   # text chunks before a tool call
             _post_tool = False    # true after a tool has executed
@@ -1410,6 +1429,7 @@ def repl(config: dict, initial_prompt: str = None):
                             if state.messages and state.messages[-1]["role"] == "user":
                                 state.messages.pop()
                             return run_query(user_input, is_background)
+                        terminal_working_stop()  # idle title on early exit
                         return
                 # ── Actionable error messages via error classifier ────────
                 from cheetahclaws.error_classifier import classify as _classify_err
@@ -1420,6 +1440,7 @@ def repl(config: dict, initial_prompt: str = None):
                 warn("Your conversation is intact. You can retry or type a new message.")
 
             _stop_tool_spinner()
+            terminal_working_stop()  # turn done → static idle tab title
             set_spinner_tokens(0)  # clear the live meter for the next turn
             flush_response()  # stop Live, commit any remaining text
             # Quiet-mode footer: real elapsed time + token usage for the turn.
@@ -1687,6 +1708,7 @@ def repl(config: dict, initial_prompt: str = None):
                 _cols = 80
             print(clr("─" * _cols, "dim"))
             prompt = clr(f"[{cwd_short}]", "dim") + ctx_hint + clr(" ", "dim") + clr("» ", "cyan", "bold")
+            terminal_working_stop()  # safety net: idle title whenever we await input
             user_input = _read_input(prompt)
         except (EOFError, KeyboardInterrupt):
             print()

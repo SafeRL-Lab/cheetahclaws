@@ -24,6 +24,11 @@ DEFAULTS = {
     "context_window":   0,
     "permission_mode":  "auto",   # auto | accept-all | manual
     "verbose":          False,
+    # terminal_title: set the terminal window/tab title to the current task —
+    #   a pulsing glyph while working, a static badge when idle (Claude-Code
+    #   style). Auto-disabled on non-TTYs / dumb terminals. Set False to leave
+    #   the shell's own title untouched.
+    "terminal_title":   True,
     # Tri-state: None = unset (use provider default), True = ON, False = explicit OFF.
     # The explicit-OFF state matters for DeepSeek v4 where the server default
     # is ON; providers.py only injects the disable toggle when value is False.
