@@ -4,23 +4,69 @@ from __future__ import annotations
 import re
 
 
-def _webfetch(url: str, prompt: str = None) -> str:
+_DEFAULT_WEB_FETCH_MAX_BYTES = 512 * 1024
+
+
+def _read_response_bytes(response, max_bytes: int) -> tuple[bytes, bool]:
+    """Consume at most ``max_bytes`` from a streamed HTTP response."""
+    data = bytearray()
+    truncated = False
+    for chunk in response.iter_bytes(chunk_size=64 * 1024):
+        remaining = max_bytes - len(data)
+        if remaining <= 0:
+            truncated = True
+            break
+        if len(chunk) > remaining:
+            data.extend(chunk[:remaining])
+            truncated = True
+            break
+        data.extend(chunk)
+
+    # Content-Length lets us report truncation even when the response happens
+    # to end exactly at the cap without reading an extra network chunk.
+    try:
+        content_length = int(response.headers.get("content-length", "0"))
+        truncated = truncated or content_length > len(data)
+    except (TypeError, ValueError):
+        pass
+    return bytes(data), truncated
+
+
+def _webfetch(
+    url: str,
+    prompt: str = None,
+    max_bytes: int = _DEFAULT_WEB_FETCH_MAX_BYTES,
+) -> str:
     try:
         import httpx
-        r = httpx.get(url, headers={"User-Agent": "NanoClaude/1.0"},
-                      timeout=30, follow_redirects=True)
-        r.raise_for_status()
-        ct = r.headers.get("content-type", "")
-        if "html" in ct:
-            text = re.sub(r"<script[^>]*>.*?</script>", "", r.text,
+        byte_limit = max(1, int(max_bytes or _DEFAULT_WEB_FETCH_MAX_BYTES))
+        with httpx.stream(
+            "GET", url,
+            headers={"User-Agent": "NanoClaude/1.0"},
+            timeout=30,
+            follow_redirects=True,
+        ) as response:
+            response.raise_for_status()
+            raw, source_truncated = _read_response_bytes(response, byte_limit)
+            content_type = response.headers.get("content-type", "")
+            encoding = response.encoding or "utf-8"
+
+        text = raw.decode(encoding, errors="replace")
+        if "html" in content_type.lower():
+            text = re.sub(r"<script[^>]*>.*?</script>", "", text,
                           flags=re.DOTALL | re.IGNORECASE)
             text = re.sub(r"<style[^>]*>.*?</style>", "", text,
                           flags=re.DOTALL | re.IGNORECASE)
             text = re.sub(r"<[^>]+>", " ", text)
             text = re.sub(r"\s+", " ", text).strip()
-        else:
-            text = r.text
-        return text[:25000]
+
+        output = text[:25000]
+        if source_truncated:
+            output += (
+                f"\n\n[... WebFetch stopped after {byte_limit:,} response bytes "
+                "to keep memory and latency bounded ...]"
+            )
+        return output
     except ImportError:
         return "Error: httpx not installed — run: pip install httpx"
     except Exception as e:

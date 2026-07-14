@@ -7,7 +7,11 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Generator
 
-from cheetahclaws.tool_registry import get_tool_schemas
+from cheetahclaws.tool_registry import (
+    get_active_tool_names,
+    get_tool_schemas,
+    normalize_tool_profile,
+)
 from cheetahclaws.tools import execute_tool
 from cheetahclaws import tools as _tools_init  # ensure built-in tools are registered on import
 from cheetahclaws.providers import stream, AssistantTurn, TextChunk, ThinkingChunk, detect_provider, nim_next_model
@@ -161,6 +165,30 @@ def run(
                       session_id=session_id,
                       removed=_before_len - len(state.messages))
 
+        # Derive the model-visible and executable surface from the same source
+        # for this turn.  This prevents a provider from seeing a schema that
+        # dispatch would reject (or vice versa), and avoids sending optional
+        # integration schemas on every coding request.
+        try:
+            active_profile = normalize_tool_profile(config.get("tool_profile"))
+        except ValueError as profile_error:
+            active_profile = "standard"
+            _log.warn("invalid_tool_profile",
+                      session_id=session_id,
+                      requested=config.get("tool_profile"),
+                      fallback=active_profile,
+                      error=str(profile_error))
+        disabled_tools = config.get("disabled_tools") or ()
+        if not isinstance(disabled_tools, (list, tuple, set, frozenset)):
+            disabled_tools = ()
+        active_tool_schemas = get_tool_schemas(active_profile, disabled_tools)
+        active_tool_names = get_active_tool_names(active_profile, disabled_tools)
+        config = {
+            **config,
+            "tool_profile": active_profile,
+            "_active_tool_names": active_tool_names,
+        }
+
         # ── Quota check — before spending tokens ──────────────────────────
         # Project this request's INPUT so a single large (tool-heavy) call can't
         # blow past the cap, then clamp the OUTPUT cap to the remaining headroom
@@ -224,7 +252,7 @@ def run(
                     model=config["model"],
                     system=system_prompt,
                     messages=state.messages,
-                    tool_schemas=get_tool_schemas(),
+                    tool_schemas=active_tool_schemas,
                     config=_call_config,
                 ):
                     if isinstance(event, (TextChunk, ThinkingChunk)):
@@ -353,7 +381,7 @@ def run(
             # Auto-nudge: text-only reply when the user clearly wanted
             # investigation (their message contained an absolute path).
             # One shot only — see `_nudges_remaining` init above.
-            if _nudges_remaining > 0 and get_tool_schemas():
+            if _nudges_remaining > 0 and active_tool_schemas:
                 _nudges_remaining -= 1
                 _nudge_msg = (
                     "[system reminder] You replied with text and no tool "
@@ -448,6 +476,12 @@ def run(
         # Check permissions first (must be sequential — may prompt user)
         permissions: dict[str, bool] = {}
         for tc in tool_calls:
+            if tc["name"] not in active_tool_names:
+                # Treat a stale/malicious call as an execution error, not a
+                # permission question.  The model never received this schema
+                # on this turn, so prompting a user for it would be misleading.
+                permissions[tc["id"]] = True
+                continue
             permitted = _check_permission(tc, config)
             if not permitted:
                 if config.get("permission_mode") == "plan":
@@ -477,6 +511,13 @@ def run(
         def _exec_one(tc):
             """Execute a single tool call, return (tc, result, permitted)."""
             tid = tc["id"]
+            if tc["name"] not in active_tool_names:
+                return (
+                    tc,
+                    f"Error: tool '{tc['name']}' is not enabled by the "
+                    f"{active_profile!r} tool profile for this turn.",
+                    True,
+                )
             # Read-only dedup short-circuit: skip the actual execute_tool
             # call, return the synthetic reminder as the tool result. Marked
             # `permitted=True` so downstream loop-error counters don't treat

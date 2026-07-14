@@ -4,8 +4,10 @@ import pytest
 
 from cheetahclaws.tool_registry import (
     ToolDef,
+    clear_tool_cache,
     clear_registry,
     execute_tool,
+    get_active_tool_names,
     get_all_tools,
     get_tool,
     get_tool_schemas,
@@ -15,10 +17,15 @@ from cheetahclaws.tool_registry import (
 
 @pytest.fixture(autouse=True)
 def _clean_registry():
-    """Reset registry before each test."""
+    """Isolate registry tests without leaving later integration tests empty."""
+    original_tools = get_all_tools()
     clear_registry()
+    clear_tool_cache()
     yield
     clear_registry()
+    clear_tool_cache()
+    for tool in original_tools:
+        register_tool(tool)
 
 
 def _make_echo_tool(name: str = "echo", read_only: bool = False) -> ToolDef:
@@ -89,6 +96,46 @@ def test_get_tool_schemas():
     assert schemas[0]["name"] == "echo"
 
 
+def test_tool_profiles_filter_schemas_and_names():
+    register_tool(ToolDef(
+        name="core",
+        schema={"name": "core", "input_schema": {}},
+        func=lambda _p, _c: "core",
+        profiles=frozenset({"standard"}),
+    ))
+    register_tool(ToolDef(
+        name="research_only",
+        schema={"name": "research_only", "input_schema": {}},
+        func=lambda _p, _c: "research",
+        profiles=frozenset({"research"}),
+    ))
+    register_tool(ToolDef(
+        name="full_only",
+        schema={"name": "full_only", "input_schema": {}},
+        func=lambda _p, _c: "full",
+        profiles=frozenset({"full"}),
+    ))
+
+    assert [s["name"] for s in get_tool_schemas("standard")] == ["core"]
+    assert [s["name"] for s in get_tool_schemas("research")] == [
+        "core", "research_only",
+    ]
+    assert get_active_tool_names("orchestration") == frozenset({"core"})
+    assert {s["name"] for s in get_tool_schemas("full")} == {
+        "core", "research_only", "full_only",
+    }
+
+
+def test_tool_profiles_honor_disabled_tools():
+    register_tool(ToolDef(
+        name="core",
+        schema={"name": "core", "input_schema": {}},
+        func=lambda _p, _c: "core",
+        profiles=frozenset({"standard"}),
+    ))
+    assert get_tool_schemas("standard", disabled_tools=["core"]) == []
+
+
 # ------------------------------------------------------------------
 # execute_tool
 # ------------------------------------------------------------------
@@ -136,6 +183,54 @@ def test_no_truncation_when_within_limit():
     register_tool(_make_echo_tool())
     result = execute_tool("echo", {"text": "short"}, config={})
     assert result == "short"
+
+
+def test_cache_stores_bounded_result_and_reapplies_smaller_cap():
+    calls = 0
+
+    def big_func(params: dict, config: dict) -> str:
+        nonlocal calls
+        calls += 1
+        return "x" * 20_000
+
+    register_tool(ToolDef(
+        name="cached_big",
+        schema={"name": "cached_big", "input_schema": {}},
+        func=big_func,
+        read_only=True,
+    ))
+
+    first = execute_tool(
+        "cached_big", {}, {"max_tool_cache_output": 2_000}, max_output=10_000,
+    )
+    second = execute_tool(
+        "cached_big", {}, {"max_tool_cache_output": 2_000}, max_output=1_500,
+    )
+
+    assert calls == 1
+    assert "truncated" in first
+    assert "truncated" in second
+    assert len(second) < len(first)
+
+
+def test_cache_key_includes_input_bound_settings():
+    calls = 0
+
+    def config_echo(_params: dict, config: dict) -> str:
+        nonlocal calls
+        calls += 1
+        return str(config["tool_read_max_bytes"])
+
+    register_tool(ToolDef(
+        name="config_sensitive",
+        schema={"name": "config_sensitive", "input_schema": {}},
+        func=config_echo,
+        read_only=True,
+    ))
+
+    assert execute_tool("config_sensitive", {}, {"tool_read_max_bytes": 10}) == "10"
+    assert execute_tool("config_sensitive", {}, {"tool_read_max_bytes": 20}) == "20"
+    assert calls == 2
 
 
 # ------------------------------------------------------------------

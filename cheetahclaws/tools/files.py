@@ -14,6 +14,39 @@ from pathlib import Path
 from cheetahclaws.tool_registry import ToolDef, register_tool
 
 
+def _extract_page_prefix(page, fitz_module, char_cap: int) -> tuple[str, bool]:
+    """Extract a page in clipped bands instead of materializing all page text.
+
+    PyMuPDF's plain ``page.get_text()`` builds the complete page string first.
+    Reading shallow horizontal bands keeps peak extraction work bounded even for
+    a pathological one-page PDF.  A compatibility fallback supports lightweight
+    fake page objects used by downstream plugins/tests.
+    """
+    rect = getattr(page, "rect", None)
+    if rect is None or not getattr(rect, "height", 0):
+        text = page.get_text()
+        return text[:char_cap], len(text) > char_cap
+
+    chunks: list[str] = []
+    captured = 0
+    band_height = min(144.0, max(36.0, float(rect.height) / 16.0))
+    max_bands = 256
+    y = float(rect.y0)
+    bands_read = 0
+    while y < float(rect.y1) and captured < char_cap and bands_read < max_bands:
+        clip = fitz_module.Rect(rect.x0, y, rect.x1, min(y + band_height, rect.y1))
+        text = page.get_text("text", clip=clip)
+        remaining = char_cap - captured
+        if len(text) > remaining:
+            chunks.append(text[:remaining])
+            return "".join(chunks), True
+        chunks.append(text)
+        captured += len(text)
+        y += band_height
+        bands_read += 1
+    return "".join(chunks), y < float(rect.y1)
+
+
 def _read_pdf(params: dict, config: dict) -> str:
     """Read text content from a PDF file."""
     try:
@@ -35,27 +68,69 @@ def _read_pdf(params: dict, config: dict) -> str:
         return f"Error: not a PDF file: {file_path}"
 
     try:
+        try:
+            char_cap = int(config.get("pdf_extract_max_chars", 50_000))
+        except (TypeError, ValueError):
+            char_cap = 50_000
+        try:
+            page_cap = int(config.get("pdf_extract_max_pages", 50))
+        except (TypeError, ValueError):
+            page_cap = 50
+        char_cap = max(1_000, char_cap)
+        page_cap = max(1, page_cap)
+
         doc = fitz.open(str(p))
-        total = len(doc)
+        try:
+            total = len(doc)
 
-        # Parse page range
-        if pages:
-            page_list = _parse_page_range(pages, total)
-        else:
-            page_list = list(range(min(total, 50)))  # default: first 50 pages
+            # Parse page range. Explicit page lists are capped too: otherwise
+            # a request such as ``1-999999`` allocates and extracts far more
+            # than one agent turn can safely use.
+            if pages:
+                page_list, page_range_truncated = _parse_page_range_capped(
+                    pages, total, max_pages=page_cap,
+                )
+            else:
+                page_list = list(range(min(total, page_cap)))
+                page_range_truncated = total > page_cap
 
-        text_parts = []
-        for i in page_list:
-            if 0 <= i < total:
+            text_parts = []
+            extracted_chars = 0
+            source_truncated = page_range_truncated
+            for i in page_list:
+                if extracted_chars >= char_cap:
+                    source_truncated = True
+                    break
+                if not (0 <= i < total):
+                    continue
                 page = doc[i]
-                text = page.get_text()
-                if text.strip():
-                    text_parts.append(f"--- Page {i+1} ---\n{text.strip()}")
-
-        doc.close()
+                text, page_truncated = _extract_page_prefix(
+                    page, fitz, char_cap - extracted_chars,
+                )
+                source_truncated = source_truncated or page_truncated
+                clean_text = text.strip()
+                if not clean_text:
+                    continue
+                remaining = char_cap - extracted_chars
+                if len(clean_text) > remaining:
+                    clean_text = clean_text[:remaining]
+                    source_truncated = True
+                text_parts.append(f"--- Page {i+1} ---\n{clean_text}")
+                extracted_chars += len(clean_text)
+                if extracted_chars >= char_cap:
+                    source_truncated = True
+                    break
+        finally:
+            doc.close()
 
         if not text_parts:
-            return f"PDF has {total} pages but no extractable text (may be scanned/image-only)."
+            message = f"PDF has {total} pages but no extractable text (may be scanned/image-only)."
+            if source_truncated:
+                message += (
+                    f" Extraction also stopped at {char_cap:,} characters or "
+                    f"{page_cap} pages; use a narrower `pages` range."
+                )
+            return message
 
         header = f"PDF: {p.name} ({total} pages, showing {len(text_parts)})\n\n"
         content = "\n\n".join(text_parts)
@@ -71,8 +146,12 @@ def _read_pdf(params: dict, config: dict) -> str:
         if redirect:
             return redirect
 
-        if len(content) > 50000:
-            content = content[:50000] + f"\n\n[... truncated, {len(content)-50000} chars remaining ...]"
+        if source_truncated:
+            content += (
+                f"\n\n[... ReadPDF stopped at {char_cap:,} extracted characters "
+                f"or {page_cap} pages; use a narrower `pages` range or "
+                "SummarizeLargeFile for complete coverage ...]"
+            )
 
         return header + content
 
@@ -250,19 +329,46 @@ def _format_table(rows: list[list], title: str, total_hint: str = "") -> str:
     return "\n".join(lines)
 
 
-def _parse_page_range(spec: str, total: int) -> list[int]:
-    """Parse page range like '1-5', '3', '1,3,5-8'."""
+def _parse_page_range_capped(
+    spec: str,
+    total: int,
+    max_pages: int | None = None,
+) -> tuple[list[int], bool]:
+    """Parse a page range and state whether a requested page was omitted."""
     pages = []
+    seen = set()
+
+    def _add(page: int) -> bool:
+        # Ignore out-of-range singleton values just as ranges are clamped.
+        # They must not consume the page budget ahead of valid requests.
+        if not 0 <= page < total:
+            return False
+        if page in seen:
+            return False
+        if max_pages is not None and len(pages) >= max_pages:
+            return True
+        seen.add(page)
+        pages.append(page)
+        return False
+
     for part in spec.split(","):
         part = part.strip()
         if "-" in part:
             a, b = part.split("-", 1)
             start = max(int(a) - 1, 0)
             end = min(int(b), total)
-            pages.extend(range(start, end))
+            for page in range(start, end):
+                if _add(page):
+                    return sorted(pages), True
         elif part.isdigit():
-            pages.append(int(part) - 1)
-    return sorted(set(pages))
+            if _add(int(part) - 1):
+                return sorted(pages), True
+    return sorted(pages), False
+
+
+def _parse_page_range(spec: str, total: int, max_pages: int | None = None) -> list[int]:
+    """Parse page range like '1-5', '3', '1,3,5-8'."""
+    return _parse_page_range_capped(spec, total, max_pages)[0]
 
 
 # ── Register ─────────────────────────────────────────────────────────────
