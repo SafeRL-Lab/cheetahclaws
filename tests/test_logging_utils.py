@@ -10,7 +10,7 @@ import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import logging_utils
+from cheetahclaws import logging_utils
 
 
 def _reset():

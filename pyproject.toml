@@ -4,17 +4,42 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cheetahclaws"
-version = "3.05.72"
-description = "CheetahClaws: A Fast, Hackable Python AI Coding Assistant"
+version = "3.5.85"
+description = "CheetahClaws: Agent Harness Infrastructure for Long-Horizon, Multi-Model, and Tool-Using AI Systems"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
+authors = [{ name = "SAIL Lab (Safe AI and Robot Learning Lab)", email = "gushangding@gmail.com" }]
+maintainers = [{ name = "SAIL Lab (Safe AI and Robot Learning Lab)", email = "gushangding@gmail.com" }]
+keywords = [
+    "ai", "agent", "llm", "claude", "openai", "gemini", "deepseek",
+    "coding-assistant", "cli", "terminal", "autonomous-agents",
+    "multi-model", "mcp", "tool-use", "ollama",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Utilities",
+]
 dependencies = [
     "anthropic>=0.40.0",
     "openai>=1.30.0",
     "httpx>=0.27.0",
     "rich>=13.0.0",
     "pyte>=0.8.0",
+    "prompt_toolkit>=3.0.43",
 ]
 
 [project.optional-dependencies]
@@ -25,50 +50,44 @@ browser     = ["playwright"]
 files       = ["pymupdf", "openpyxl"]
 ocr         = ["pytesseract", "Pillow"]
 trading     = ["yfinance>=0.2.30", "rank-bm25>=0.2.2"]
-all         = ["sounddevice", "Pillow", "prompt_toolkit>=3.0.43", "playwright", "pymupdf", "openpyxl", "pytesseract", "yfinance>=0.2.30", "rank-bm25>=0.2.2"]
+web         = ["sqlalchemy>=2.0", "bcrypt>=4.0", "PyJWT>=2.8.0"]
+litellm     = ["litellm>=1.60.0,<2.0.0"]
+qq          = ["qq-botpy>=1.2.1"]
+all         = ["sounddevice", "Pillow", "prompt_toolkit>=3.0.43", "playwright", "pymupdf", "openpyxl", "pytesseract", "yfinance>=0.2.30", "rank-bm25>=0.2.2", "sqlalchemy>=2.0", "bcrypt>=4.0", "PyJWT>=2.8.0", "litellm>=1.60.0,<2.0.0", "qq-botpy>=1.2.1"]
+
+[project.urls]
+Homepage = "https://cheetahclaws.github.io/"
+Repository = "https://github.com/SafeRL-Lab/cheetahclaws"
+Issues = "https://github.com/SafeRL-Lab/cheetahclaws/issues"
+Documentation = "https://github.com/SafeRL-Lab/cheetahclaws/tree/main/docs"
 
 [project.scripts]
-cheetahclaws = "cheetahclaws:main"
+cheetahclaws = "cheetahclaws.cli:main"
 
-[tool.setuptools]
-py-modules = [
-    "cheetahclaws",
-    "agent",
-    "agent_runner",
-    "auxiliary",
-    "bootstrap",
-    "circuit_breaker",
-    "cloudsave",
-    "compaction",
-    "cc_config",
-    "context",
-    "error_classifier",
-    "health",
-    "jobs",
-    "logging_utils",
-    "memory",
-    "providers",
-    "quota",
-    "runtime",
-    "session_store",
-    "skills",
-    "subagent",
-    "tmux_tools",
-    "tool_registry",
-]
-packages = [
-    "tools",
-    "cc_mcp", "memory", "monitor", "multi_agent", "plugin", "skill", "task",
-    "voice", "video", "checkpoint",
-    "ui", "bridges", "commands",
-    "modular", "modular.video", "modular.voice", "modular.trading",
-    "modular.trading.data", "modular.trading.engines", "modular.trading.agents",
+# Everything ships inside the single top-level ``cheetahclaws`` package.  This
+# is the whole point of the package layout: a generic submodule name (config,
+# daemon, kernel …) can never be shadowed by something else on sys.path once
+# installed, because it is only ever imported as ``cheetahclaws.<name>``.
+# ``cheetahclaws*`` auto-discovers the package and every sub-package.
+[tool.setuptools.packages.find]
+include = ["cheetahclaws*"]
+exclude = [
+    "tests*",
+    "demos*",
+    "docs*",
+    "examples*",
+    "research_papers*",
 ]
 
 [tool.setuptools.package-data]
-"modular.video" = ["PLUGIN.md"]
-"modular.voice" = ["PLUGIN.md"]
-"modular.trading" = ["PLUGIN.md", "skills/*.md", "agent_templates/*.md"]
+# agent_templates/ is plain data (markdown) loaded by filesystem path from
+# agent_runner.py and research/lab/roles.py — ship it with the package.
+"cheetahclaws" = ["agent_templates/**/*.md", "agent_templates/**/*"]
+"cheetahclaws.web" = ["*.js", "*.css", "*.html", "*.ico", "*.png", "static/**/*"]
+"cheetahclaws.prompts" = ["base/*.md", "overlays/*.md", "fragments/*.md", "README.md"]
+"cheetahclaws.modular.video" = ["PLUGIN.md"]
+"cheetahclaws.modular.voice" = ["PLUGIN.md"]
+"cheetahclaws.modular.trading" = ["PLUGIN.md", "skills/*.md", "agent_templates/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import circuit_breaker as cb
-from circuit_breaker import CircuitBreaker, CircuitOpenError, State, get_breaker, reset_breaker
+from cheetahclaws import circuit_breaker as cb
+from cheetahclaws.circuit_breaker import CircuitBreaker, CircuitOpenError, State, get_breaker, reset_breaker
 
 _PROV = "test_provider"
 _CFG  = {"circuit_failure_threshold": 3,

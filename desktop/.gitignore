@@ -1,0 +1,9 @@
+node_modules/
+out/
+dist/
+build/
+server/dist/
+server/build/
+.build-venv/
+*.log
+.DS_Store

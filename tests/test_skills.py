@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 from pathlib import Path
 
-import skill.loader as _loader
-from skill.loader import _parse_skill_file, _parse_list_field, find_skill, SkillDef
-from skill import load_skills, substitute_arguments
+import cheetahclaws.skill.loader as _loader
+from cheetahclaws.skill.loader import _parse_skill_file, _parse_list_field, find_skill, SkillDef
+from cheetahclaws.skill import load_skills, substitute_arguments
 
 
 COMMIT_MD = """\
@@ -232,3 +232,49 @@ def test_substitute_missing_arg():
 def test_substitute_no_placeholders():
     result = substitute_arguments("just a plain prompt", "some args", [])
     assert result == "just a plain prompt"
+
+
+# ------------------------------------------------------------------
+# _iter_skill_files (nested directory support)
+# ------------------------------------------------------------------
+
+from cheetahclaws.skill.loader import _iter_skill_files
+
+
+def test_iter_skill_files_flat(skill_dir):
+    files = list(_iter_skill_files(skill_dir))
+    names = [f.name for f in files]
+    assert "commit.md" in names
+    assert "review.md" in names
+
+
+def test_iter_skill_files_nested(tmp_path):
+    skill_dir = tmp_path / "skills"
+    skill_dir.mkdir()
+    nested = skill_dir / "myskill"
+    nested.mkdir()
+    (nested / "skill.md").write_text(
+        "---\nname: myskill\ndescription: Nested\n---\nbody\n",
+        encoding="utf-8",
+    )
+    files = list(_iter_skill_files(skill_dir))
+    assert any("myskill" in str(f) for f in files)
+
+
+def test_iter_skill_files_empty(tmp_path):
+    assert list(_iter_skill_files(tmp_path / "nope")) == []
+
+
+def test_load_skills_finds_nested(tmp_path, monkeypatch):
+    skill_dir = tmp_path / "skills"
+    skill_dir.mkdir()
+    nested = skill_dir / "myskill"
+    nested.mkdir()
+    (nested / "skill.md").write_text(
+        "---\nname: myskill\ndescription: Nested\n---\nbody\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(_loader, "_get_skill_paths", lambda: [skill_dir])
+    monkeypatch.setattr(_loader, "_BUILTIN_SKILLS", [])
+    skills = load_skills()
+    assert any(s.name == "myskill" for s in skills)

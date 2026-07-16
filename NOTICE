@@ -1,0 +1,13 @@
+CheetahClaws
+Copyright 2026 SAIL Lab at UC Berkeley
+
+This product includes software developed by SAIL Lab at UC Berkeley
+(https://github.com/SafeRL-Lab/cheetahclaws).
+
+Licensed under the Apache License, Version 2.0. Redistributions and
+derivative works must retain this NOTICE and the accompanying LICENSE,
+and must state any significant changes made.
+
+If you use this software in academic work, please cite:
+  Gu, Shangding. "From Model Scaling to System Scaling: Scaling the
+  Harness in Agentic AI." arXiv preprint arXiv:2605.26112, 2026.

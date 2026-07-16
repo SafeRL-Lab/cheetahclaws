@@ -3,7 +3,7 @@
 ## Memory
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/memory_demo.gif" width="850"/>
+<img src="../media/demos/memory_demo.gif" width="850"/>
 </div>
 <div align=center>
 <center style="color:#000000;text-decoration:underline">Memory: save preferences in session 1 → auto-recalled in session 2, no re-explanation needed</center>
@@ -191,7 +191,7 @@ AI: [deploys version 2.1.0 to staging]
 ## Sub-Agents
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/subagent_demo.gif" width="850"/>
+<img src="../media/demos/subagent_demo.gif" width="850"/>
 </div>
 <div align=center>
 <center style="color:#000000;text-decoration:underline">Sub-Agents: spawn coder + security agents in parallel, merge results automatically</center>
@@ -280,12 +280,43 @@ Place a `.mcp.json` file in your project directory **or** edit `~/.cheetahclaws/
       "type": "sse",
       "url": "http://localhost:8080/sse",
       "headers": {"Authorization": "Bearer my-token"}
+    },
+    "github-tools": {
+      "type": "http",
+      "url": "https://example.com/mcp"
+    },
+    "sap-jira": {
+      "type": "http",
+      "url": "https://jira.example.com/mcp"
     }
   }
 }
 ```
 
 Config priority: `.mcp.json` (project) overrides `~/.cheetahclaws/mcp.json` (user) by server name.
+
+#### Environment variable expansion in headers
+
+Header values support `$VAR` and `${VAR}` syntax — useful for keeping secrets out of `mcp.json`:
+
+```json
+"headers": {"Authorization": "Bearer $GITHUB_TOKEN"}
+```
+
+The variables are expanded once at config load time, after the `.env` loader runs (see [Reference: Environment Variables](reference.md#environment-variables)).
+
+#### OAuth 2.0 (HTTP transport)
+
+For HTTP MCP servers that require OAuth (e.g. enterprise SAP/Jira), CheetahClaws speaks the full MCP Authorization spec:
+
+- Resource server metadata discovery (RFC 9728)
+- Authorization server metadata discovery (RFC 8414)
+- Dynamic client registration (RFC 7591) — used when no `client_id` is configured
+- Authorization Code + PKCE (S256) flow with browser redirect
+- Automatic refresh-token rotation
+- Token persistence to `~/.cheetahclaws/mcp_oauth.json` (mode `0600`)
+
+You don't have to do anything beyond declaring the server URL: on the first `401` the client opens your browser, you sign in, and the resulting access token is cached and refreshed transparently. To force a re-auth, delete the relevant entry in `~/.cheetahclaws/mcp_oauth.json`.
 
 ### Quick start
 
@@ -304,11 +335,14 @@ uvx mcp-server-git --help   # verify it works
 ### REPL commands
 
 ```
-/mcp                          # list servers + their tools + connection status
-/mcp reload                   # reconnect all servers, refresh tool list
-/mcp reload git               # reconnect a single server
-/mcp add myserver uvx mcp-server-x   # add stdio server
-/mcp remove myserver          # remove from user config
+/mcp                                       # list servers + their tools + connection status
+/mcp list                                  # alias for the above
+/mcp reload                                # reconnect all servers, refresh tool list
+/mcp reload git                            # reconnect a single server
+/mcp add myserver uvx mcp-server-x         # add stdio server
+/mcp add myserver --transport http <url>   # add HTTP/SSE server (OAuth runs on first 401)
+/mcp add myserver --transport sse <url>
+/mcp remove myserver                       # remove from user config
 ```
 
 ### How Claude uses MCP tools
@@ -554,16 +588,25 @@ The wizard walks you through topic → schedule → delivery channel → run now
   ─── Summary ───────────────────────────────────
   Template  : research_assistant
   Name      : research
-  Args      : ~/papers/ --output research_notes.md
+  Args      : ~/papers/ --output ~/.cheetahclaws/agents/research/output/research_notes.md
   Interval  : 2.0s
   Auto-approve: True
+  Output    : ~/.cheetahclaws/agents/research/output/research_notes.md
 
   Start? [Y/n]: Y
 ✓ Agent 'research' is running.
-  Log  : ~/.cheetahclaws/agents/research/log.jsonl
+  Log    : ~/.cheetahclaws/agents/research/log.jsonl
+  Output : ~/.cheetahclaws/agents/research/output/research_notes.md
   Progress → this terminal (iterations print here).
-  Stop : /agent stop research
+  Stop   : /agent stop research
 ```
+
+> **Where do outputs land?** When you give a *relative* output filename
+> (e.g. `research_notes.md`), the wizard rewrites it to an absolute path
+> under `~/.cheetahclaws/agents/<name>/output/` so generated artifacts
+> stay out of your current working directory and your repo. Pass an
+> *absolute* path (e.g. `/tmp/notes.md` or `~/Desktop/notes.md`) to
+> override and save anywhere you want.
 
 ### Built-in templates
 

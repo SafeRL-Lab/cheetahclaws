@@ -29,6 +29,119 @@ For a full project audit:
 
 **Tip:** Ollama models run locally — your code never leaves your machine.
 
+### Alternative: self-hosted vLLM (or any OpenAI-compatible endpoint) via the `custom/` provider
+
+Use this when you have your own inference server — vLLM, LM Studio, TGI, llama.cpp's
+OpenAI server, or a remote machine exposing `/v1/chat/completions`. The `custom/`
+provider is just an OpenAI-compatible client; it needs a `base_url` and (optionally)
+an API key.
+
+**Step 1 — start your server.** Example: launch a quantized Qwen 2.5 72B on two GPUs
+with vLLM. The `--served-model-name` you pass here becomes the suffix after `custom/`.
+
+```bash
+CUDA_VISIBLE_DEVICES=6,7 python -m vllm.entrypoints.openai.api_server \
+    --model Qwen/Qwen2.5-72B-Instruct-AWQ \
+    --tensor-parallel-size 2 \
+    --quantization awq_marlin \
+    --host 0.0.0.0 --port 8000 \
+    --max-model-len 32768 \
+    --gpu-memory-utilization 0.9 \
+    --enable-auto-tool-choice \
+    --tool-call-parser hermes \
+    --served-model-name qwen2.5-72b
+```
+
+**Step 2 — verify the endpoint is reachable.** This catches firewall / wrong-port
+issues before CheetahClaws ever sees them.
+
+```bash
+curl http://localhost:8000/v1/models
+# Should list "qwen2.5-72b"
+```
+
+**Step 3 — point CheetahClaws at it.** The model string is `custom/<served-model-name>`;
+it must match `--served-model-name` exactly. You also need a `base_url` — set it
+either via env var or `/config`. **Don't forget the `/v1` suffix.**
+
+Env-var form (one-shot):
+
+```bash
+export CUSTOM_BASE_URL=http://localhost:8000/v1
+export CUSTOM_API_KEY=EMPTY     # vLLM ignores the key, but the OpenAI SDK requires a non-empty string
+cheetahclaws --web --model custom/qwen2.5-72b
+```
+
+In-app form (persists across launches):
+
+```
+[project] » /config custom_base_url=http://localhost:8000/v1
+[project] » /config custom_api_key=EMPTY
+[project] » /model custom/qwen2.5-72b
+```
+
+**Troubleshooting:**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ValueError: custom provider requires a base_url` | `CUSTOM_BASE_URL` unset and no `custom_base_url` in config | Set one of them; remember the `/v1` suffix |
+| `404 Not Found` on `/v1/chat/completions` | Wrong path — used `http://host:8000` without `/v1` | Append `/v1` to the base URL |
+| `model not found` from vLLM | Model string mismatch | `custom/<X>` must match `--served-model-name <X>` exactly |
+| Connection refused from another machine | vLLM bound to `127.0.0.1` only, or firewall | Launch with `--host 0.0.0.0` and open the port |
+| Tool calls never fire | vLLM started without tool-call support | Add `--enable-auto-tool-choice --tool-call-parser hermes` (or the parser matching your model) |
+
+**Tip:** CheetahClaws queries `/v1/models` on first use to discover the model's real
+context window, so you don't need to hard-code `context_limit` in
+`providers.py` — `--max-model-len` on the server is the source of truth.
+
+### Alternative: cloud providers with non-trivial auth via the `litellm/` provider
+
+Use this when the upstream needs auth that's painful to wire by hand —
+**AWS Bedrock SigV4 signing**, **Azure OpenAI deployment routing**, or
+**Google Vertex AI service-account JWTs**. For plain OpenAI-shaped
+endpoints (vLLM, LM Studio, TGI, Together, Fireworks, …) prefer the
+`custom/` provider above; it adds no dependency.
+
+```bash
+pip install cheetahclaws[litellm]
+
+# Bedrock — uses your boto3 credential chain (AWS_PROFILE, ~/.aws/credentials,
+# IAM role on EC2). No api_key needed.
+export AWS_REGION=us-east-1
+cheetahclaws --model litellm/bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0
+
+# Azure OpenAI — deployment-id routing via the api_base + api_version pair.
+export AZURE_API_KEY=...
+export AZURE_API_BASE=https://my-resource.openai.azure.com
+export AZURE_API_VERSION=2024-10-01-preview
+cheetahclaws --model litellm/azure/my-gpt4o-deployment
+
+# Vertex AI — Google Application Default Credentials.
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+export VERTEXAI_PROJECT=my-project
+export VERTEXAI_LOCATION=us-central1
+cheetahclaws --model litellm/vertex_ai/gemini-2.0-flash
+```
+
+The model string format is **`litellm/<provider>/<model>`** — the first
+segment selects this adapter, everything after is passed verbatim to
+`litellm.completion(model=...)`. See https://docs.litellm.ai/docs/providers
+for the full list of 100+ supported providers.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `litellm SDK not installed` | Extra not selected at install time | `pip install cheetahclaws[litellm]` |
+| `400 …unsupported param…` | Model rejected a kwarg (e.g. `temperature` on o1) | Adapter already passes `drop_params=True`; double-check the kwarg name |
+| `metadata.cost_unknown: True` on responses | litellm has no price entry for that model | Cost ledger records `cost_micro=0`; tokens still count. Either upgrade litellm or accept the unknown |
+| 401 on Bedrock | Wrong region or no IAM permission | Confirm `AWS_REGION` matches the model's region; check `bedrock:InvokeModel` on the principal |
+| 403 on Azure | `api_version` too old for the deployment | Bump `AZURE_API_VERSION` to a version listed on the deployment's page |
+
+**When to prefer `custom/` over `litellm/`:** if your endpoint speaks
+plain OpenAI Chat Completions and accepts a bearer token (vLLM, LM
+Studio, TGI, Together, Fireworks, Groq, OpenRouter, …), `custom/` is
+zero-dependency and zero-config beyond `CUSTOM_BASE_URL`. Reach for
+`litellm/` only when the auth gymnastics above are the actual blocker.
+
 ---
 
 ## 2. Remote Control via Telegram

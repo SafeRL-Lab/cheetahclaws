@@ -94,7 +94,7 @@ def model_color(name):
 def make_banner(model, provider):
     col = model_color(model)
     return [
-        [seg("╭─ CheetahClaws v3.05.5 ──────────────────────────────────╮", SUBTEXT)],
+        [seg("╭─ CheetahClaws v3.5.5 ──────────────────────────────────╮", SUBTEXT)],
         [seg("│  ", SUBTEXT), seg("Model: ", SUBTEXT), seg(model, col, True),
          seg(f"  ({provider})", SUBTEXT)],
         [seg("│  ", SUBTEXT), seg("Permissions: ", SUBTEXT), seg("auto", YELLOW)],

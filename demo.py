@@ -12,9 +12,9 @@ import sys
 # Add parent path for imports
 sys.path.insert(0, os.path.dirname(__file__))
 
-from cc_config import load_config
-from context import build_system_prompt
-from agent import AgentState, run, TextChunk, ThinkingChunk, ToolStart, ToolEnd, TurnDone, PermissionRequest
+from cheetahclaws.config import load_config
+from cheetahclaws.context import build_system_prompt
+from cheetahclaws.agent import AgentState, run, TextChunk, ThinkingChunk, ToolStart, ToolEnd, TurnDone, PermissionRequest
 
 def demo():
     config = load_config()

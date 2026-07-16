@@ -76,7 +76,7 @@ def draw_frame(lines_segments):
 
 def banner(machine):
     return [
-        [seg("╭─ CheetahClaws v3.05.5 ──────────────────────────────────╮", SUBTEXT)],
+        [seg("╭─ CheetahClaws v3.5.5 ──────────────────────────────────╮", SUBTEXT)],
         [seg("│  ", SUBTEXT), seg("Model: ", SUBTEXT), seg("claude-sonnet-4-6", CYAN, True)],
         [seg("│  ", SUBTEXT), seg("Machine: ", SUBTEXT), seg(machine, YELLOW, True)],
         [seg("│  Type /help for commands, Ctrl+C to cancel                  │", SUBTEXT)],

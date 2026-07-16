@@ -1,0 +1,42 @@
+# Source tree hygiene
+.git/
+.gitignore
+.github/
+
+# Python build/cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+
+# Tests + dev artifacts (image is a runtime, not a dev environment)
+tests/
+.pytest_cache/
+.coverage
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Docs source — README is enough at runtime
+docs/
+*.md
+!README.md
+
+# Compose / Docker meta files
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Local data that should never bake into images
+workspace/
+data/
+*.log

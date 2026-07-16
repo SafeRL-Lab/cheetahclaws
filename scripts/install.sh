@@ -178,24 +178,63 @@ fi
 
 ok "CheetahClaws installed"
 
-# ── Verify installation & add to PATH ─────────────────────────────────
-# Determine where the binary lives
+# ── Verify installation & expose on PATH for future shells ────────────
+# Determine where pip/venv placed the entry point.
 if [ "$USE_VENV" = true ]; then
     BIN_DIR="$VENV_DIR/bin"
 else
     BIN_DIR="$PIP_BIN"
 fi
 
-if command -v cheetahclaws &>/dev/null; then
-    ok "cheetahclaws is on PATH"
-elif [ -f "$BIN_DIR/cheetahclaws" ]; then
+# Decide which directory to put on PATH (EXPOSE_DIR).
+#   - venv install: symlink ONLY the cheetahclaws entry point into
+#     ~/.local/bin. Putting the whole venv/bin on PATH would shadow the
+#     user's python/pip in every new shell — pipx avoids this the same way.
+#   - user install: PIP_BIN itself is the directory to expose.
+# NOTE: we deliberately do NOT short-circuit on `command -v cheetahclaws`.
+# When we installed into a venv that this script just `source`d, the binary
+# is on PATH for THIS shell only — not for the new shells the user opens.
+# Trusting it here was the bug that left .zshrc untouched on macOS.
+EXPOSE_DIR=""
+if [ -f "$BIN_DIR/cheetahclaws" ]; then
+    if [ "$USE_VENV" = true ]; then
+        LOCAL_BIN="$HOME/.local/bin"
+        mkdir -p "$LOCAL_BIN"
+        ln -sf "$BIN_DIR/cheetahclaws" "$LOCAL_BIN/cheetahclaws"
+        EXPOSE_DIR="$LOCAL_BIN"
+        ok "Linked cheetahclaws into $LOCAL_BIN"
+    else
+        EXPOSE_DIR="$BIN_DIR"
+    fi
+elif command -v cheetahclaws &>/dev/null; then
+    # pip put it somewhere already on PATH — expose that directory.
+    EXPOSE_DIR="$(dirname "$(command -v cheetahclaws)")"
+else
+    warn "cheetahclaws binary not found at $BIN_DIR — you may need to add pip's bin directory to PATH manually."
+fi
+
+if [ -n "$EXPOSE_DIR" ]; then
+    # Pick the rc file the user's login shell actually reads, creating it if
+    # missing (macOS ships no default .zshrc, so a fresh zsh user has none).
     SHELL_RC=""
+    IS_FISH=false
     CURRENT_SH="$(basename "${SHELL:-bash}")"
     if [ "$CURRENT_SH" = "zsh" ]; then
         SHELL_RC="$HOME/.zshrc"
-        touch "$SHELL_RC"  # ensure it exists on macOS
+        touch "$SHELL_RC"
     elif [ "$CURRENT_SH" = "fish" ]; then
         SHELL_RC="$HOME/.config/fish/config.fish"
+        IS_FISH=true
+        mkdir -p "$(dirname "$SHELL_RC")"
+        touch "$SHELL_RC"
+    elif [ "$CURRENT_SH" = "bash" ]; then
+        # macOS bash loads .bash_profile for login shells; Linux loads .bashrc.
+        if [ "$PLATFORM" = "macos" ]; then
+            SHELL_RC="$HOME/.bash_profile"
+        else
+            SHELL_RC="$HOME/.bashrc"
+        fi
+        touch "$SHELL_RC"
     elif [ -f "$HOME/.bashrc" ]; then
         SHELL_RC="$HOME/.bashrc"
     elif [ -f "$HOME/.bash_profile" ]; then
@@ -203,16 +242,26 @@ elif [ -f "$BIN_DIR/cheetahclaws" ]; then
     fi
 
     if [ -n "$SHELL_RC" ]; then
-        if ! grep -q "$BIN_DIR" "$SHELL_RC" 2>/dev/null; then
-            echo "" >> "$SHELL_RC"
-            echo "# CheetahClaws" >> "$SHELL_RC"
-            echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "$SHELL_RC"
-            ok "Added $BIN_DIR to PATH in $SHELL_RC"
+        if ! grep -q "$EXPOSE_DIR" "$SHELL_RC" 2>/dev/null; then
+            if [ "$IS_FISH" = true ]; then
+                {
+                    echo ""
+                    echo "# CheetahClaws"
+                    echo "set -gx PATH \"$EXPOSE_DIR\" \$PATH"
+                } >> "$SHELL_RC"
+            else
+                {
+                    echo ""
+                    echo "# CheetahClaws"
+                    echo "export PATH=\"$EXPOSE_DIR:\$PATH\""
+                } >> "$SHELL_RC"
+            fi
+            ok "Added $EXPOSE_DIR to PATH in $SHELL_RC"
+        else
+            ok "PATH already configured in $SHELL_RC"
         fi
     fi
-    export PATH="$BIN_DIR:$PATH"
-else
-    warn "cheetahclaws not found on PATH — you may need to add pip's bin directory manually."
+    export PATH="$EXPOSE_DIR:$PATH"
 fi
 
 # ── Print version ──────────────────────────────────────────────────────
@@ -231,6 +280,8 @@ if [ "$CURRENT_SHELL" = "zsh" ]; then
     RELOAD_CMD="source ~/.zshrc"
 elif [ "$CURRENT_SHELL" = "fish" ]; then
     RELOAD_CMD="source ~/.config/fish/config.fish"
+elif [ "$CURRENT_SHELL" = "bash" ] && [ "$PLATFORM" = "macos" ]; then
+    RELOAD_CMD="source ~/.bash_profile"
 else
     RELOAD_CMD="source ~/.bashrc"
 fi

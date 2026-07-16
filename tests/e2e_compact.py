@@ -20,7 +20,7 @@ class FakeState:
 
 
 def test_compact():
-    from compaction import (
+    from cheetahclaws.compaction import (
         estimate_tokens, snip_old_tool_results, find_split_point,
         _restore_plan_context, manual_compact,
     )
@@ -84,7 +84,7 @@ def test_compact():
     tmpdir = Path(tempfile.mkdtemp())
     plan_file = tmpdir / "plan.md"
     plan_file.write_text("# Plan\n\n1. Do stuff\n2. More stuff\n", encoding="utf-8")
-    import runtime
+    from cheetahclaws import runtime
     config = {"permission_mode": "plan", "_session_id": "test_compact"}
     sctx = runtime.get_session_ctx("test_compact")
     sctx.plan_file = str(plan_file)
@@ -132,8 +132,8 @@ def test_compact():
     config = {"model": "test", "permission_mode": "auto"}
 
     # Mock the LLM call in compact_messages
-    import compaction
-    import providers
+    from cheetahclaws import compaction
+    from cheetahclaws import providers
 
     class FakeTextChunk:
         def __init__(self, text):

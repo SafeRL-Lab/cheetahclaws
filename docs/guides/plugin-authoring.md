@@ -329,12 +329,13 @@ The server name is auto-qualified as `<plugin_name>__<server_name>` to avoid col
 
 ## Installation Scopes
 
-Plugins can be installed in two scopes:
+Plugins live in one of three scopes:
 
 | Scope | Directory | Config | Use case |
 |-------|-----------|--------|----------|
 | **User** (default) | `~/.cheetahclaws/plugins/<name>/` | `~/.cheetahclaws/plugins.json` | Personal tools available everywhere |
 | **Project** | `.cheetahclaws/plugins/<name>/` | `.cheetahclaws/plugins.json` | Project-specific tools, committed to git |
+| **External** | Any dir listed in `$CHEETAHCLAWS_PLUGIN_PATH` | enable state in `~/.cheetahclaws/plugins.json` | Shared team/company plugins, no install step |
 
 ```bash
 # Install to user scope (default)
@@ -343,6 +344,64 @@ Plugins can be installed in two scopes:
 # Install to project scope
 /plugin install my-plugin@./local/path --project
 ```
+
+---
+
+## External Plugins (`CHEETAHCLAWS_PLUGIN_PATH`)
+
+External plugins are discovered **in-place** from directories you control — CheetahClaws never copies them to `~/.cheetahclaws/plugins/`. This is the right fit for shared team or company plugin directories: the ops team maintains one source of truth, users just point an env var at it.
+
+### Setup
+
+```bash
+# Single directory
+export CHEETAHCLAWS_PLUGIN_PATH=/opt/company/cheetahclaws-plugins
+
+# Multiple directories (colon-separated on Linux/macOS, semicolon on Windows)
+export CHEETAHCLAWS_PLUGIN_PATH=/opt/company/plugins:$HOME/my-shared-plugins
+```
+
+Each **immediate subdirectory** with a `plugin.json` or `PLUGIN.md` is picked up:
+
+```
+/opt/company/cheetahclaws-plugins/
+├── audit-tools/
+│   ├── plugin.json
+│   └── tools.py
+├── company-skills/
+│   ├── PLUGIN.md
+│   └── skills/
+└── .cache/              # hidden dirs are skipped
+```
+
+### Default: disabled
+
+External plugins start **disabled**. Run `/plugin` to see what was discovered:
+
+```
+Installed plugins (3):
+  git-helper      [user] enabled      Git convenience tools
+  audit-tools     [external] disabled Compliance & audit helpers
+  company-skills  [external] disabled Shared team prompts
+```
+
+Enable once — the decision persists to `~/.cheetahclaws/plugins.json` and survives restarts:
+
+```
+/plugin enable audit-tools
+```
+
+If the plugin declares `dependencies` in its manifest, pip packages are installed at enable time (that's your informed-consent point — nothing auto-installs silently during normal use).
+
+### Name collisions
+
+If the same plugin name exists in both installed (`USER`/`PROJECT`) and external scopes, the **installed** entry wins. Within external scopes, the **earliest** directory in `CHEETAHCLAWS_PLUGIN_PATH` wins — same semantics as `$PATH`.
+
+### Maintenance
+
+- `/plugin uninstall <name>` on an external plugin only drops CheetahClaws's enable-state record. **It never deletes the source directory** — that's the plugin author's to manage.
+- `/plugin update <name>` is refused for externals (update the source directory directly, e.g. `git pull` in the shared repo).
+- Malformed `plugin.json` files are logged to stderr and skipped; one broken manifest in the path cannot crash `/plugin`.
 
 ---
 

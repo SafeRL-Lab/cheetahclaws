@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from ui.input import HAS_PROMPT_TOOLKIT, SlashCompleter
+from cheetahclaws.ui.input import HAS_PROMPT_TOOLKIT, SlashCompleter
 
 if not HAS_PROMPT_TOOLKIT:
     pytest.skip("prompt_toolkit not installed", allow_module_level=True)
@@ -136,7 +136,7 @@ def test_symmetry_commands_only_also_visible():
 
 def test_setup_registers_module_level_providers():
     """Verify ui.input.setup() injects providers without requiring ctor args."""
-    import ui.input as ui_input
+    import cheetahclaws.ui.input as ui_input
 
     cmds = {"alpha": True, "beta": True}
     meta = {"alpha": ("A", []), "beta": ("B", [])}
@@ -150,10 +150,28 @@ def test_setup_registers_module_level_providers():
         ui_input.setup(lambda: {}, lambda: {})
 
 
+def test_dynamic_completions_used_when_static_subcommands_empty():
+    """Commands with no static subcommands can register a dynamic completer."""
+    def _fake_model_completions(partial: str):
+        candidates = ["openai/gpt-4o", "openai/gpt-4o-mini", "anthropic/claude-sonnet"]
+        return [c for c in candidates if c.startswith(partial)]
+
+    completer = SlashCompleter(
+        lambda: COMMANDS,
+        lambda: META,
+        dynamic_completions_provider=lambda: {"model": _fake_model_completions},
+    )
+    completions = _completions(completer, "/model openai/g")
+    texts = [c.text for c in completions]
+    assert "openai/gpt-4o" in texts
+    assert "openai/gpt-4o-mini" in texts
+    assert "anthropic/claude-sonnet" not in texts
+
+
 def test_module_does_not_import_cheetahclaws():
     """Regression guard for the circular-import concern from review."""
     import sys
-    import ui.input as ui_input
+    import cheetahclaws.ui.input as ui_input
     # Reload ui.input in a clean state and confirm cheetahclaws is not pulled in.
     # (Running this in the test session where cheetahclaws may already be loaded
     # is acceptable — the assertion is about ui.input's own import graph.)

@@ -37,7 +37,7 @@ def test_plan_mode():
     state = FakeState()
 
     # Import _check_permission from agent
-    from agent import _check_permission
+    from cheetahclaws.agent import _check_permission
 
     print("  PASS")
 
@@ -67,7 +67,7 @@ def test_plan_mode():
     plan_path = plans_dir / "plantest.md"
     plan_path.write_text("# Plan: Add WebSocket support\n\n", encoding="utf-8")
 
-    import runtime
+    from cheetahclaws import runtime
     sctx = runtime.get_session_ctx("test_plan")
     config["_session_id"] = "test_plan"
     sctx.prev_permission_mode = config["permission_mode"]
@@ -160,7 +160,7 @@ def test_plan_mode():
     config["permission_mode"] = "plan"
     sctx.plan_file = str(plan_path)
 
-    from context import build_system_prompt
+    from cheetahclaws.context import build_system_prompt
     prompt = build_system_prompt(config)
     assert "Plan Mode (ACTIVE)" in prompt, "System prompt should include plan mode section"
     assert str(plan_path) in prompt, "System prompt should reference plan file path"

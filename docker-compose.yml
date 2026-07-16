@@ -1,0 +1,64 @@
+# CheetahClaws — home-server compose stack
+#
+# Web UI + Telegram bridge in one container, talking to an Ollama instance
+# running on the Docker host (typical home-server / DGX-Spark setup).
+#
+# Quick start:
+#   1. cp .env.example .env  &&  edit values
+#   2. mkdir -p ./workspace ./data
+#   3. docker compose up -d --build
+#   4. open http://<host-ip>:8080/chat
+#
+# See docs/guides/docker.md for the full walkthrough.
+
+services:
+  cheetahclaws:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Local build tags as cheetahclaws:latest by default. To run a published
+    # image from Docker Hub instead, set CHEETAH_IMAGE and skip --build:
+    #   CHEETAH_IMAGE=chauncygu/cheetahclaws:latest docker compose up -d
+    image: "${CHEETAH_IMAGE:-cheetahclaws:latest}"
+    container_name: cheetahclaws
+    restart: unless-stopped
+
+    # Inherit host UID/GID so files in ./workspace are owned by the host
+    # user and stay accessible from Samba shares, native FS, etc.
+    user: "${UID:-1000}:${GID:-1000}"
+
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+
+    volumes:
+      # Project workspace the agent reads/writes. Share this over SMB on
+      # the host to access from your other PC / phone.
+      - ./workspace:/workspace
+      # Persisted config, sessions, history. Surviving container restarts.
+      - ./data:/home/cheetah/.cheetahclaws
+
+    # Ollama runs on the host. host.docker.internal resolves to the host
+    # gateway on Linux 20.10+ via host-gateway, no host networking needed.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    environment:
+      # Cloud provider keys (optional — leave unset if going Ollama-only).
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OPENAI_API_KEY:    "${OPENAI_API_KEY:-}"
+
+      # Telegram bridge: when both are present, the bridge auto-starts in
+      # the same process as the web server.
+      # Tokens go into ~/.cheetahclaws/config.json on first run; export
+      # them here only if you want them re-applied each restart.
+
+    # Resource hints (tune to your hardware). DGX-Spark: bump as desired.
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 4g
+
+# Named volumes alternative (uncomment if you prefer not to bind-mount):
+# volumes:
+#   cheetah-data:
+#   cheetah-workspace:

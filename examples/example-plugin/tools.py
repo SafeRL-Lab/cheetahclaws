@@ -4,7 +4,7 @@ Example plugin tools for CheetahClaws.
 This file demonstrates how to define tools that the AI can call.
 Export your tools as a TOOL_DEFS list — do NOT call register_tool() directly.
 """
-from tool_registry import ToolDef
+from cheetahclaws.tool_registry import ToolDef
 
 
 def _example_search(params: dict, config: dict) -> str:

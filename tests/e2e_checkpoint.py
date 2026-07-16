@@ -9,12 +9,12 @@ tmpdir = Path(tempfile.mkdtemp(prefix="ckpt_e2e_"))
 print(f"Workspace: {tmpdir}")
 
 # Patch checkpoints root to temp
-import checkpoint.store as store
+import cheetahclaws.checkpoint.store as store
 _orig_root = store._checkpoints_root
 store._checkpoints_root = lambda: tmpdir / ".nano_claude" / "checkpoints"
 
-import checkpoint as ckpt
-from checkpoint.hooks import set_session, get_tracked_edits, reset_tracked, _backup_before_write
+from cheetahclaws import checkpoint as ckpt
+from cheetahclaws.checkpoint.hooks import set_session, get_tracked_edits, reset_tracked, _backup_before_write
 
 # ── Simulate AgentState ──
 @dataclass
@@ -159,6 +159,8 @@ state.messages = state.messages[:snap_target.message_index]
 state.turn_count = snap_target.turn_count
 state.total_input_tokens = snap_target.token_snapshot.get("input", 0)
 state.total_output_tokens = snap_target.token_snapshot.get("output", 0)
+state.total_cache_read_tokens = snap_target.token_snapshot.get("cache_read", 0)
+state.total_cache_write_tokens = snap_target.token_snapshot.get("cache_write", 0)
 
 content = app_py.read_text(encoding="utf-8")
 print(f"  After:  {len(state.messages)} msgs, turn={state.turn_count}")

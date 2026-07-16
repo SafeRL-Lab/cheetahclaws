@@ -3,7 +3,7 @@
 ## Voice Input
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/voice_demo.gif" width="850"/>
+<img src="../media/demos/voice_demo.gif" width="850"/>
 </div>
 <div align=center>
 <center style="color:#000000;text-decoration:underline">Voice Input: speak your prompt → offline Whisper transcription → AI responds</center>
@@ -105,7 +105,7 @@ The selected device is shown in `/voice status` and used for all subsequent reco
 ## Video Content Factory
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/video_demo.gif" width="850"/>
+<img src="../media/demos/video_demo.gif" width="850"/>
 </div>
 <div align=center>
 <center style="color:#000000;text-decoration:underline">Video Factory: topic → AI story → TTS → images → subtitles → final .mp4</center>
@@ -205,7 +205,7 @@ Subtitles are rendered with **Pillow + NotoSansSC font** — not libass. This me
 ### Image backends (vision input)
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/image_demo.gif" width="850"/>
+<img src="../media/demos/image_demo.gif" width="850"/>
 </div>
 <div align=center>
 <center style="color:#000000;text-decoration:underline">/image: paste UI screenshot → AI flags issues; paste code screenshot → AI spots bugs</center>
@@ -306,7 +306,7 @@ video_tmp/batch_20260407_153000/story/
 ## TTS Content Factory
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/voice_demo.gif" width="850"/>
+<img src="../media/demos/voice_demo.gif" width="850"/>
 </div>
 <div align=center>
 <center style="color:#000000;text-decoration:underline">TTS Factory: choose voice style → AI writes script → synthesize → .mp3 output</center>

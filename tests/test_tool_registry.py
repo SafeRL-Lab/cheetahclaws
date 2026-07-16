@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tool_registry import (
+from cheetahclaws.tool_registry import (
     ToolDef,
     clear_registry,
     execute_tool,
@@ -122,8 +122,10 @@ def test_output_truncation():
     register_tool(tool)
 
     result = execute_tool("big", {}, config={}, max_output=40)
-    # first half = 20 chars, last quarter = 10 chars, marker in between
-    assert len(result) < 100
+    # first half = 20 chars, last quarter = 10 chars, marker in between.
+    # The truncation marker now includes a model-context-safety message
+    # which is ~80-150 chars depending on file_path hint.
+    assert len(result) < 200
     assert "truncated" in result
     # The kept portion: first 20 + last 10 should be present
     assert result.startswith("x" * 20)

@@ -23,7 +23,7 @@ cheetahclaws/
 ├── config.py                # User config (load/save to ~/.cheetahclaws/config.json)
 ├── runtime.py               # RuntimeContext — per-session live state (NOT config)
 ├── tool_registry.py         # Central tool registry (ToolDef, register_tool)
-├── context.py               # System prompt builder
+├── context.py               # System prompt builder (assembles base + overlay + env + fragments)
 ├── compaction.py            # Context window compaction
 │
 ├── tools/                   # Tool implementations (one file per category)
@@ -40,7 +40,9 @@ cheetahclaws/
 ├── bridges/                 # Telegram, WeChat, Slack integrations
 ├── plugin/                  # Plugin system (install, load, manifest parsing)
 ├── skill/                   # Skill system (Markdown prompt templates)
-├── mcp/                     # MCP (Model Context Protocol) client & tools
+├── daemon/               # Daemon foundation (F-1..F-9 all landed) — `cheetahclaws serve` + RPC surface (agent/monitor/bridge/session/proactive/system); see docs/RFC/0002
+├── mcp_client/                  # MCP (Model Context Protocol) client & tools
+├── research/lab/            # Autonomous multi-agent research engine (/lab — 9-stage state machine + sandboxed experiments + citation verifier)
 ├── memory/                  # Persistent memory system
 ├── multi_agent/             # Sub-agent spawning & worktree isolation
 ├── monitor/                 # Subscription monitoring (arxiv, stocks, news)
@@ -48,7 +50,11 @@ cheetahclaws/
 ├── task/                    # Task tracking
 ├── ui/                      # Terminal rendering (colors, spinners, status bar)
 ├── modular/                 # Optional modules (voice, video)
-└── tests/                   # pytest suite (327+ tests)
+├── prompts/                 # System prompt assets — base/default.md (shared baseline)
+│                            #   + overlays/<family>.md (vendor-documented quirks)
+│                            #   + fragments/<name>.md (conditional blocks).
+│                            #   See prompts/README.md for the overlay-admission policy.
+└── tests/                   # pytest suite (578+ tests)
 ```
 
 ## Key Architecture Concepts
@@ -136,7 +142,7 @@ CheetahClaws does **not** have a generic event-based hooks system. The `checkpoi
 
 ### Bridges
 
-Telegram, WeChat, and Slack bridges poll for messages and route them through `RuntimeContext.run_query`. Bridge-specific state (turn flags, current user/channel) lives in `RuntimeContext`, not in the config dict.
+Telegram, WeChat, Slack, and QQ bridges receive messages and route them through `RuntimeContext.run_query`. Telegram/WeChat/Slack long-poll; QQ uses the qq-botpy async WebSocket SDK on a dedicated event-loop thread. Bridge-specific state (turn flags, current user/channel/target) lives in `RuntimeContext`, not in the config dict.
 
 ## Conventions
 
@@ -151,8 +157,11 @@ Telegram, WeChat, and Slack bridges poll for messages and route them through `Ru
 
 - New tool implementations → add to `tools/` package (e.g., `tools/mytool.py`)
 - New command handlers → add to `commands/`
-- New top-level `.py` files → must be added to `pyproject.toml` `py-modules` list, otherwise `pip install` will miss them
-- New packages (directories) → must be added to `pyproject.toml` `packages` list
+- New top-level `.py` files → **must be added to `pyproject.toml` `py-modules` list**, otherwise `pip install .` will not ship them
+- New sub-packages (directories with `__init__.py`) under an existing tracked package → **picked up automatically** by `[tool.setuptools.packages.find]`. No `pyproject.toml` change needed.
+- New top-level package directory → add a wildcard entry like `"newpkg*"` to the `include` list under `[tool.setuptools.packages.find]`.
+
+> ⚠️ **Never use the same name in `py-modules` AND as a directory package** (e.g., a `memory.py` shim alongside a `memory/` package). On Windows + Python 3.13 + setuptools ≥ 75 this triggers a silent package-drop during wheel build and unrelated packages disappear (cause of issue #97). The `tests/test_packaging.py::test_pyproject_no_module_package_collision` regression test will catch this in CI; if you hit it, delete the shim and have callers `import name` against the package directory directly.
 
 ### Error Handling
 
@@ -172,11 +181,12 @@ Telegram, WeChat, and Slack bridges poll for messages and route them through `Ru
 
 Before submitting a PR:
 
-- [ ] `python -m pytest tests/ -x -q` passes (all 327+ tests)
+- [ ] `python -m pytest tests/ -x -q` passes (all 1000+ tests)
 - [ ] No new dependencies added to core without discussion
 - [ ] Runtime state uses `RuntimeContext`, not `config["_xxx"]`
 - [ ] Plugin tools export `TOOL_DEFS`, not direct `register_tool()` calls
-- [ ] New modules added to `pyproject.toml`
+- [ ] New top-level `.py` files added to `pyproject.toml` `py-modules`; new top-level packages added to `[tool.setuptools.packages.find]` `include` patterns (sub-packages auto-discover)
+- [ ] No `<name>.py` shim with the same name as a `<name>/` package — see issue #97
 - [ ] No secrets or API keys in committed code
 - [ ] Separate bug fixes from new features (one concern per PR)
 

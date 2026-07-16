@@ -1,11 +1,11 @@
-# Bridges — Telegram, WeChat, Slack
+# Bridges — Telegram, WeChat, Slack, QQ
 
 ## Telegram Bridge
 
 `/telegram` turns cheetahclaws into a Telegram bot — receive messages from your phone, run the model with full tool access, and reply automatically.
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/clawspring/blob/main/docs/telegram_demo.gif" width="850"/>
+<img src="../media/demos/telegram_demo.gif" width="850"/>
 </div>
 
 ### Setup (one-time)
@@ -40,18 +40,27 @@ The response is JSON. Find `"chat"` → `"id"` — that number is your chat ID:
 
 > **Tip:** if `result` is empty, go back to Telegram, send another message to your bot, then refresh the URL.
 
-3. Configure cheetahclaws (example with the values above):
+3. Configure cheetahclaws. **Recommended** — token from environment variable:
 
-```
-[myproject] ❯ /telegram 7812345678:AAFxyz123abcDEF456ghiJKL789 987654321
-  ✓ Telegram config saved.
+```bash
+export TELEGRAM_BOT_TOKEN=7812345678:AAFxyz123abcDEF456ghiJKL789
+cheetahclaws
+[myproject] ❯ /telegram 987654321
   ✓ Connected to @your_bot_name. Starting bridge...
   ✓ Telegram bridge active. Chat ID: 987654321
-  ℹ Send messages to your bot — they'll be processed here.
-  ℹ Stop with /telegram stop or send /stop in Telegram.
 ```
 
-Token and chat_id are saved to `~/.cheetahclaws/config.json`. On next launch the bridge **auto-starts** if configured — the startup banner shows `flags: [telegram]`.
+This keeps the token out of `readline` history and `~/.cheetahclaws/config.json`.
+
+The legacy two-arg form still works but is deprecated — it lands the token in your shell-history file, so cheetahclaws prints a warning and auto-scrubs it from the in-memory history:
+
+```
+[myproject] ❯ /telegram 7812345678:AAFxyz... 987654321
+  ⚠ Passing the bot token as a REPL argument is deprecated — it lands in
+    readline history. Set $TELEGRAM_BOT_TOKEN and run `/telegram <chat_id>` instead.
+```
+
+`telegram_chat_id` is saved to `~/.cheetahclaws/config.json`; the token is **only** saved if it came in via the deprecated REPL arg path. Env-supplied tokens never touch disk. On next launch the bridge **auto-starts** if the env var (or saved config) is present — the startup banner shows `flags: [telegram]`.
 
 ### How it works
 
@@ -95,14 +104,81 @@ Send a voice note (OGG) or audio file (MP3). CheetahClaws transcribes it automat
 >
 > If `ffmpeg` is missing, voice messages will fail with `⚠ Could not download voice message.`
 
+### Permission prompts (clickable buttons & numbered menus) (#84)
+
+When the model wants to run a write/edit/Bash tool and `permission_mode` isn't `accept-all`, cheetahclaws asks for approval. The prompt is now rendered with an interactive picker on **every** channel — pick the form that fits the medium:
+
+| Channel | UX |
+|---|---|
+| **Telegram** | Real `inline_keyboard` with `✅ Approve` / `❌ Reject` / `✅✅ Accept all` buttons. Tap → ack via `answerCallbackQuery` (spinner clears), original message edited to append `✓ Selected: y` for scroll-back, agent thread resumes. Stale-click protection via per-prompt `prompt_id` baked into `callback_data`. |
+| **Slack** | Numbered menu rendered into the message body. Reply with the digit (`1`/`2`/`3`), the canonical letter (`y`/`n`/`a`), or a label word (`approve` / `reject` / `accept` / `all`) — all three resolve to the same value before the caller sees them. |
+| **WeChat** | Same numbered-menu UX as Slack. Header is `❓ 需要输入`; reply with digit / letter / label word, all resolved server-side. |
+| **Terminal** | Numbered menu printed above the input cursor; same digit / letter / label-word reply normalization. |
+| **Web (chat API)** | Existing browser approval UI handles this — untouched. |
+
+The reply normalization is shared: `_resolve_choice("1", value_map) == "y"`, `_resolve_choice("approve", value_map) == "y"`, `_resolve_choice("custom answer", value_map) == "custom answer"` (unknown replies pass through verbatim, so callers that combine `options=` with free-text questions still work).
+
+```
+❓ Input Required
+Allow: Bash 'rm -rf /tmp/scratch'  [y/N/a(ccept-all)]
+
+  [1] ✅ Approve  (reply `1` or `y`)
+  [2] ❌ Reject  (reply `2` or `n`)
+  [3] ✅✅ Accept all  (reply `3` or `a`)
+```
+
+`✅✅ Accept all` flips `permission_mode` to `accept-all` for the rest of the session, identical to typing `a` in the terminal.
+
+> **Telegram fallbacks.** If Markdown parsing fails for the prompt body, the bridge retries the same keyboard without `parse_mode`. If even that fails, it falls back to plain text without buttons — the embedded numbered menu in the message body remains, so users can still reply by typing `1` / `y` / `approve`. Same `(timeout: no input received)` after 5 minutes for any channel.
+
+> **For caller code.** Pass `options=[(label, return_value), …]` to `ask_input_interactive` to opt in. Without `options`, every existing call site keeps free-text behavior — the helper is purely additive.
+
+### File support (#84)
+
+The bridge can both **receive** files from the user and **send** files back. Telegram caps `sendDocument` / inbound files at 50 MB; the bridge enforces a 49 MB ceiling for headroom.
+
+**Receiving a file from your phone**
+
+Drop any document into the chat (with or without a caption). CheetahClaws downloads it, sanitizes the filename, saves it to `/workspace` (when running in Docker) or the system temp directory (otherwise), echoes the saved path back to the chat, and submits a path-aware prompt to the model:
+
+```
+You: [📎 report.pdf]
+Bot: 📎 Saved `report.pdf` to `/workspace/report.pdf`
+Bot: ⏳ Job #a1f0 running…
+     I just read /workspace/report.pdf — it contains …
+```
+
+If you add a caption, the caption replaces the default prompt. Filenames are sanitized to `[A-Za-z0-9._-]_` to keep the save path safe.
+
+**Sending a file from cheetahclaws**
+
+Files arrive in chat as Telegram **documents** (not just chat text):
+
+- **Automatic** — when the model uses the `Write` tool to create a file, the bridge mails the new file to the chat once the tool call succeeds. Caption is `📎 <name> (<size> KB)`. Failed/denied writes are skipped, and the same path is only sent once per turn (de-duplicated).
+- **Explicit** — send `!sendfile <absolute_path>` from the chat to request any file from the workspace. Backticks/quotes around the path are stripped.
+
+```
+You: !sendfile /workspace/report.pdf
+Bot: [📎 report.pdf]
+     ✅ Sent `report.pdf`.
+```
+
+> **Limits & failure modes**
+> - Files > 49 MB are refused with `⚠ File too large to send via Telegram (… MB > 50 MB)`.
+> - Empty / missing / unreadable files report a specific error in chat.
+> - Network errors and Telegram-side rejections (`ok: false`) report the description verbatim so you can debug.
+
 ### Commands
 
 | Command | Description |
 |---|---|
-| `/telegram <token> <chat_id>` | Configure token + chat_id, then start the bridge |
+| `/telegram <chat_id>` | Recommended — start with `$TELEGRAM_BOT_TOKEN` from the environment |
+| `/telegram <token> <chat_id>` | Deprecated — token leaks into readline history; cheetahclaws auto-scrubs but prints a warning |
 | `/telegram` | Start the bridge using saved config |
 | `/telegram status` | Show running state and chat_id |
 | `/telegram stop` | Stop the bridge |
+
+> **Token precedence:** `$TELEGRAM_BOT_TOKEN` > REPL arg > `~/.cheetahclaws/config.json`. Env-supplied tokens never get persisted to disk.
 
 ### Auto-start
 
@@ -117,12 +193,14 @@ If both `telegram_token` and `telegram_chat_id` are set in `~/.cheetahclaws/conf
 ✓ Telegram bridge started (auto). Bot: @your_bot_name
 ```
 
+The bridge also auto-starts in **web-server mode** (`cheetahclaws --web`) — handy for headless / Docker deployments where you want the browser UI and the phone bridge in a single process. See [docs/guides/docker.md](docker.md).
+
 ---
 
 ## WeChat Bridge
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/wechat_demo.gif" width="850"/>
+<img src="../media/demos/wechat_demo.gif" width="850"/>
 </div>
 <div align=center>
 <center style="color:#000000;text-decoration:underline">WeChat Bridge: Control cheetahclaws from WeChat (微信)</center>
@@ -209,12 +287,130 @@ If `wechat_token` is set in `~/.cheetahclaws/config.json`, the bridge starts aut
 ✓ WeChat bridge started.
 ```
 
+Also auto-starts in `cheetahclaws --web` (Docker / headless deployments).
+
+### Smart-reply panel (v3.5.78+)
+
+When a whitelisted contact sends an inbound message, the auxiliary
+cheap model drafts 3 candidate replies and pushes a panel to your
+**文件传输助手** (filehelper) chat — you reply on your phone and the
+bot sends the chosen text back to the original contact.
+
+```jsonc
+// ~/.cheetahclaws/config.json
+{
+  "wechat_smart_reply":            true,
+  "wechat_smart_reply_whitelist":  ["wxid_alice...", "wxid_bob..."],
+  "wechat_smart_reply_groups":     false,    // also draft for group msgs
+  "wechat_smart_reply_groups_at_only": false, // groups: only when @<self>
+  "wechat_smart_reply_timeout_s":  300       // panel TTL
+}
+```
+
+Panel layout in filehelper:
+
+```
+💬 [AA] Alice (大学同学) → 「周末有空吗」
+
+[1] 有的，周六下午行
+[2] 周末出差，下周可以吗
+[3] 在忙，晚点回你
+
+回 1/2/3 发送 · 直接打字自定义 · x 跳过 · q 看队列
+```
+
+| Reply | Effect |
+|---|---|
+| `1` / `2` / `3` | Send the matching candidate to the original contact |
+| Freeform text | Send your own text instead |
+| `x` | Skip this panel (no reply sent) |
+| `q` / `queue` | List currently pending panels |
+| `AA 1` / `AA x` / `AA <text>` | Address a specific panel by ID (when multiple are queued) |
+
+Confirmed sends are appended to `wx_reply_history` and feed style
+mimicking on subsequent panels — over time the candidates get closer
+to your real voice.
+
+**Storage:**
+- `~/.cheetahclaws/wx_smart_reply.db` — pending panels + reply history
+  (auto-fallback to in-memory if SQLite init fails)
+- `~/.cheetahclaws/wx_contacts.json` — relationship/notes per uid,
+  hot-reloaded on mtime change. Schema:
+
+  ```json
+  {
+    "wxid_alice123": {
+      "label":        "Alice (大学同学)",
+      "relationship": "close friend",
+      "notes":        "她最近在找工作。语气随便，喜欢用 emoji。"
+    }
+  }
+  ```
+
+**Important: bot-owner self-uid bypass.** Your own messages to the bot
+must always reach the agent — never get routed to smart-reply (you
+can't draft a reply to yourself). The bridge auto-records your uid
+the first time you send any non-filehelper, non-group message:
+
+```jsonc
+"wechat_self_uid": "o9cq80_Q_dEyQeBt-LlErxfZK2G8@im.wechat"  // auto-set
+```
+
+`is_smart_reply_target()` returns `False` for this uid unconditionally,
+even if it's also in `wechat_smart_reply_whitelist`.
+
+### `/draft <message>` — semi-automatic reply suggestion
+
+For the iLink ClawBot architecture (the default), the bot is a
+*separate* WeChat account, so it cannot intercept inbound messages on
+your main account. `/draft` is the manual workaround:
+
+```
+/draft 周末有空吗?                         # generic tone
+/draft @wxid_alice 周末有空吗?            # tone-conditioned via wx_contacts.json
+/draft @Alice 周末有空吗?                  # also accepts the label as the lookup key
+```
+
+Output:
+
+```
+  Drafting 3 replies for Alice (大学同学) → 「周末有空吗?」
+
+  [1] 有空呀，想干嘛
+  [2] 这周末出差，下周可以吗
+  [3] 在忙，晚点回你
+
+  Copy one and paste it into WeChat (or wherever) — this is fully manual.
+```
+
+**When invoked from a bridge channel** (the user typed `/draft` from
+their phone), candidates are also echoed back to the originating
+WeChat / Telegram / Slack uid + stashed in `bridges.draft_cache`
+(per-uid, 10-min TTL, one-shot). A digit-only follow-up (`1`/`2`/`3`)
+within 10 minutes consumes the cache and returns just the chosen
+text — no agent invocation, no smart-reply panel triggered:
+
+```
+You (on phone) → ClawBot:  /draft 周末有空吗?
+ClawBot       → You:       💬 Drafts for 「周末有空吗?」
+                           [1] 有空呀，想干嘛
+                           [2] 这周末出差，下周可以吗
+                           [3] 在忙，晚点回你
+                           回 1/2/3 取那条 · 复制粘贴给对方
+You          → ClawBot:    2
+ClawBot       → You:       这周末出差，下周可以吗
+                           ↑ you copy this and paste to Alice manually
+```
+
+Also works inside the cheetahclaws terminal — the candidates print to
+stdout, you copy/paste into your IM client of choice.
+
 ---
 
 ## Slack Bridge
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/slack_demo.gif" width="850"/>
+<img src="../media/demos/slack_demo.gif" width="850"/>
 </div>
 <div align=center>
 <center style="color:#000000;text-decoration:underline">Slack Bridge: Control cheetahclaws from Slack</center>
@@ -233,16 +429,19 @@ If `wechat_token` is set in `~/.cheetahclaws/config.json`, the bridge starts aut
 
 ### Setup (one-time, ~2 minutes)
 
-```
-[myproject] ❯ /slack xoxb-12345-... C0123456789
-  ℹ Slack credentials saved (channel: C0123456789).
+**Recommended** — token from environment variable:
+
+```bash
+export SLACK_BOT_TOKEN=xoxb-12345-...
+cheetahclaws
+[myproject] ❯ /slack C0123456789
   ℹ Slack authenticated as @cheetahclaws_bot
   ✓ Slack bridge started.
-  ℹ Send a message in the configured Slack channel — it will be processed here.
-  ℹ Stop with /slack stop or send /stop in Slack.
 ```
 
-Credentials are saved to `~/.cheetahclaws/config.json` and the bridge auto-starts on every subsequent launch — you only need to configure once.
+The legacy `/slack <xoxb-token> <channel_id>` form still works but is deprecated — it leaks the token into your readline history. cheetahclaws prints a warning and auto-scrubs it from the in-memory history.
+
+`slack_channel` is saved to `~/.cheetahclaws/config.json`; the token is **only** persisted when it came from the deprecated REPL arg path. Env-supplied tokens never touch disk. The bridge auto-starts on every subsequent launch — you only need to configure once.
 
 ### How it works
 
@@ -273,11 +472,14 @@ Every 2 seconds, cheetahclaws polls `GET conversations.history?oldest=<last_ts>`
 
 | Command | Description |
 |---|---|
-| `/slack <token> <channel_id>` | Configure and start the bridge |
+| `/slack <channel_id>` | Recommended — start with `$SLACK_BOT_TOKEN` from the environment |
+| `/slack <xoxb-token> <channel_id>` | Deprecated — token leaks into readline history; auto-scrubbed with a warning |
 | `/slack` | Start with saved credentials |
 | `/slack status` | Show running state and channel ID |
 | `/slack stop` | Stop the bridge |
 | `/slack logout` | Clear saved credentials and stop the bridge |
+
+> **Token precedence:** `$SLACK_BOT_TOKEN` > REPL arg > `~/.cheetahclaws/config.json`. Env-supplied tokens never get persisted to disk.
 
 ### Auto-start
 
@@ -292,11 +494,87 @@ If `slack_token` and `slack_channel` are set in `~/.cheetahclaws/config.json`, t
 ✓ Slack bridge started.
 ```
 
+Also auto-starts in `cheetahclaws --web` (Docker / headless deployments).
+
+---
+
+## QQ Bridge
+
+`/qq` connects cheetahclaws to **QQ** through the official [qq-botpy](https://github.com/tencent-connect/botpy) SDK — a WebSocket gateway plus HTTP send API. It serves both **group** chats (the bot replies when @-mentioned) and **C2C** (one-to-one private) chats. Unlike the long-poll bridges, botpy's async client runs on a dedicated asyncio event loop inside a daemon thread, bridged to cheetahclaws's main thread via thread-safe queues.
+
+### Prerequisites
+
+1. Install the SDK extra:
+
+   ```bash
+   pip install "cheetahclaws[qq]"     # pulls qq-botpy>=1.2.1
+   ```
+
+2. Go to the [QQ developer portal](https://q.qq.com) → create a **bot** (机器人) → copy its **AppID** and **AppSecret**.
+3. Add the bot to a group (and/or enable C2C messaging) from the portal's release/sandbox settings.
+
+### Setup (one-time, ~2 minutes)
+
+**Recommended** — secret from environment variable:
+
+```bash
+export QQ_SECRET=your-app-secret
+cheetahclaws
+[myproject] ❯ /qq 102000000          # only the AppID on the command line
+  ✓ QQ bridge started.
+  ℹ Send a message in QQ — @mention in groups or direct message in C2C.
+```
+
+The legacy `/qq <appid> <secret>` form still works but is deprecated — it leaks the secret into your readline history. cheetahclaws prints a warning and auto-scrubs it from the in-memory history.
+
+`qq_appid` (a public identifier) is saved to `~/.cheetahclaws/config.json`; the **secret** is **only** persisted when it came from the deprecated REPL arg path. Env-supplied secrets (`$QQ_SECRET`) never touch disk. The bridge auto-starts on every subsequent launch — you only need to configure once.
+
+### How it works
+
+```
+QQ group / C2C                   cheetahclaws terminal
+─────────────                    ──────────────────────────────────
+@bot "List files here"   →       📩 QQ: List files here
+                                 ⚙ model processes query
+                       ←         ⚙ tool steps + streamed reply
+                       ←         "Here are the files: …"
+```
+
+QQ does **not** support editing a sent message, so replies are **streamed as new messages** every ~2 seconds as text arrives (instead of updating a placeholder like Slack). Long replies are chunked at 2000 characters. Passive replies reference the original `msg_id`/`event_id` and are valid for a 5-minute window; after that the bridge falls back to active pushes.
+
+### Features
+
+- **Group + C2C** — `on_group_at_message_create` (group @-mentions, mention prefix stripped) and `on_c2c_message_create` (private chats) are both handled.
+- **Per-target job queue** — each group/user gets its own FIFO queue so concurrent chats don't block each other; `!jobs` / `!job <id>` / `!retry <id>` / `!cancel` work as on the other bridges — see [Remote Control](#remote-control-phone--computer).
+- **Streaming output** — text chunks and `⚙ tool` step labels stream back live via the `on_text_chunk` / `on_tool_start` / `on_tool_end` hooks.
+- **Slash command passthrough** — send `/cost`, `/model …`, `/clear`, `/monitor`, `/agent`, etc. from QQ and they execute in cheetahclaws; results return to the same chat.
+- **Interactive menu & permission routing** — permission prompts and interactive menus route to QQ, **scoped to the originating target** so an approval can't be answered from a different group/user.
+- **Image input** — image attachments are downloaded (off the event loop, in a worker thread) and forwarded to the vision model for the turn.
+- **Message deduplication** — `id`/`event_id` dedup prevents double-processing.
+- **Error resilience** — a supervisor reconnects with exponential backoff (2 s → 120 s) on unexpected disconnects.
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `/qq <appid>` | Recommended — start with `$QQ_SECRET` from the environment |
+| `/qq <appid> <secret>` | Deprecated — secret leaks into readline history; auto-scrubbed with a warning |
+| `/qq` | Start with saved credentials |
+| `/qq status` | Show running state and AppID |
+| `/qq stop` | Stop the bridge |
+| `/qq logout` | Clear saved credentials and stop the bridge |
+
+> **Secret precedence:** `$QQ_SECRET` > REPL arg > `~/.cheetahclaws/config.json`. Env-supplied secrets never get persisted to disk.
+
+### Auto-start
+
+If `qq_appid` and `qq_secret` are set in `~/.cheetahclaws/config.json`, the bridge starts automatically on every cheetahclaws launch, including under `cheetahclaws --web` (Docker / headless deployments). Note that headless auto-start reads credentials from `config.json`; the `$QQ_SECRET` env var is consulted by the interactive `/qq` command, not by the auto-start path.
+
 ---
 
 ## Remote Control (Phone → Computer)
 
-All three bridges (Telegram, Slack, WeChat) include a persistent job queue and remote management commands so you can control long-running work from your phone.
+All four bridges (Telegram, Slack, WeChat, QQ) include a persistent job queue and remote management commands so you can control long-running work from your phone.
 
 ### Job queue
 
@@ -318,7 +596,7 @@ cheetahclaws: 📊 Job Dashboard
               !job <id>  !retry <id>  !cancel
 ```
 
-### Bridge commands (all three bridges)
+### Bridge commands (all four bridges)
 
 | Command | Description |
 |---|---|
@@ -327,6 +605,7 @@ cheetahclaws: 📊 Job Dashboard
 | `!retry <id>` | Re-run a failed job with the same prompt |
 | `!cancel` | Cancel the currently running job |
 | `!cancel <id>` | Cancel a specific job by ID |
+| `!sendfile <path>` | (Telegram only) Mail an absolute-path file back to the chat as a document |
 
 ### Job tracking
 
@@ -341,6 +620,20 @@ Jobs are persisted to `~/.cheetahclaws/jobs.json` (last 100 kept).
 ### WeChat specifics
 
 WeChat uses **per-user queues** — each `user_id` gets an independent queue, so multiple WeChat users never block each other. All commands above are in Chinese: `!任务`, `!取消`, etc. are also accepted.
+
+---
+
+## Remote `!shell-command` from a bridge
+
+Any of the four bridges can run arbitrary shell commands on the host via `!cmd` — `!ls`, `!docker ps`, `!systemctl status nginx`, etc. Output is streamed back in chunks (50 s hard timeout, 40 KB max).
+
+The bridge already enforces an owner-only `chat_id` whitelist (a message from a non-owner is dropped). On top of that:
+
+- A hard denylist refuses obviously host-destroying commands (`rm -rf /`, fork bomb, `mkfs`, `dd of=/dev/sd…`, `chmod -R 777 /`, …) — see [`docs/guides/security.md`](security.md#bash-tool--hard-denylist).
+- NUL bytes / control characters / commands longer than 4 KB are rejected.
+- Set `CHEETAHCLAWS_BRIDGE_TERMINAL=0` to hard-disable the feature entirely — useful when a bot token is shared or stored somewhere a third party could read it.
+
+For programs that need a TTY (`!python`, `!claude`, `!bash`, `!sqlite3`, `!psql`, `!redis-cli`, …) the bridge transparently switches to a PTY-backed interactive session. The same denylist + length checks apply at session start.
 
 ---
 

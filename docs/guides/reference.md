@@ -4,14 +4,18 @@
 
 ```
 cheetahclaws [OPTIONS] [PROMPT]
-# or: python cheetahclaws.py [OPTIONS] [PROMPT]
+# or: python -m cheetahclaws [OPTIONS] [PROMPT]
 
 Options:
   -p, --print          Non-interactive: run prompt and exit
   -m, --model MODEL    Override model (e.g. gpt-4o, ollama/llama3.3)
   --accept-all         Auto-approve all operations (no permission prompts)
   --verbose            Show thinking blocks and per-turn token counts
+  --show-tools         Show each tool call instead of a per-turn summary
+                       (alias: --no-quiet; default is the compact summary)
   --thinking           Enable Extended Thinking (Claude only)
+  --budget AMOUNT      Session budget cap: --budget $5 (cost) or --budget 200k
+                       (tokens). Auto-saves and prompts to resume / raise on hit.
   --version            Print version and exit
   -h, --help           Show help
 ```
@@ -48,26 +52,38 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/help` | Show all commands |
 | `/clear` | Clear conversation history |
 | `/model` | Show current model + list all available models |
-| `/model <name>` | Switch model (takes effect immediately) |
+| `/model <name>` | Switch model (takes effect immediately). Type `/model ` and press **Tab** for a `provider/model` completion picker — one default per provider + a two-level `litellm/<backend>/<model>` tree (PR #166) |
 | `/config` | Show all current config values |
-| `/config key=value` | Set a config value (persisted to disk) |
+| `/config key=value` | Set a config value (persisted to disk). v3.5.78+ parses JSON values: `["a","b"]`, `{"k":"v"}`, signed numbers, quoted strings — list/dict configs no longer get silently saved as literal strings. |
+| `/config context_window=<N>` | Override the context window (tokens) for the session. `0` = use the model's default. Drives the prompt `%` indicator, `/context`, the compaction trigger, **and** the per-call output-token cap — all consistently. Distinct from `max_tokens` (which is the **output** cap, not the window). Bidirectional: a smaller value forces earlier compaction; a larger value corrects a stale default. Read live, so it takes effect on the next prompt (no restart). Warns if set above the model's real window (that would disable compaction and the API may reject oversized prompts). |
+| `/config stream_mode=<mode>` | Force the Markdown streaming tier: `live` (full in-place Rich redraw), `commit` (append-only progressive Markdown — safe over SSH / Apple Terminal / pipes), or `plain` (raw tokens). Unset = auto-detected per device (`ui.render.auto_stream_mode`). Legacy `/config rich_live=true\|false` still works (`true`→`live`, `false`→`commit`). |
 | `/save` | Save session (auto-named by timestamp) |
 | `/save <filename>` | Save session to named file |
 | `/load` | Interactive list grouped by date; enter number, `1,2,3` to merge, or `H` for full history |
 | `/load <filename>` | Load a saved session by filename |
-| `/resume` | Restore the last auto-saved session (`mr_sessions/session_latest.json`) |
+| `/resume` | Restore the last auto-saved session (`mr_sessions/session_latest.json`). This file is rewritten **after every turn** (atomic `fsync` write), so `/resume` recovers a conversation even after a crash or power-loss — not only after a clean exit |
 | `/resume <filename>` | Load a specific file from `mr_sessions/` (or absolute path) |
 | `/history` | Print full conversation history |
-| `/context` | Show message count and token estimate |
+| `/context` | Visualize context-window usage as a Claude-Code-style cell grid, broken down by category (system prompt, system tools, memory files, skills, messages, free space) with per-category token counts and percentages. Honors a `context_window` override; falls back to `#`/`.` when the terminal isn't UTF-8. |
 | `/cost` | Show token usage and estimated USD cost |
+| `/budget` | View or set token/cost budgets. No args = show usage vs each budget (bars + %). `/budget $5` = session cost cap (USD); `/budget 200k` = session token cap (supports `200k`/`1.5m`); `/budget daily $20` / `/budget daily 2m` = daily caps; `/budget clear` = remove all. **One budget per scope** — a new cap *replaces* the other unit for that scope (so `/budget $5` after `/budget 200k` switches the session cap to cost, it doesn't stack). Enforced before each model call (projects the next request's input + clamps its output, so overshoot stays ≈ 0); warns at ≥80%/95%; on hit, auto-saves the session and prints how to `/resume` or raise the **same** cap (the hint matches the breached unit) and continue. Backed by the `session_token_budget` / `session_cost_budget` / `daily_token_budget` / `daily_cost_budget` config keys. |
 | `/verbose` | Toggle verbose mode (tokens + thinking) |
+| `/quiet` | Toggle compact tool display — hide per-tool execution lines and show one summary line per turn (on by default; `/verbose` overrides it) |
+| `/terminal-setup` | Make the terminal tab title show the live task (see [Terminal Tab Title](#terminal-tab-title)). In VS Code / Cursor / Windsurf it configures `terminal.integrated.tabs.title` (backup + validation, never overwrites your value); other terminals show it natively so it reports nothing to do. Runs automatically once on first launch; this re-runs it on demand. |
 | `/thinking` | Toggle Extended Thinking (Claude only) |
 | `/permissions` | Show current permission mode |
-| `/permissions <mode>` | Set permission mode: `auto` / `accept-all` / `manual` |
+| `/permissions <mode>` | Set permission mode: `auto` / `accept-edits` / `accept-all` / `manual` / `plan` |
 | `/cwd` | Show current working directory |
 | `/cwd <path>` | Change working directory |
+| `/workspace` | Show current workspace + working directory |
+| `/workspace list` | List workspaces under `~/.cheetahclaws/workspaces` |
+| `/workspace switch <name>` | Switch to a workspace (creates it if missing); records it as last-used |
+| `/workspace default [name]` | Show or set the startup workspace (sticky; not changed by `switch`) |
+| `/workspace create <name>` | Create a workspace without switching to it |
+| `/workspace delete <name>` | Delete an empty workspace (cannot delete the current one) |
+| `/config workspace_auto=true` | Opt in to auto-switching into the startup workspace on launch (off by default; when off the CLI stays in the directory you launched from) |
 | `/memory` | List all persistent memories |
-| `/memory <query>` | Search memories by keyword (ranked by confidence × recency) |
+| `/memory <query>` | Search memories by keyword (ranked by confidence × recency, where recency decays from when the memory was last *verified*, not last read) |
 | `/memory consolidate` | AI-extract up to 3 long-term insights from the current session |
 | `/skills` | List available skills |
 | `/agents` | Show sub-agent task status |
@@ -80,7 +96,7 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/voice status` | Show recording and STT backend availability |
 | `/voice lang <code>` | Set STT language (e.g. `zh`, `en`, `ja`; `auto` to detect) |
 | `/voice device` | List available input microphones and select one interactively |
-| `/image [prompt]` | Capture clipboard image and send to vision model with optional prompt |
+| `/image [prompt]` | Capture clipboard image and send to vision model with optional prompt. If OCR is installed (`cheetahclaws[ocr]`), also appends locally-transcribed text so non-vision models can act on it; disable with `CHEETAHCLAWS_IMAGE_OCR=0` |
 | `/img [prompt]` | Alias for `/image` |
 | `/proactive` | Show current proactive polling status (ON/OFF and interval) |
 | `/proactive <duration>` | Enable background sentinel polling (e.g. `5m`, `30s`, `1h`) |
@@ -153,12 +169,14 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/copy` | Copy the last assistant response to the clipboard |
 | `/status` | Show version, model, provider, permissions, session ID, token usage, and context % |
 | `/doctor` | Diagnose installation health: Python, git, API key, optional deps, CLAUDE.md, checkpoint disk usage |
+| `/theme` | List 15 console color presets with a live `info / ok / warn / err` swatch per row (current marked `*`) |
+| `/theme <name>` | Apply and persist a theme (e.g. `dracula`, `nord`, `gruvbox`, `none`); also drives Rich Markdown code-block style |
 | `/exit` / `/quit` | Exit |
 
 **Switching models inside a session:**
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/multimodel_demo.gif" width="850"/>
+<img src="../media/demos/multimodel_demo.gif" width="850"/>
 </div>
 <div align=center>
 <center style="color:#000000;text-decoration:underline">Multi-Model Switching: Claude → GPT-4o → Ollama → back, full history preserved</center>
@@ -183,6 +201,94 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 
 ---
 
+## Console Themes
+
+`/theme` switches the entire CLI palette in-place — every existing `info / ok / warn / err` call site picks up the new colors without any code change. The choice persists to `~/.cheetahclaws/config.json` under `"theme"` and is re-applied on the next launch before any output renders.
+
+### Available themes
+
+| Theme         | Notes                                                  |
+|---------------|--------------------------------------------------------|
+| `default`     | Cyan accent, amber warn — the original CheetahClaws look |
+| `dracula`     | The Dracula palette (purple accent, soft green ok)     |
+| `nord`        | Frost blue accent, aurora green ok                     |
+| `gruvbox`     | Gruvbox Dark hard-contrast yellows / reds              |
+| `solarized`   | Solarized Dark blue accent, olive ok                   |
+| `tokyo-night` | Tokyo Night blues + soft pinks                         |
+| `catppuccin`  | Catppuccin Mocha pastels                               |
+| `matrix`      | Pure-green hacker aesthetic                            |
+| `synthwave`   | Magenta accent, neon green ok — vaporwave              |
+| `midnight`    | Cyan/lime/red high-contrast dark                       |
+| `ocean`       | Sky-blue + emerald, easy on the eyes                   |
+| `monokai`     | Monokai cyan / green / yellow / pink semantics         |
+| `cheetah`     | Amber accent — matches the CheetahClaws logo           |
+| `mono`        | Truly grayscale (no chromatic colors)                  |
+| `none`        | Strips every ANSI escape — output is plain text        |
+
+### Color roles
+
+Each palette declares four semantic colors plus a code style:
+
+| Role     | Used for                                          |
+|----------|---------------------------------------------------|
+| `accent` | `info()`, primary chrome, `clr(text, "cyan"\|"blue")` |
+| `ok`     | `ok()`, diff additions (`+`), `clr(text, "green")`  |
+| `warn`   | `warn()`, `clr(text, "yellow"\|"magenta")`          |
+| `err`    | `err()`, diff removals (`-`), `clr(text, "red")`    |
+| `code`   | `rich.markdown.Markdown(code_theme=...)` for code blocks |
+
+`info` and `ok` are intentionally distinct hexes per theme so success (`ok()`) and informational (`info()`) messages stay visually separable in every theme. `render_diff` follows the same split — additions are always the `ok` color, removals are always the `err` color.
+
+### Defining a custom theme
+
+Add an entry to `THEMES` in `ui/render.py`:
+
+```python
+"my-theme": {
+    "accent": "#00D7FF",
+    "ok":     "#00FF87",
+    "warn":   "#FFAF00",
+    "err":    "#FF5F5F",
+    "code":   "monokai",   # any Pygments style name
+},
+```
+
+It immediately appears in `/theme` with no further wiring. To ship a "no color at all" theme, use `{"disable_color": True, "code": "default"}` instead.
+
+### Examples
+
+```
+[myproject] ❯ /theme
+Available themes:
+  * default          info  ok  warn  err   (monokai)
+    dracula          info  ok  warn  err   (dracula)
+    nord             info  ok  warn  err   (nord)
+    ...
+    none           (no color)              (default)
+
+  Usage: /theme <name>
+
+[myproject] ❯ /theme dracula
+  Theme set to dracula.
+```
+
+---
+
+## Terminal Tab Title
+
+The terminal window/tab title reflects what CheetahClaws is doing — a **pulsing glyph + your current prompt while it works** (`✶ ✳ ✻ CheetahClaws — <task>`), and a **static badge when idle** (`● CheetahClaws — <folder>`). It is emitted as an OSC 0 escape sequence, so it costs nothing on the visible output and updates in lock-step with the spinner.
+
+- **Config:** `terminal_title` (default `true`). Turn it off with `/config terminal_title=false` to leave the shell's own title untouched. Auto-disabled on non-TTYs, pipes, CI, and `TERM=dumb`, so escape bytes never leak into redirected output.
+- **iTerm2 / Terminal.app / most terminals:** works out of the box — they display OSC titles in the tab/title bar by default.
+- **VS Code / Cursor / Windsurf:** these hide program-set titles by default (the tab shows `${process}`). On **first launch** CheetahClaws configures `terminal.integrated.tabs.title` for you — once, with a backup and a re-parse safety check, and never overwriting a value you already set. Reopen the terminal for it to take effect. Run [`/terminal-setup`](#slash-commands-repl) any time to re-apply, or set it by hand:
+
+  ```jsonc
+  // VS Code settings.json
+  "terminal.integrated.tabs.title": "${sequence}${separator}${process}"
+  ```
+
+---
+
 ## Configuring API Keys
 
 ### Method 1: Environment Variables (recommended)
@@ -198,6 +304,29 @@ export ZHIPU_API_KEY=...             # Zhipu GLM
 export DEEPSEEK_API_KEY=sk-...       # DeepSeek
 export MINIMAX_API_KEY=...           # MiniMax
 ```
+
+#### `.env` file (loaded automatically)
+
+CheetahClaws loads a `.env` file from the project directory at startup, before any other module reads `os.environ`. Existing shell variables take priority over `.env` values, so you can override locally with `export VAR=...`.
+
+```ini
+# .env in your project root
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+ANTHROPIC_ENDPOINT=https://api.anthropic.com   # see below
+```
+
+Both `KEY=value` and `KEY="quoted value"` are supported. Lines starting with `#` are comments.
+
+#### `ANTHROPIC_ENDPOINT` (corporate proxy override)
+
+Set `ANTHROPIC_ENDPOINT` to point Claude API traffic at a corporate proxy or compatible relay instead of `https://api.anthropic.com`:
+
+```bash
+export ANTHROPIC_ENDPOINT=https://anthropic-proxy.corp.example.com
+```
+
+The env var always wins over any persisted value in `~/.cheetahclaws/config.json`, so `.env` changes take effect on the next launch without editing the JSON file. The endpoint is used by both the streaming client (`providers.py`) and the connectivity probes in `/doctor` and the setup wizard.
 
 ### Method 2: Set Inside the REPL (persisted)
 
@@ -221,9 +350,18 @@ Keys are saved to `~/.cheetahclaws/config.json` and loaded automatically on next
 {
   "model": "qwen/qwen-max",
   "max_tokens": 8192,
+  "context_window": 0,
   "permission_mode": "auto",
   "verbose": false,
+  "quiet": true,
   "thinking": false,
+  "stream_mode": null,
+  "terminal_title": true,
+  "prompt_cache": true,
+  "session_token_budget": null,
+  "session_cost_budget": null,
+  "daily_token_budget": null,
+  "daily_cost_budget": null,
   "qwen_api_key": "sk-...",
   "kimi_api_key": "sk-...",
   "deepseek_api_key": "sk-...",
@@ -237,10 +375,13 @@ Keys are saved to `~/.cheetahclaws/config.json` and loaded automatically on next
 
 | Mode | Behavior |
 |---|---|
-| `auto` (default) | Read-only operations always allowed. Prompts before Bash commands and file writes. |
-| `accept-all` | Never prompts. All operations proceed automatically. |
+| `auto` (default) | Reads + allow-listed Bash run automatically; prompts before file writes (`Write`/`Edit`) and any other Bash command. |
+| `accept-edits` | Like `auto`, but also auto-runs file edits (`Write`/`Edit`/`NotebookEdit`); other (non-allow-listed) Bash still prompts. The middle ground between `auto` and `accept-all`. |
+| `accept-all` | Never prompts; all operations proceed automatically. |
 | `manual` | Prompts before every single operation, including reads. |
-| `plan` | Read-only analysis mode. Only the plan file (`.nano_claude/plans/`) is writable. Entered via `/plan <desc>` or the `EnterPlanMode` tool. |
+| `plan` | Read-only analysis mode: reads + safe Bash run, all writes are refused except the plan file. Entered via `/plan <desc>` or the `EnterPlanMode` tool. |
+
+A **hard denylist** (`rm -rf /`, `mkfs`, `dd` to a raw disk device, `chmod -R 777 /`, fork bombs) is refused at execution time in **every** mode — including `accept-all`, and even if you approve it under `manual`.
 
 **When prompted:**
 
@@ -287,6 +428,7 @@ Keys are saved to `~/.cheetahclaws/config.json` and loaded automatically on next
 | `MemoryDelete` | Delete a memory by name | `name`, `scope` |
 | `MemorySearch` | Search memories by keyword (or AI ranking) | `query`, `scope`, `use_ai`, `max_results` |
 | `MemoryList` | List all memories with age and metadata | `scope` |
+| `MemoryVerify` | Mark a memory as re-checked against the live environment, resetting its staleness clock. The **only** thing that clears the stale flag / restores ranking — a plain `MemorySearch` never does. Call after confirming the memory's claim still holds. | `name`, `scope` |
 
 ### Sub-Agent Tools
 

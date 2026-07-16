@@ -59,8 +59,8 @@ Generating diverse perspectives...
 - Brainstorm uses the **currently selected model** (`/model` to check). A capable model (Claude Sonnet/Opus, GPT-4o, or a large local model) gives the best results.
 - With many agents (20+) the session can take several minutes depending on model speed.
 - Install `faker` (`pip install faker`) for randomized persona names; falls back to built-in names otherwise.
-- Output files accumulate in `brainstorm_outputs/` — already added to `.gitignore` by v3.05.5.
-- If output looks garbled in SSH (repeated lines), run `/config rich_live=false` to disable Rich Live streaming.
+- Output files accumulate in `brainstorm_outputs/` — already added to `.gitignore` by v3.5.5.
+- Long responses keep rendering live but show only the most recent screenful (a bounded tail window) until they finish, so duplicate/stale lines are prevented automatically. If output still looks garbled in SSH (repeated lines), run `/config rich_live=false` to fully disable Rich Live streaming.
 
 ---
 
@@ -69,7 +69,7 @@ Generating diverse perspectives...
 `/ssj` opens a persistent interactive power menu — a single entry point for the most common development workflows, so you never have to remember command names.
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/clawspring/blob/main/docs/ssj_demo.gif" width="850"/>
+<img src="../media/demos/ssj_demo.gif" width="850"/>
 </div>
 
 ### Menu options
@@ -146,7 +146,7 @@ Any `/command` typed at the `⚡ SSJ »` prompt is passed through to the REPL:
 ### Worker command
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/worker_demo.gif" width="850"/>
+<img src="../media/demos/worker_demo.gif" width="850"/>
 </div>
 <div align=center>
 <center style="color:#000000;text-decoration:underline">/worker: brainstorm → 5-task queue → auto-implement each with progress bar</center>
@@ -218,7 +218,7 @@ SSJ option 4 runs a structured multi-round expert debate on any file:
 ## Tmux Integration
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/tmux_demo.gif" width="850"/>
+<img src="../media/demos/tmux_demo.gif" width="850"/>
 </div>
 <div align=center>
 <center style="color:#000000;text-decoration:underline">Tmux Integration: AI splits panes, sends commands, captures output across sessions</center>
@@ -288,7 +288,7 @@ The AI calls `TmuxNewSession(detached=true)` then sends the vLLM launch command 
 ## Shell Escape
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/shell_escape_demo.gif" width="850"/>
+<img src="../media/demos/shell_escape_demo.gif" width="850"/>
 </div>
 <div align=center>
 <center style="color:#000000;text-decoration:underline">Shell Escape: ! prefix runs commands directly — git, ls, python, pipes — no AI involvement</center>
@@ -317,7 +317,7 @@ Output prints inline and control returns to the CheetahClaws prompt immediately.
 
 ## Proactive Background Monitoring
 
-CheetahClaws v3.05.2 adds a **sentinel daemon** that automatically wakes the agent after a configurable period of inactivity — no user prompt required. This enables use cases like continuous log monitoring, market script polling, or scheduled code checks.
+CheetahClaws v3.5.2 adds a **sentinel daemon** that automatically wakes the agent after a configurable period of inactivity — no user prompt required. This enables use cases like continuous log monitoring, market script polling, or scheduled code checks.
 
 ### Quick start
 
@@ -370,7 +370,7 @@ Duration suffix: `s` = seconds, `m` = minutes, `h` = hours. Plain integer = seco
 ## Checkpoint System
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/checkpoint_demo.gif" width="850"/>
+<img src="../media/demos/checkpoint_demo.gif" width="850"/>
 </div>
 <div align=center>
 <center style="color:#000000;text-decoration:underline">Checkpoint / Rewind: AI breaks tests → /checkpoint list → rewind → files restored</center>
@@ -416,7 +416,7 @@ CheetahClaws automatically snapshots your conversation and any edited files afte
 ## Plan Mode
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/plan_demo.gif" width="850"/>
+<img src="../media/demos/plan_demo.gif" width="850"/>
 </div>
 <div align=center>
 <center style="color:#000000;text-decoration:underline">Plan Mode: Read-only analysis → write plan → /plan done → implement</center>
@@ -681,13 +681,13 @@ Resume a specific file:
 ## Cloud Sync (GitHub Gist)
 
 <div align=center>
-<img src="https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/cloudsave_demo.gif" width="850"/>
+<img src="../media/demos/cloudsave_demo.gif" width="850"/>
 </div>
 <div align=center>
 <center style="color:#000000;text-decoration:underline">Cloud Sync: /cloudsave on desktop → encrypted upload → /cloudload on laptop → full session restored</center>
 </div>
 
-CheetahClaws v3.05.3 adds optional cloud backup of conversation sessions via **GitHub Gist**. Sessions are stored as private Gists (JSON), browsable in the GitHub UI. No extra dependencies — uses Python's stdlib `urllib`.
+CheetahClaws v3.5.3 adds optional cloud backup of conversation sessions via **GitHub Gist**. Sessions are stored as private Gists (JSON), browsable in the GitHub UI. No extra dependencies — uses Python's stdlib `urllib`.
 
 ### Setup (one-time)
 
@@ -815,7 +815,7 @@ cheetahclaws/
 ├── video/                # Video package — backward-compat shim → modular/video/
 │   └── __init__.py       # Re-exports from modular.video.*
 │
-├── modular/              # Plug-and-play module ecosystem (v3.05.55)
+├── modular/              # Plug-and-play module ecosystem (v3.5.55)
 │   ├── __init__.py       # Auto-discovery registry: load_all_commands(), load_all_tools(), list_modules()
 │   ├── base.py           # HasCommandDefs / HasToolDefs Protocol interface docs
 │   ├── voice/            # Voice submodule (self-contained)
@@ -834,7 +834,7 @@ cheetahclaws/
 │       ├── images.py     # Image backends: Gemini Web → web-search → placeholder
 │       └── subtitles.py  # PIL subtitle renderer + text-to-SRT conversion
 │
-├── checkpoint/           # Checkpoint system (v3.05.6)
+├── checkpoint/           # Checkpoint system (v3.5.6)
 │   ├── __init__.py       # Public API exports
 │   ├── types.py          # FileBackup + Snapshot dataclasses; MAX_SNAPSHOTS = 100
 │   ├── store.py          # File-level backup, snapshot persistence, rewind, cleanup
