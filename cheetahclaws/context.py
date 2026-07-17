@@ -233,12 +233,22 @@ def _render_active_tool_surface(config: dict) -> str:
     if names is None:
         names = get_profile_tool_names(profile, disabled)
     visible = ", ".join(f"`{name}`" for name in sorted(names)) or "(none)"
+    planning_hint = ""
+    if {"EnterPlanMode", "ExitPlanMode"} <= set(names):
+        # Keep the planning cue with its optional tools rather than paying for
+        # it on every standard coding turn. This also makes the prompt
+        # deterministic: it must not depend on slash-command imports.
+        planning_hint = (
+            "- For complex or multi-file work, use `EnterPlanMode` before "
+            "making changes, then finish with `ExitPlanMode`.\n"
+        )
     return (
         "# Active Tool Surface\n"
         f"- Profile: `{profile}`\n"
         f"- Enabled tools: {visible}\n"
         "- Call only the enabled tools above; a tool mentioned elsewhere is not "
         "available unless it appears in this list.\n"
+        f"{planning_hint}"
     )
 
 

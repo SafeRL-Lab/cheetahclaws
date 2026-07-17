@@ -147,6 +147,20 @@ def test_active_tool_surface_matches_the_selected_profile(monkeypatch):
     assert "`WebFetch`" in research
 
 
+def test_planning_hint_is_only_shown_when_plan_tools_are_active(monkeypatch):
+    """The compact default must not rely on slash-command import side effects."""
+    monkeypatch.setattr(_context, "_tmux_available", lambda: False)
+    monkeypatch.setattr(_context, "_render_commands_block", lambda: "")
+
+    standard = _context.build_system_prompt(_base_config(tool_profile="standard"))
+    orchestration = _context.build_system_prompt(
+        _base_config(tool_profile="orchestration")
+    )
+
+    assert "For complex or multi-file work" not in standard
+    assert "For complex or multi-file work" in orchestration
+
+
 def test_standard_surface_omits_tmux_fragment_even_when_available(monkeypatch):
     monkeypatch.setattr(_context, "_tmux_available", lambda: True)
 
