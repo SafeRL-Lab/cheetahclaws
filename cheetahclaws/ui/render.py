@@ -154,7 +154,7 @@ def _has_diff(text: str) -> bool:
 
 _accumulated_text: list[str] = []   # buffer text during streaming
 _current_live = None                # active Rich Live instance (one at a time)
-_RICH_LIVE = True                   # True only in "live" mode (in-place redraw)
+_RICH_LIVE = False                  # True only in "live" mode (in-place redraw); matches the commit default below
 _plain_streaming_response = False   # current response has fallen back from Live
 _live_shows_full = False            # True when the live frame holds the whole response (not a tail window)
 
@@ -171,7 +171,11 @@ _live_shows_full = False            # True when the live frame holds the whole r
 #              pipes / CJK-wide text alike, while still showing rich Markdown
 #              block by block. The universal default for non-"live" terminals.
 #   "plain"  — raw token stream (only when Rich is unavailable).
-_STREAM_MODE = "live" if _RICH else "plain"
+# Default to the append-only 'commit' tier (never duplicates frames on any
+# terminal). cli.py upgrades to 'live' at startup via auto_stream_mode() only on
+# terminals known to support in-place redraw; entry points that never call
+# set_stream_mode (web, --print, bridges) thus also stay on the safe tier.
+_STREAM_MODE = "commit" if _RICH else "plain"
 _commit_idx = 0                     # chars of the response already committed (rendered + printed)
 
 
@@ -232,9 +236,17 @@ def auto_stream_mode(config: dict | None = None) -> str:
 
     term = _os.environ.get("TERM", "") or ""
     term_program = _os.environ.get("TERM_PROGRAM", "") or ""
-    in_ssh = bool(_os.environ.get("SSH_CLIENT") or _os.environ.get("SSH_TTY"))
     is_apple_terminal = (_plat.system() == "Darwin"
                          and term_program in ("Apple_Terminal", ""))
+    # tmux / screen rewrite cursor-movement sequences and routinely break
+    # in-place redraw even under a capable outer emulator, so the 'live'
+    # cursor-up rewrite leaves duplicate frames. Force the safe tier.
+    in_multiplexer = (
+        bool(_os.environ.get("TMUX"))
+        or term.startswith("screen")
+        or term.startswith("tmux")
+    )
+    # Emulators positively known to handle in-place cursor-up redraw reliably.
     modern = (
         term_program in _GOOD_TERM_PROGRAMS
         or "kitty" in term
@@ -245,13 +257,18 @@ def auto_stream_mode(config: dict | None = None) -> str:
         or bool(_os.environ.get("WEZTERM_PANE"))
     )
 
-    # Apple Terminal has a real cursor-erase bug → never full Live.
-    if is_apple_terminal:
+    # Allowlist the risky mode: only a positively-identified capable emulator
+    # gets 'live'. Everything else — Apple Terminal, tmux/screen, plain xterm,
+    # an unknown TERM, an untrusted SSH PTY — gets 'commit', which issues NO
+    # cursor movement and so can never duplicate frames on any terminal. This
+    # makes an unrecognized terminal fail safe (append-only rich Markdown)
+    # instead of failing loud (hundreds of reprinted frames). 'live' is still
+    # available on any terminal via explicit `stream_mode=live` config.
+    if is_apple_terminal or in_multiplexer:
         return "commit"
-    # Untrusted network terminal → safe rich commit instead of risky redraw.
-    if in_ssh and not modern:
-        return "commit"
-    return "live"
+    if modern:
+        return "live"
+    return "commit"
 
 def _make_renderable(text: str):
     """Return a Rich renderable: Markdown if text contains markup, else plain."""
