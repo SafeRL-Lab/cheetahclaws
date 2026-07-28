@@ -714,7 +714,7 @@ except Exception:
 
 # Sub-modules within tools/ package (self-registering on import)
 import importlib as _il
-for _sub in ("browser", "email", "files"):
+for _sub in ("browser", "email", "files", "pyconsole"):
     try:
         _il.import_module(f"cheetahclaws.tools.{_sub}")
     except Exception:
