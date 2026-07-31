@@ -139,6 +139,11 @@ DEFAULTS = {
     # REPL behaviour is unchanged; daemon code paths can opt in
     # explicitly. The CHEETAHCLAWS_ENABLE_F4 env var also enables it.
     "agent_runner_subprocess":              False,
+    # ── Input ghost text ───────────────────────────────────────────────────
+    # After each turn the auxiliary model drafts the line you are most likely
+    # to type next; it shows dim at the prompt and Tab accepts it in full.
+    # See ui/suggest.py. Also switchable per-run with CHEETAH_SUGGEST=0.
+    "input_suggest":                        True,
     # Per-provider API keys (optional; env vars take priority)
     # "anthropic_api_key": "sk-ant-..."
     # "openai_api_key":    "sk-..."
