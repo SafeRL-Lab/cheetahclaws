@@ -38,6 +38,10 @@ def test_estimate_text_tokens(text, expected_min, expected_max):
     assert expected_min <= n <= expected_max
 
 
+def test_estimate_text_tokens_is_conservative_for_cjk():
+    assert _estimate_text_tokens("中" * 10_000) == 10_000
+
+
 # ── Chunk planner: adaptive to file size + model context ─────────────────
 
 
@@ -95,6 +99,13 @@ def test_plan_chunks_covers_entire_content():
     assert text[-1000:] in concat
 
 
+def test_plan_chunks_keep_cjk_within_a_32k_context_budget():
+    chunks = _plan_chunks("中" * 100_000, 32768)
+
+    assert len(chunks) >= 4
+    assert max(map(len, chunks)) <= 24_500
+
+
 # ── File reader dispatch ─────────────────────────────────────────────────
 
 
@@ -104,6 +115,52 @@ def test_read_file_for_summary_text_file(tmp_path):
     content = _read_file_for_summary(str(p), {})
     assert "hello world" in content
     assert "line 2" in content
+
+
+def test_read_file_for_summary_rejects_input_above_byte_cap(tmp_path):
+    p = tmp_path / "oversized.txt"
+    p.write_bytes(b"x" * 2_048)
+
+    out = _read_file_for_summary(str(p), {"summarize_max_input_bytes": 1_024})
+
+    assert out.startswith("Error")
+    assert "1,024-byte summary input limit" in out
+
+
+def test_pdf_summary_reader_bypasses_the_recursive_summary_redirect(monkeypatch, tmp_path):
+    class Rect:
+        def __init__(self, x0, y0, x1, y1):
+            self.x0, self.y0, self.x1, self.y1 = x0, y0, x1, y1
+            self.height = y1 - y0
+
+    class Page:
+        rect = Rect(0, 0, 100, 100)
+
+        def get_text(self, _mode, *, clip):
+            return "PDF SOURCE " * 2_000 if clip.y0 == 0 else ""
+
+    class Doc:
+        def __len__(self):
+            return 1
+
+        def __getitem__(self, _index):
+            return Page()
+
+        def close(self):
+            return None
+
+    monkeypatch.setitem(
+        sys.modules, "fitz", type("Fitz", (), {"open": lambda _p: Doc(), "Rect": Rect}),
+    )
+    p = tmp_path / "paper.pdf"
+    p.write_bytes(b"%PDF-fake")
+
+    content = _read_file_for_summary(
+        str(p), {"model": "custom/qwen2.5-72b", "pdf_extract_max_chars": 30_000},
+    )
+
+    assert "PDF SOURCE" in content
+    assert "ReadTooLarge" not in content
 
 
 def test_read_file_for_summary_missing_file(tmp_path):
@@ -176,6 +233,101 @@ def test_summarize_large_file_does_map_then_reduce(tmp_path, monkeypatch):
     # Output advertises map-reduce
     assert "map-reduce" in out.lower()
     assert f"{len(map_calls)} chunks" in out
+
+
+def test_summarize_all_chunks_failing_returns_clean_error(tmp_path, monkeypatch):
+    """Every map chunk failing must yield an Error, not a confident summary of
+    the failure markers. Failures are error-marker strings, not None."""
+    import cheetahclaws.tools.files as _f
+    monkeypatch.setattr(
+        "cheetahclaws.compaction.get_context_limit", lambda m: 32768,
+    )
+    p = tmp_path / "huge.txt"
+    p.write_text("X" * (200 * 1024), encoding="utf-8")
+
+    reduce_calls = []
+
+    def failing_chunk(text, focus, config, mode="single", **kw):
+        if mode == "reduce":
+            reduce_calls.append(text)
+            return "reduced!"
+        # Simulate the real failure marker emitted by _summarize_chunk_via_llm.
+        return "[chunk-summarize error: RuntimeError: provider down]"
+
+    monkeypatch.setattr(_f, "_summarize_chunk_via_llm", failing_chunk)
+    out = _summarize_large_file({"file_path": str(p)}, {"model": "test-32k-model"})
+
+    assert out.startswith("Error")
+    assert "all" in out and "errored" in out
+    # The reduce stage must never run on all-error input.
+    assert reduce_calls == []
+
+
+def test_summarize_partial_chunk_failures_warn_and_skip_markers(tmp_path, monkeypatch):
+    """A minority of failing chunks: their error text is kept out of the reduce
+    input, and the summary carries an incomplete-coverage warning."""
+    import cheetahclaws.tools.files as _f
+    monkeypatch.setattr(
+        "cheetahclaws.compaction.get_context_limit", lambda m: 32768,
+    )
+    p = tmp_path / "huge.txt"
+    p.write_text("X" * (200 * 1024), encoding="utf-8")
+
+    reduce_input = {}
+
+    def mixed_chunk(text, focus, config, mode="single", **kw):
+        if mode == "reduce":
+            reduce_input["text"] = text
+            return "merged summary"
+        # First chunk fails; the rest succeed.
+        if kw.get("chunk_idx") == 1:
+            return "[chunk-summarize: empty response]"
+        return f"chunk-{kw.get('chunk_idx')}-ok"
+
+    monkeypatch.setattr(_f, "_summarize_chunk_via_llm", mixed_chunk)
+    out = _summarize_large_file({"file_path": str(p)}, {"model": "test-32k-model"})
+
+    assert not out.startswith("Error")
+    assert "chunk-summarize" not in reduce_input["text"]  # marker never merged
+    assert "incomplete coverage" in out
+    assert "failed to summarize" in out
+
+
+def test_summarize_reduce_stage_failure_returns_clean_error(tmp_path, monkeypatch):
+    """If the reduce call itself fails, surface an Error instead of returning a
+    'summary' that is just the reduce error marker."""
+    import cheetahclaws.tools.files as _f
+    monkeypatch.setattr(
+        "cheetahclaws.compaction.get_context_limit", lambda m: 32768,
+    )
+    p = tmp_path / "huge.txt"
+    p.write_text("X" * (200 * 1024), encoding="utf-8")
+
+    def reduce_fails(text, focus, config, mode="single", **kw):
+        if mode == "reduce":
+            return "[chunk-summarize error: TimeoutError: reduce timed out]"
+        return f"chunk-{kw.get('chunk_idx')}-ok"
+
+    monkeypatch.setattr(_f, "_summarize_chunk_via_llm", reduce_fails)
+    out = _summarize_large_file({"file_path": str(p)}, {"model": "test-32k-model"})
+
+    assert out.startswith("Error")
+    assert "reduce stage" in out
+
+
+def test_summarize_single_shot_failure_returns_clean_error(tmp_path, monkeypatch):
+    """A single-shot failure marker must be reported as an Error, not a summary."""
+    import cheetahclaws.tools.files as _f
+
+    def fail_single(text, focus, config, mode="single", **kw):
+        return "[chunk-summarize error: ValueError: boom]"
+
+    monkeypatch.setattr(_f, "_summarize_chunk_via_llm", fail_single)
+    p = tmp_path / "small.txt"
+    p.write_text("tiny content", encoding="utf-8")
+    out = _summarize_large_file({"file_path": str(p)}, {"model": "claude-opus-4-7"})
+
+    assert out.startswith("Error")
 
 
 def test_summarize_missing_file_error(monkeypatch):

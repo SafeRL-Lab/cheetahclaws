@@ -231,6 +231,28 @@ def test_create_session_via_prompt(server_url):
         assert ls[0]["id"] == sid
 
 
+def test_web_config_gets_and_updates_tool_profile(server_url):
+    with _client(server_url) as c:
+        _register(c, "profile-user")
+        sid = c.post("/api/prompt", json={"prompt": "", "session_id": ""}).json()["session_id"]
+
+        before = c.get(f"/api/config?sid={sid}")
+        assert before.status_code == 200
+        assert before.json()["tool_profile"] == "full"
+
+        updated = c.patch(
+            "/api/config", json={"session_id": sid, "config": {"tool_profile": "research"}},
+        )
+        assert updated.status_code == 200
+        assert updated.json()["tool_profile"] == "research"
+        assert c.get(f"/api/config?sid={sid}").json()["tool_profile"] == "research"
+
+        invalid = c.patch(
+            "/api/config", json={"session_id": sid, "config": {"tool_profile": "invalid"}},
+        )
+        assert invalid.status_code == 400
+
+
 def test_rename_session(server_url):
     with _client(server_url) as c:
         _register(c, "alice")

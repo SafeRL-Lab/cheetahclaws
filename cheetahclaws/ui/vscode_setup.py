@@ -11,7 +11,10 @@ Doing that by hand is a papercut, so this module offers to do it for the user
 the first time they run inside a VS Code-family terminal. It is deliberately
 conservative:
 
-* runs at most once (a marker file under ~/.cheetahclaws), so we never nag;
+* runs at most once *per settings target* (a marker file under
+  ~/.cheetahclaws records which file was configured), so we never nag — but a
+  machine whose target changes (e.g. a local run after a Remote-SSH one) is
+  still handled;
 * never overwrites a value the user already set for that key;
 * backs the file up before writing;
 * inserts the key textually (preserving comments / formatting of a JSONC
@@ -19,6 +22,14 @@ conservative:
   drop a key, change a value, or fail to parse — so a weird settings file is
   left untouched rather than corrupted;
 * swallows every error: a nicety must never break startup.
+
+Remote-SSH / WSL / devcontainers / Codespaces need care: there the editor UI
+runs on the user's own machine and its User settings.json is unreachable from
+here, so writing ~/.config/Code/User/settings.json on the *server* side configures
+nothing (it just fabricates a file VS Code never reads). The window does,
+however, also read the **remote Machine settings** that live on this side —
+``<server-root>/data/Machine/settings.json`` — and the title key applies from
+there, so that is what we write when a server install is detected.
 
 The new setting only applies to terminals opened AFTER it is written, so the
 current session still won't show it — the announced message says as much.
@@ -59,6 +70,7 @@ def _vscode_app() -> str | None:
 
 
 def _settings_path(app: str) -> Path | None:
+    """Local (UI-side) User settings.json for `app` on this platform."""
     home = Path.home()
     if sys.platform == "darwin":
         base = home / "Library" / "Application Support" / app / "User"
@@ -71,6 +83,83 @@ def _settings_path(app: str) -> Path | None:
         cfg = os.environ.get("XDG_CONFIG_HOME") or str(home / ".config")
         base = Path(cfg) / app / "User"
     return base / "settings.json"
+
+
+# Server installs: ~/.vscode-server, ~/.vscode-server-insiders, ~/.cursor-server,
+# ~/.windsurf-server, /vscode/vscode-server (devcontainers), … — matched by the
+# "-server" component rather than a fixed list, so forks and odd layouts work.
+_SERVER_HINT_VARS = (
+    "VSCODE_AGENT_FOLDER",        # the server root itself, when exported
+    "VSCODE_GIT_ASKPASS_NODE",    # absolute path *into* the running server
+    "VSCODE_GIT_ASKPASS_MAIN",
+)
+_SERVER_FALLBACK_DIRS = {
+    "Code":     (".vscode-server", ".vscode-server-insiders"),
+    "Cursor":   (".cursor-server",),
+    "Windsurf": (".windsurf-server",),
+}
+
+
+def _looks_like_server_root(p: Path) -> bool:
+    if "-server" not in p.name:
+        return False
+    try:
+        return p.is_dir() and any((p / sub).is_dir()
+                                  for sub in ("data", "cli", "bin", "extensions"))
+    except OSError:
+        return False
+
+
+def _remote_server_root(app: str) -> Path | None:
+    """Root of the editor *server* install when the UI runs elsewhere.
+
+    Covers Remote-SSH, WSL, devcontainers and Codespaces — anywhere the
+    terminal is on this machine but the window (and its User settings) is not.
+    Returns None for a plain local editor.
+    """
+    for var in _SERVER_HINT_VARS:
+        raw = os.environ.get(var)
+        if not raw:
+            continue
+        candidate = Path(raw)
+        for p in (candidate, *candidate.parents):
+            if _looks_like_server_root(p):
+                return p
+    home = Path.home()
+    for name in _SERVER_FALLBACK_DIRS.get(app, ()):
+        p = home / name
+        if _looks_like_server_root(p):
+            return p
+    return None
+
+
+def _machine_settings_path(server_root: Path) -> Path:
+    """Remote (server-side) Machine settings — the 'Remote [SSH: host]' scope.
+
+    The title key applies from here, which is what makes Remote-SSH setups
+    configurable at all from the machine CheetahClaws is installed on.
+    """
+    return server_root / "data" / "Machine" / "settings.json"
+
+
+def _resolve_target(app: str) -> tuple[Path | None, str, str]:
+    """Where to write the setting: (path, scope, why-not).
+
+    scope is ``"remote"`` (server-side Machine settings) or ``"local"`` (this
+    machine's User settings). When path is None, `why-not` explains it and the
+    caller prints copy-paste instructions instead.
+    """
+    server_root = _remote_server_root(app)
+    if server_root is not None:
+        return _machine_settings_path(server_root), "remote", ""
+    path = _settings_path(app)
+    if path is None:
+        return None, "", f"couldn't locate {app} settings.json on this platform"
+    if not path.parent.exists():
+        # The editor creates its own User dir; if it isn't here, no local
+        # install is either — never fabricate a settings.json nothing reads.
+        return None, "", f"no local {app} install found on this machine"
+    return path, "local", ""
 
 
 # ── JSONC helpers ──────────────────────────────────────────────────────────
@@ -206,30 +295,74 @@ def _print(msg: str) -> None:
         print("  " + msg)
 
 
+def _target_key(target: Path | None, why: str) -> str:
+    return str(target) if target is not None else f"none:{why}"
+
+
+def _already_attempted(key: str) -> bool:
+    """True only when we already ran for *this* target.
+
+    The marker used to hold a bare timestamp, so any run that resolves a
+    different (or newly resolvable) target retries exactly once — which is
+    what rescues machines whose first attempt wrote a file the editor never
+    reads, e.g. a Remote-SSH session configured before this was understood.
+    """
+    try:
+        return json.loads((CONFIG_DIR / _MARKER).read_text()).get("target") == key
+    except Exception:
+        return False
+
+
+def _mark_attempted(key: str) -> None:
+    try:
+        marker = CONFIG_DIR / _MARKER
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps({"ts": int(time.time()), "target": key}))
+    except Exception:
+        pass
+
+
+def _print_manual_instructions(app: str, why: str) -> None:
+    _print(f"{app} tab titles need one setting, but {why} — its User settings "
+           "live on the machine running the window.")
+    _print("Add this to that machine's settings.json "
+           "(Preferences: Open User Settings (JSON)):")
+    _print(f'    "{_TITLE_KEY}": "{_TITLE_VAL}"')
+    _print("Then open a new terminal. Re-check with /terminal-setup, or turn "
+           "the feature off with /config terminal_title=false.")
+
+
+def _scope_label(scope: str) -> str:
+    return ("remote (Machine) settings — the window reads them from this side"
+            if scope == "remote" else "User settings")
+
+
 def maybe_setup_vscode_terminal_title(config: dict) -> None:
-    """Auto-run once on first launch inside a VS Code-family terminal.
+    """Auto-run once per target on launch inside a VS Code-family terminal.
 
     No-op unless: terminal_title is enabled, we're in VS Code/Cursor/Windsurf,
-    and we haven't already tried. Any failure is swallowed."""
+    and we haven't already run for this settings target. Any failure is
+    swallowed."""
     try:
         if not config.get("terminal_title", True):
             return
         app = _vscode_app()
         if not app:
             return
-        marker = CONFIG_DIR / _MARKER
-        if marker.exists():
+        target, scope, why = _resolve_target(app)
+        key = _target_key(target, why)
+        if _already_attempted(key):
             return
-        path = _settings_path(app)
-        changed, msg = (False, "no settings path") if path is None \
-            else _apply_to_settings(path)
-        # Mark as attempted regardless, so we never re-touch the file on later
-        # launches (manual /terminal-setup remains available to re-run).
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(str(int(time.time())))
+        if target is None:
+            _mark_attempted(key)
+            _print_manual_instructions(app, why)
+            return
+        changed, msg = _apply_to_settings(target)
+        _mark_attempted(key)
         if changed:
-            _print(f"Set up {app} terminal tab titles — {msg}.")
-            _print("Reopen the terminal to see the task in the tab. "
+            _print(f"Set up {app} terminal tab titles in {_scope_label(scope)} "
+                   f"— {msg}.")
+            _print("Open a NEW terminal to see the task in the tab. "
                    "Disable any time with /config terminal_title=false.")
     except Exception:
         pass
@@ -244,19 +377,16 @@ def run_terminal_setup(force: bool = False) -> None:
                "Terminal.app / most terminals) — no setup needed.")
         _print("Nothing to configure here.")
         return
-    path = _settings_path(app)
-    if path is None:
-        _print(f"Couldn't locate {app} settings.json on this platform.")
+    target, scope, why = _resolve_target(app)
+    if target is None:
+        _print_manual_instructions(app, why)
+        _mark_attempted(_target_key(target, why))
         return
-    changed, msg = _apply_to_settings(path)
+    changed, msg = _apply_to_settings(target)
     # Refresh the marker so the auto-path stays quiet afterwards.
-    try:
-        (CONFIG_DIR / _MARKER).parent.mkdir(parents=True, exist_ok=True)
-        (CONFIG_DIR / _MARKER).write_text(str(int(time.time())))
-    except Exception:
-        pass
-    _print(f"{app}: {msg}")
+    _mark_attempted(_target_key(target, why))
+    _print(f"{app} ({_scope_label(scope)}): {msg}")
     if changed:
-        _print("Reopen the terminal (or window) for the tab title to update.")
+        _print("Open a new terminal (or window) for the tab title to update.")
     elif "already" in msg:
-        _print("You're all set — reopen a terminal if the tab isn't showing it.")
+        _print("You're all set — open a new terminal if the tab isn't showing it.")

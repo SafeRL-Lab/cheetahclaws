@@ -1502,6 +1502,17 @@ def repl(config: dict, initial_prompt: str = None):
 
         session_ctx.last_interaction_time = time.time()
 
+        # ── Predicted next prompt ──
+        # Drafts (in the background) the line the user most likely types next
+        # and shows it as dim ghost text at the prompt; Tab accepts it.
+        # Background turns don't own the prompt, so they never draft one.
+        if not is_background:
+            try:
+                from cheetahclaws.ui import suggest as _ui_suggest
+                _ui_suggest.schedule(state.messages, config)
+            except Exception:
+                pass
+
     session_ctx.run_query = lambda msg: run_query(msg, is_background=True)
     # Same handler used by the headless bridges path — see
     # `_make_bridge_slash_handler` for sentinel processing.

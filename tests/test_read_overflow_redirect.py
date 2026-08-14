@@ -180,3 +180,21 @@ def test_read_tool_passes_through_small_file(tmp_path):
     )
     assert "ReadTooLarge" not in out
     assert "just a few lines" in out
+
+
+def test_standard_profile_redirects_large_read_to_an_available_follow_up(tmp_path):
+    big = tmp_path / "big-cjk.txt"
+    big.write_text("English content " * 5_000, encoding="utf-8")
+
+    from cheetahclaws.tools import execute_tool
+    out = execute_tool(
+        "Read", {"file_path": str(big)}, permission_mode="accept-all",
+        config={
+            "model": "custom/qwen2.5-72b", "tool_profile": "standard",
+            "_active_tool_names": frozenset({"Read"}),
+        },
+    )
+
+    assert "ReadTooLarge" in out
+    assert "SummarizeLargeFile" not in out
+    assert "narrower `offset` and `limit`" in out

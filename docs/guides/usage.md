@@ -355,3 +355,49 @@ cheetahclaws --model custom/deepseek-ai/deepseek-v4-pro
 - **Other:** `owl`
 
 </details>
+
+---
+
+## Tool Profiles (`tool_profile`)
+
+Every model request carries the JSON schemas of the tools the agent may call.
+The **tool profile** selects how much of that surface is advertised on each
+turn — a smaller surface means fewer prompt tokens and less for the model to
+choose between, which helps on small-context or weaker local models.
+
+The default is **`full`**, so out of the box **nothing is hidden** — web,
+sub-agents, MCP, plugins, and every built-in tool are available. Shrinking the
+surface is always an explicit opt-in.
+
+| Profile | Tools advertised | Use when |
+|---------|------------------|----------|
+| `full` *(default)* | Everything registered — coding, web/documents, multi-agent + tasks, plan mode, email, MCP, and plugins | You want the complete surface (default behavior). |
+| `standard` | Compact coding set only: `Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`, `GetDiagnostics`, `NotebookEdit`, `AskUserQuestion`, and the `Memory*` tools | Plain coding sessions; smallest prompt / best for small-context models. |
+| `research` | `standard` **+** `WebFetch`, `WebSearch`, `WebBrowse`, `Research`, `ReadPDF`, `ReadImage`, `ReadSpreadsheet`, `ReadEmail`, `SummarizeLargeFile` | Web + document research without multi-agent overhead. |
+| `orchestration` | `standard` **+** `Agent`, `SendMessage`, `CheckAgentResult`, `ListAgentTasks`, `ListAgentTypes`, `Skill`, `SkillList`, `TaskCreate`/`TaskUpdate`/`TaskGet`/`TaskList`, `EnterPlanMode`, `ExitPlanMode`, `SleepTimer` | Multi-agent workflows, task lists, and plan mode. |
+
+Every non-`full` profile still includes the `standard` coding tools, so you
+never lose Read/Write/Edit/Bash by narrowing the surface.
+
+**Set it:**
+
+```bash
+# In a CLI session (persists to ~/.cheetahclaws/config.json):
+/config tool_profile=standard
+
+# Or edit ~/.cheetahclaws/config.json directly:
+#   "tool_profile": "research"
+```
+
+In the **Web UI**, use the *Tool Surface* dropdown in Settings, or
+`PATCH /api/config` with `{"config": {"tool_profile": "research"}}`. An
+unknown value is rejected (`400` on the API, an error on the CLI).
+
+> **Notes**
+> - A config that predates this setting (or omits it) inherits `full`, so
+>   upgrading never silently removes a capability you relied on.
+> - Sub-agents inherit the parent session's `tool_profile`. If you rely on
+>   `researcher` sub-agents reaching the web, keep the parent on `full` (the
+>   default) or `research`.
+> - The profile only changes what is **advertised** per turn; it does not
+>   uninstall anything. Switch back to `full` at any time.

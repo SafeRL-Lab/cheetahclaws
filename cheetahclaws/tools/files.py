@@ -14,6 +14,63 @@ from pathlib import Path
 from cheetahclaws.tool_registry import ToolDef, register_tool
 
 
+_DEFAULT_PDF_MAX_FILE_BYTES = 32 * 1024 * 1024
+_DEFAULT_SUMMARIZE_MAX_INPUT_BYTES = 16 * 1024 * 1024
+_DEFAULT_SUMMARIZE_CHUNK_OUTPUT_CHARS = 8_000
+_DEFAULT_SUMMARIZE_REDUCE_INPUT_CHARS = 200_000
+
+
+def _extract_page_prefix(page, fitz_module, char_cap: int) -> tuple[str, bool]:
+    """Extract a page in clipped bands instead of materializing all page text.
+
+    PyMuPDF's plain ``page.get_text()`` builds the complete page string first.
+    Reading shallow horizontal bands (and narrower columns for very wide
+    pages) keeps peak extraction work bounded even for a pathological one-page
+    PDF. Pages without geometry are rejected safely: the compatibility fallback
+    of calling ``get_text()`` would materialize the entire page.
+    """
+    rect = getattr(page, "rect", None)
+    if rect is None or not getattr(rect, "height", 0):
+        return "", True
+
+    chunks: list[str] = []
+    captured = 0
+    band_height = min(144.0, max(36.0, float(rect.height) / 16.0))
+    max_bands = 256
+    page_width = float(getattr(rect, "width", float(rect.x1) - float(rect.x0)))
+    tile_width = min(612.0, max(72.0, page_width))
+    columns = max(1, min(8, int((page_width + tile_width - 1) // tile_width)))
+    max_tiles = 512
+    y = float(rect.y0)
+    bands_read = 0
+    tiles_read = 0
+    tile_limit_hit = False
+    while (
+        y < float(rect.y1)
+        and captured < char_cap
+        and bands_read < max_bands
+        and tiles_read < max_tiles
+    ):
+        for column in range(columns):
+            if captured >= char_cap or tiles_read >= max_tiles:
+                tile_limit_hit = tiles_read >= max_tiles
+                break
+            x0 = float(rect.x0) + column * tile_width
+            x1 = min(x0 + tile_width, float(rect.x1))
+            clip = fitz_module.Rect(x0, y, x1, min(y + band_height, rect.y1))
+            text = page.get_text("text", clip=clip)
+            remaining = char_cap - captured
+            if len(text) > remaining:
+                chunks.append(text[:remaining])
+                return "".join(chunks), True
+            chunks.append(text)
+            captured += len(text)
+            tiles_read += 1
+        y += band_height
+        bands_read += 1
+    return "".join(chunks), y < float(rect.y1) or tile_limit_hit
+
+
 def _read_pdf(params: dict, config: dict) -> str:
     """Read text content from a PDF file."""
     try:
@@ -35,27 +92,81 @@ def _read_pdf(params: dict, config: dict) -> str:
         return f"Error: not a PDF file: {file_path}"
 
     try:
+        try:
+            char_cap = int(config.get("pdf_extract_max_chars", 50_000))
+        except (TypeError, ValueError):
+            char_cap = 50_000
+        try:
+            page_cap = int(config.get("pdf_extract_max_pages", 50))
+        except (TypeError, ValueError):
+            page_cap = 50
+        try:
+            file_byte_cap = int(config.get(
+                "pdf_extract_max_file_bytes", _DEFAULT_PDF_MAX_FILE_BYTES,
+            ))
+        except (TypeError, ValueError):
+            file_byte_cap = _DEFAULT_PDF_MAX_FILE_BYTES
+        char_cap = max(1_000, char_cap)
+        page_cap = max(1, page_cap)
+        file_byte_cap = max(1_024, file_byte_cap)
+        if p.stat().st_size > file_byte_cap:
+            return (
+                f"Error: PDF is larger than the {file_byte_cap:,}-byte extraction "
+                "limit; use a narrower source file or raise pdf_extract_max_file_bytes."
+            )
+
         doc = fitz.open(str(p))
-        total = len(doc)
+        try:
+            total = len(doc)
 
-        # Parse page range
-        if pages:
-            page_list = _parse_page_range(pages, total)
-        else:
-            page_list = list(range(min(total, 50)))  # default: first 50 pages
+            # Parse page range. Explicit page lists are capped too: otherwise
+            # a request such as ``1-999999`` allocates and extracts far more
+            # than one agent turn can safely use.
+            if pages:
+                page_list, page_range_truncated = _parse_page_range_capped(
+                    pages, total, max_pages=page_cap,
+                )
+            else:
+                page_list = list(range(min(total, page_cap)))
+                page_range_truncated = total > page_cap
 
-        text_parts = []
-        for i in page_list:
-            if 0 <= i < total:
+            text_parts = []
+            extracted_chars = 0
+            source_truncated = page_range_truncated
+            for i in page_list:
+                if extracted_chars >= char_cap:
+                    source_truncated = True
+                    break
+                if not (0 <= i < total):
+                    continue
                 page = doc[i]
-                text = page.get_text()
-                if text.strip():
-                    text_parts.append(f"--- Page {i+1} ---\n{text.strip()}")
-
-        doc.close()
+                text, page_truncated = _extract_page_prefix(
+                    page, fitz, char_cap - extracted_chars,
+                )
+                source_truncated = source_truncated or page_truncated
+                clean_text = text.strip()
+                if not clean_text:
+                    continue
+                remaining = char_cap - extracted_chars
+                if len(clean_text) > remaining:
+                    clean_text = clean_text[:remaining]
+                    source_truncated = True
+                text_parts.append(f"--- Page {i+1} ---\n{clean_text}")
+                extracted_chars += len(clean_text)
+                if extracted_chars >= char_cap:
+                    source_truncated = True
+                    break
+        finally:
+            doc.close()
 
         if not text_parts:
-            return f"PDF has {total} pages but no extractable text (may be scanned/image-only)."
+            message = f"PDF has {total} pages but no extractable text (may be scanned/image-only)."
+            if source_truncated:
+                message += (
+                    f" Extraction also stopped at {char_cap:,} characters or "
+                    f"{page_cap} pages; use a narrower `pages` range."
+                )
+            return message
 
         header = f"PDF: {p.name} ({total} pages, showing {len(text_parts)})\n\n"
         content = "\n\n".join(text_parts)
@@ -67,12 +178,18 @@ def _read_pdf(params: dict, config: dict) -> str:
         # ReadPDF response itself routes the model to the right tool
         # before the raw 70KB+ of PDF text overflows the next API call.
         # See _maybe_redirect_to_summarize for the threshold logic.
-        redirect = _maybe_redirect_to_summarize(full_text, str(p), config)
+        redirect = None if config.get("_skip_summary_redirect") else _maybe_redirect_to_summarize(
+            full_text, str(p), config,
+        )
         if redirect:
             return redirect
 
-        if len(content) > 50000:
-            content = content[:50000] + f"\n\n[... truncated, {len(content)-50000} chars remaining ...]"
+        if source_truncated:
+            content += (
+                f"\n\n[... ReadPDF stopped at {char_cap:,} extracted characters "
+                f"or {page_cap} pages; use a narrower `pages` range or "
+                "SummarizeLargeFile for complete coverage ...]"
+            )
 
         return header + content
 
@@ -250,19 +367,46 @@ def _format_table(rows: list[list], title: str, total_hint: str = "") -> str:
     return "\n".join(lines)
 
 
-def _parse_page_range(spec: str, total: int) -> list[int]:
-    """Parse page range like '1-5', '3', '1,3,5-8'."""
+def _parse_page_range_capped(
+    spec: str,
+    total: int,
+    max_pages: int | None = None,
+) -> tuple[list[int], bool]:
+    """Parse a page range and state whether a requested page was omitted."""
     pages = []
+    seen = set()
+
+    def _add(page: int) -> bool:
+        # Ignore out-of-range singleton values just as ranges are clamped.
+        # They must not consume the page budget ahead of valid requests.
+        if not 0 <= page < total:
+            return False
+        if page in seen:
+            return False
+        if max_pages is not None and len(pages) >= max_pages:
+            return True
+        seen.add(page)
+        pages.append(page)
+        return False
+
     for part in spec.split(","):
         part = part.strip()
         if "-" in part:
             a, b = part.split("-", 1)
             start = max(int(a) - 1, 0)
             end = min(int(b), total)
-            pages.extend(range(start, end))
+            for page in range(start, end):
+                if _add(page):
+                    return sorted(pages), True
         elif part.isdigit():
-            pages.append(int(part) - 1)
-    return sorted(set(pages))
+            if _add(int(part) - 1):
+                return sorted(pages), True
+    return sorted(pages), False
+
+
+def _parse_page_range(spec: str, total: int, max_pages: int | None = None) -> list[int]:
+    """Parse page range like '1-5', '3', '1,3,5-8'."""
+    return _parse_page_range_capped(spec, total, max_pages)[0]
 
 
 # ── Register ─────────────────────────────────────────────────────────────
@@ -370,7 +514,7 @@ _SUMMARIZE_MIN_CHUNK_TOKENS = 2000
 def _estimate_text_tokens(text: str) -> int:
     """Rough conservative token estimator for plain text. Matches the
     chars/2.8 ratio compaction.estimate_tokens uses."""
-    return int(len(text) * _TOKENS_PER_CHAR)
+    return len(text) if _is_cjk_heavy(text) else int(len(text) * _TOKENS_PER_CHAR)
 
 
 def _is_cjk_heavy(text: str, sample_chars: int = 2000) -> bool:
@@ -437,10 +581,31 @@ def _maybe_redirect_to_summarize(text: str, file_path: str,
     if estimated_tokens <= safe_tool_result_tokens:
         return None
 
+    active_names = config.get("_active_tool_names")
+    if active_names is not None:
+        summary_enabled = "SummarizeLargeFile" in active_names
+    else:
+        profile = config.get("tool_profile")
+        # Preserve direct-call compatibility while respecting callers that
+        # explicitly request the compact standard profile.
+        summary_enabled = profile is None or profile in {"research", "full"}
+
     # Generate a redirect with a small preview so the model has *some*
     # context to decide on a focus.
     preview_chars = min(1500, len(text) // 8)
     preview = text[:preview_chars].rstrip()
+    if not summary_enabled:
+        return (
+            f"[ReadTooLarge: file `{file_path}` is too large to return "
+            f"directly — estimated {estimated_tokens:,} tokens vs model "
+            f"context {declared_ctx:,} (safe tool-result ceiling "
+            f"{safe_tool_result_tokens:,}).\n\n"
+            "USE INSTEAD: Call `Read` again with a narrower `offset` and "
+            "`limit`. A document-summary tool is not enabled for this tool "
+            "profile.\n\n"
+            f"PREVIEW (first {preview_chars} chars, for context only):\n\n"
+            f"```\n{preview}\n```]"
+        )
     return (
         f"[ReadTooLarge: file `{file_path}` is too large to return "
         f"directly — estimated {estimated_tokens:,} tokens vs model "
@@ -467,11 +632,39 @@ def _read_file_for_summary(file_path: str, config: dict) -> str:
         return f"Error: {file_path} is a directory, not a file"
     suffix = p.suffix.lower()
     if suffix == ".pdf":
-        # Reuse the existing PDF reader; "all pages" by default
-        return _read_pdf({"file_path": str(p)}, config)
+        # Reuse the bounded PDF extractor but bypass its user-facing redirect:
+        # otherwise this summarizer would summarize its own "call
+        # SummarizeLargeFile" instruction rather than the PDF text.
+        internal = {**config, "_skip_summary_redirect": True}
+        content = _read_pdf({"file_path": str(p)}, internal)
+        # The bounded extractor appends a truncation marker when the PDF is
+        # larger than the extraction caps (the common case for papers/books —
+        # exactly what SummarizeLargeFile is for).  Drop only that trailing
+        # marker and summarize the extracted text, which is already capped to a
+        # size that fits a chunk.  Refusing here would make SummarizeLargeFile
+        # fail on its primary use case and dead-end ReadPDF's own redirect to
+        # it.  Genuine "Error:" returns still propagate to the caller.
+        marker_index = content.find("\n\n[... ReadPDF stopped")
+        if marker_index != -1:
+            content = content[:marker_index]
+        return content
     # Plain text / code / markdown / etc.
     try:
-        return p.read_text("utf-8", errors="replace")
+        try:
+            byte_cap = int(config.get(
+                "summarize_max_input_bytes", _DEFAULT_SUMMARIZE_MAX_INPUT_BYTES,
+            ))
+        except (TypeError, ValueError):
+            byte_cap = _DEFAULT_SUMMARIZE_MAX_INPUT_BYTES
+        byte_cap = max(1_024, byte_cap)
+        if p.stat().st_size > byte_cap:
+            return (
+                f"Error: file exceeds the {byte_cap:,}-byte summary input limit; "
+                "use a smaller file or raise summarize_max_input_bytes."
+            )
+        with p.open("rb") as handle:
+            raw = handle.read(byte_cap)
+        return raw.decode("utf-8", errors="replace")
     except Exception as e:
         return f"Error reading {file_path}: {type(e).__name__}: {e}"
 
@@ -533,16 +726,44 @@ def _summarize_chunk_via_llm(text: str, focus: str, config: dict,
         )
 
     out: list[str] = []
+    try:
+        output_cap = int(config.get(
+            "summarize_chunk_max_output_chars", _DEFAULT_SUMMARIZE_CHUNK_OUTPUT_CHARS,
+        ))
+    except (TypeError, ValueError):
+        output_cap = _DEFAULT_SUMMARIZE_CHUNK_OUTPUT_CHARS
+    output_cap = max(500, output_cap)
+    output_chars = 0
     internal = {**config, "no_tools": True}
     try:
         for ev in stream(config["model"], sys_msg,
                           [{"role": "user", "content": user_msg}], [],
                           internal):
             if isinstance(ev, TextChunk):
-                out.append(ev.text)
+                remaining = output_cap - output_chars
+                if remaining <= 0:
+                    break
+                out.append(ev.text[:remaining])
+                output_chars += min(len(ev.text), remaining)
+                if len(ev.text) > remaining:
+                    break
     except Exception as e:
         return f"[chunk-summarize error: {type(e).__name__}: {str(e)[:200]}]"
     return "".join(out).strip() or "[chunk-summarize: empty response]"
+
+
+def _is_failed_chunk(summary_text: str | None) -> bool:
+    """Whether a map/reduce result is a failure marker rather than real output.
+
+    ``_summarize_chunk_via_llm`` records failures as marker strings (never
+    ``None``): the error path returns ``"[chunk-summarize error: ...]"`` and an
+    empty model response returns ``"[chunk-summarize: empty response]"`` — both
+    begin with ``"[chunk-summarize"``. Detecting them keeps failure text out of
+    the reduce prompt (otherwise the reduce model 'summarizes' the errors) and
+    lets the caller report degraded coverage instead of a confident-looking
+    summary of nothing.
+    """
+    return summary_text is None or summary_text.startswith("[chunk-summarize")
 
 
 def _plan_chunks(content: str, model_ctx: int) -> list[str]:
@@ -554,13 +775,15 @@ def _plan_chunks(content: str, model_ctx: int) -> list[str]:
         ~10 chunk-budgets     → 10 chunks
         etc. (no hard cap — grows with file)
     """
+    cjk_heavy = _is_cjk_heavy(content)
     n_tokens = _estimate_text_tokens(content)
     chunk_token_budget = max(_SUMMARIZE_MIN_CHUNK_TOKENS,
                               model_ctx - _SUMMARIZE_RESERVED_TOKENS)
     if n_tokens <= chunk_token_budget:
         return [content]
     # Compute target char-size per chunk so all chunks roughly equal.
-    chunk_char_budget = int(chunk_token_budget / _TOKENS_PER_CHAR)
+    chars_per_token = 1.0 if cjk_heavy else _TOKENS_PER_CHAR
+    chunk_char_budget = int(chunk_token_budget / chars_per_token)
     n_chunks = (n_tokens // chunk_token_budget) + 1
     overlap_chars = 200
     base_size = (len(content) + (n_chunks - 1) * overlap_chars) // n_chunks
@@ -613,6 +836,11 @@ def _summarize_large_file(params: dict, config: dict) -> str:
 
     if n_chunks == 1:
         summary = _summarize_chunk_via_llm(chunks[0], focus, config, mode="single")
+        if _is_failed_chunk(summary):
+            return (
+                f"Error: summarizing `{p.name}` failed — {summary} "
+                "(model/provider issue). Retry, or summarize a narrower range."
+            )
         return (
             f"Summary of `{p.name}` (single-shot, ~{n_tokens_est:,} tokens "
             f"in {n_chars:,} chars; model context {model_ctx:,}):\n\n"
@@ -634,17 +862,100 @@ def _summarize_large_file(params: dict, config: dict) -> str:
         for i, summary_text in ex.map(_do_chunk, enumerate(chunks)):
             chunk_summaries[i] = summary_text
 
-    # Reduce
-    merged_input = "\n\n".join(
-        f"=== Chunk {i + 1}/{n_chunks} ===\n{s}"
-        for i, s in enumerate(chunk_summaries) if s is not None
-    )
+    # Reduce only a bounded aggregate of map outputs. The source and every map
+    # response are capped independently, so a pathological document cannot
+    # build an unbounded in-memory reduce prompt.
+    try:
+        reduce_cap = int(config.get(
+            "summarize_reduce_max_input_chars", _DEFAULT_SUMMARIZE_REDUCE_INPUT_CHARS,
+        ))
+    except (TypeError, ValueError):
+        reduce_cap = _DEFAULT_SUMMARIZE_REDUCE_INPUT_CHARS
+    reduce_cap = max(2_000, reduce_cap)
+    merged_parts: list[str] = []
+    merged_chars = 0
+    included_chunks = 0
+    failed_chunks = 0
+    last_chunk_clipped = False
+    for i, summary_text in enumerate(chunk_summaries):
+        # Skip a failed chunk (do not abort the whole merge on the first one),
+        # and stop only once the reduce-input budget is exhausted. A map
+        # failure is an error-marker string, not None, so test the marker —
+        # otherwise the reduce model would 'summarize' the error text.
+        if _is_failed_chunk(summary_text):
+            failed_chunks += 1
+            continue
+        if merged_chars >= reduce_cap:
+            break
+        part = f"=== Chunk {i + 1}/{n_chunks} ===\n{summary_text}\n\n"
+        remaining = reduce_cap - merged_chars
+        merged_parts.append(part[:remaining])
+        merged_chars += min(len(part), remaining)
+        included_chunks += 1
+        if len(part) > remaining:
+            # This chunk's summary was itself clipped by the reduce cap, so
+            # coverage is incomplete even if it is the last chunk (in which
+            # case included_chunks == n_chunks and the count check alone would
+            # miss it).
+            last_chunk_clipped = True
+            break
+
+    # Every chunk failed → nothing real to reduce. Reducing an all-error (or
+    # empty) aggregate would return a confident summary of failures, so surface
+    # a clean error instead.
+    if included_chunks == 0:
+        return (
+            f"Error: summarizing `{p.name}` failed — all {n_chunks} chunk "
+            "summaries errored (model/provider issue). Retry, or summarize a "
+            "narrower range."
+        )
+
+    merged_input = "".join(merged_parts)
     final = _summarize_chunk_via_llm(merged_input, focus, config, mode="reduce")
+    if _is_failed_chunk(final):
+        return (
+            f"Error: summarizing `{p.name}` failed at the reduce stage — "
+            f"{final}. Summarize a narrower range, or raise "
+            "summarize_reduce_max_input_chars."
+        )
+
+    # Report the chunks actually merged rather than the total, and warn when
+    # coverage is incomplete — because some chunk summaries failed, because the
+    # reduce budget dropped later ones, or because the last included one was
+    # clipped — so the caller is never told the whole file was covered when it
+    # was not. Chunks neither merged nor failed were dropped at the reduce cap.
+    cap_dropped = n_chunks - included_chunks - failed_chunks
+    if included_chunks < n_chunks or last_chunk_clipped:
+        reasons = []
+        if failed_chunks:
+            reasons.append(f"{failed_chunks} failed to summarize")
+        if cap_dropped:
+            reasons.append(
+                f"{cap_dropped} dropped at the {reduce_cap:,}-char reduce cap"
+            )
+        if last_chunk_clipped:
+            reasons.append("the last included summary was clipped")
+        coverage = f"{included_chunks}/{n_chunks} chunks merged"
+        detail = "; ".join(reasons) if reasons else "coverage incomplete"
+        hint = (
+            "raise summarize_reduce_max_input_chars or summarize a narrower "
+            "range for full coverage"
+            if (cap_dropped or last_chunk_clipped)
+            else "retry, or summarize a narrower range"
+        )
+        coverage_notice = (
+            f"\n\n[... incomplete coverage: {detail}; this summary may omit "
+            f"parts of the file — {hint} ...]"
+        )
+    else:
+        coverage = f"{n_chunks} chunks"
+        coverage_notice = ""
 
     return (
-        f"Summary of `{p.name}` (multi-agent map-reduce: {n_chunks} chunks, "
+        f"Summary of `{p.name}` (multi-agent map-reduce: {coverage}, "
         f"~{n_tokens_est:,} tokens in {n_chars:,} chars; model context "
         f"{model_ctx:,}; {max_workers} parallel workers):\n\n{final}"
+        f"{coverage_notice}"
     )
 
 
@@ -656,7 +967,7 @@ register_tool(ToolDef(
             "Summarize a file that may be too large to fit in your context "
             "window. Reads the file (PDF / txt / md / code), splits it "
             "into N chunks adaptive to file size (1 chunk if it fits, "
-            "more for larger files — no hard cap), summarizes each chunk "
+            "more for larger files within the configured input cap), summarizes each chunk "
             "in parallel via sub-LLM calls (up to 8 workers), then merges "
             "into one unified summary. Use this for papers, books, long "
             "logs, large code files, or any document where Read would "

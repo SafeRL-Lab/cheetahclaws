@@ -56,8 +56,35 @@ def test_no_rich_is_plain(clean_env):
     assert render.auto_stream_mode({}) == "plain"
 
 
-def test_local_tty_gets_live(clean_env):
+def test_unknown_local_tty_fails_safe_to_commit(clean_env):
+    # A local TTY that is not a positively-recognized capable emulator (no
+    # TERM_PROGRAM, no modern marker) must fail SAFE to append-only 'commit'
+    # rather than risk the duplicate-frame 'live' redraw. 'live' stays reachable
+    # via explicit config or a known-good emulator.
+    assert render.auto_stream_mode({}) == "commit"
+
+
+def test_recognized_local_emulator_gets_live(clean_env):
+    clean_env.setenv("TERM_PROGRAM", "WezTerm")
     assert render.auto_stream_mode({}) == "live"
+
+
+def test_tmux_env_forces_commit_even_under_capable_emulator(clean_env):
+    # tmux rewrites cursor sequences → in-place redraw duplicates frames.
+    clean_env.setenv("TERM_PROGRAM", "iTerm.app")   # capable outer terminal
+    clean_env.setenv("TMUX", "/tmp/tmux-1000/default,1234,0")
+    assert render.auto_stream_mode({}) == "commit"
+
+
+def test_screen_term_gets_commit(clean_env):
+    clean_env.setenv("TERM", "screen-256color")
+    assert render.auto_stream_mode({}) == "commit"
+
+
+def test_explicit_live_config_overrides_multiplexer_guard(clean_env):
+    # A user who knows their setup redraws fine can still force 'live'.
+    clean_env.setenv("TMUX", "/tmp/tmux-1000/default,1234,0")
+    assert render.auto_stream_mode({"stream_mode": "live"}) == "live"
 
 
 def test_dumb_terminal_gets_commit(clean_env):

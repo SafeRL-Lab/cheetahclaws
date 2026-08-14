@@ -48,6 +48,7 @@ def patched_render(monkeypatch):
 
     monkeypatch.setattr(render, "_RICH", True)
     monkeypatch.setattr(render, "_RICH_LIVE", True)
+    monkeypatch.setattr(render, "_STREAM_MODE", "live")
     monkeypatch.setattr(render, "console", fake_console)
     monkeypatch.setattr(render, "Live", fake_live)
     monkeypatch.setattr(render, "_make_renderable", lambda text: text)
@@ -226,6 +227,7 @@ def test_real_tail_window_end_to_end_commits_full_output(monkeypatch):
     monkeypatch.setattr(render, "console", con)
     monkeypatch.setattr(render, "_RICH", True)
     monkeypatch.setattr(render, "_RICH_LIVE", True)
+    monkeypatch.setattr(render, "_STREAM_MODE", "live")
     monkeypatch.setattr(render, "_current_live", None)
     monkeypatch.setattr(render, "_plain_streaming_response", False)
     monkeypatch.setattr(render, "_live_shows_full", False)

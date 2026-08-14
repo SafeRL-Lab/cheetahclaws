@@ -123,6 +123,13 @@ def cmd_config(args: str, _state, config) -> bool:
                 val = json.loads(val)
             except json.JSONDecodeError:
                 pass  # leave as string
+        if key == "tool_profile":
+            try:
+                from cheetahclaws.tool_registry import normalize_tool_profile
+                val = normalize_tool_profile(val)
+            except ValueError as exc:
+                err(str(exc))
+                return False
         config[key] = val
         save_config(config)
         ok(f"Set {key} = {val!r}")

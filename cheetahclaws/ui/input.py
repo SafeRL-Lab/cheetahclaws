@@ -6,16 +6,25 @@ is False and callers should fall through to readline-based input.
 Dependency-injected: callers register command/meta providers via setup()
 before calling read_line(). This module never imports cheetahclaws — keeping
 the dependency one-way and eliminating any circular-import risk.
+
+Ghost text has two sources, in priority order:
+  1. A predicted next prompt pushed in by ui.suggest via
+     set_pending_suggestion() after each turn (Claude-Code style).
+  2. The shell-history suggestion (prompt_toolkit's AutoSuggestFromHistory).
+Both render dim/italic; Tab (or →) accepts the whole thing.
 """
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Callable, Optional
 
 try:
     from prompt_toolkit import PromptSession
-    from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+    from prompt_toolkit.auto_suggest import (
+        AutoSuggest, AutoSuggestFromHistory, Suggestion,
+    )
     from prompt_toolkit.completion import Completer, Completion
     from prompt_toolkit.formatted_text import ANSI
     from prompt_toolkit.application import get_app
@@ -53,6 +62,30 @@ def setup(
     _commands_provider = commands_provider
     _meta_provider = meta_provider
     _dynamic_completions_provider = dynamic_completions_provider
+
+
+# ── Predicted next prompt (pushed in by ui.suggest) ──────────────────────────
+# Written from a background thread, read from the prompt_toolkit event loop —
+# hence the lock. One-shot: read_line() clears it once the user submits a line.
+_pending_lock = threading.Lock()
+_pending_suggestion: str = ""
+
+
+def set_pending_suggestion(text: str) -> None:
+    """Publish the ghost text shown at the next (empty) prompt."""
+    global _pending_suggestion
+    cleaned = (text or "").strip()
+    with _pending_lock:
+        _pending_suggestion = cleaned
+
+
+def get_pending_suggestion() -> str:
+    with _pending_lock:
+        return _pending_suggestion
+
+
+def clear_pending_suggestion() -> None:
+    set_pending_suggestion("")
 
 
 # ── Completer ────────────────────────────────────────────────────────────────
@@ -162,12 +195,38 @@ else:  # pragma: no cover — unreachable when prompt_toolkit is installed
             raise RuntimeError("prompt_toolkit is not installed")
 
 
+# ── Auto-suggest ─────────────────────────────────────────────────────────────
+if HAS_PROMPT_TOOLKIT:
+
+    class PredictiveAutoSuggest(AutoSuggest):
+        """Predicted next prompt first, shell history second.
+
+        On an empty buffer the whole prediction is offered; once the user
+        starts typing it survives only while it still prefixes what they
+        typed, after which history takes over.
+        """
+
+        def __init__(self, provider: Optional[Callable[[], str]] = None):
+            self._provider = provider or get_pending_suggestion
+            self._history = AutoSuggestFromHistory()
+
+        def get_suggestion(self, buffer, document):  # type: ignore[override]
+            text = document.text
+            # Only single-line, cursor-at-end states — otherwise the ghost
+            # would render in the middle of a paste or a multi-line edit.
+            if "\n" not in text and document.cursor_position == len(text):
+                pending = (self._provider() or "").strip()
+                if pending.startswith(text) and len(pending) > len(text):
+                    return Suggestion(pending[len(text):])
+            return self._history.get_suggestion(buffer, document)
+
+
 # ── Key bindings ─────────────────────────────────────────────────────────────
 if HAS_PROMPT_TOOLKIT:
 
     @Condition
     def _ghost_text_acceptable() -> bool:
-        """True when a history ghost-suggestion is shown and no slash menu is active."""
+        """True when a ghost-suggestion is shown and no slash menu is active."""
         buf = get_app().current_buffer
         if not (buf.suggestion and buf.suggestion.text):
             return False
@@ -177,7 +236,7 @@ if HAS_PROMPT_TOOLKIT:
         return True
 
     def _build_key_bindings() -> "KeyBindings":
-        """Tab accepts the gray history ghost-text when one is shown.
+        """Tab accepts the dim ghost-text (predicted prompt or history) shown.
 
         Falls through to the default Tab binding (slash-menu cycling) when the
         filter doesn't match, so `/cmd` completion behavior is unchanged.
@@ -190,6 +249,32 @@ if HAS_PROMPT_TOOLKIT:
             buf.insert_text(buf.suggestion.text)
 
         return kb
+
+    def _apply_pending(buf) -> None:
+        """Set the predicted ghost text on `buf`, synchronously.
+
+        The auto-suggester runs as a background task and only on text
+        *insert* — so an empty buffer is never asked at all, and a fast Tab
+        right after typing can beat the async result. Applying the prediction
+        inline on every text change (and at pre_run) keeps the ghost exact and
+        immediate; the async path still handles the history fallback.
+        """
+        pending = get_pending_suggestion()
+        if not pending or buf.suggestion:
+            return
+        text = buf.text
+        if "\n" in text or buf.cursor_position != len(text):
+            return
+        if pending.startswith(text) and len(pending) > len(text):
+            buf.suggestion = Suggestion(pending[len(text):])
+
+    def _seed_suggestion() -> None:
+        """pre_run hook: show the prediction before the user types anything."""
+        try:
+            buf = get_app().current_buffer
+        except Exception:
+            return
+        _apply_pending(buf)
 
 
 # ── Session cache ────────────────────────────────────────────────────────────
@@ -216,16 +301,18 @@ def _build_session(history_path: Optional[Path]):
         "completion-menu.meta.completion.current": "bg:#005f87 #eeeeee",
         "auto-suggestion":                         "#606060 italic",
     })
-    return PromptSession(
+    session = PromptSession(
         history=history,
         completer=completer,
-        auto_suggest=AutoSuggestFromHistory(),
+        auto_suggest=PredictiveAutoSuggest(),
         complete_while_typing=True,
         enable_history_search=False,
         mouse_support=False,
         style=style,
         key_bindings=_build_key_bindings(),
     )
+    session.default_buffer.on_text_changed += _apply_pending
+    return session
 
 
 def read_line(prompt_ansi: str, history_path: Optional[Path] = None) -> str:
@@ -234,6 +321,10 @@ def read_line(prompt_ansi: str, history_path: Optional[Path] = None) -> str:
     The history file passed here MUST NOT be the readline history file — the
     two line-editors use incompatible formats. See cheetahclaws.repl for the
     dedicated PT_HISTORY_FILE.
+
+    A predicted next prompt published via set_pending_suggestion() is shown
+    as dim ghost text and consumed by this call — it never carries over to a
+    later prompt, where it would be stale.
     """
     global _SESSION, _SESSION_HISTORY_PATH
     if _SESSION is not None and _SESSION_HISTORY_PATH != history_path:
@@ -241,5 +332,8 @@ def read_line(prompt_ansi: str, history_path: Optional[Path] = None) -> str:
     if _SESSION is None:
         _SESSION = _build_session(history_path)
         _SESSION_HISTORY_PATH = history_path
-    with patch_stdout(raw=True):
-        return _SESSION.prompt(ANSI(prompt_ansi))
+    try:
+        with patch_stdout(raw=True):
+            return _SESSION.prompt(ANSI(prompt_ansi), pre_run=_seed_suggestion)
+    finally:
+        clear_pending_suggestion()

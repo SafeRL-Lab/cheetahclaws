@@ -286,7 +286,7 @@ All `/api/*` routes other than `/api/auth/*` and the ops endpoints require a val
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `/api/config?sid=...` | GET | Read safe config keys for a session |
-| `/api/config` | PATCH | `{session_id, config: {key:value, ...}}` — writable keys: `model`, `permission_mode`, `verbose`, `thinking`, `thinking_budget`, `max_tokens`, plus per-provider API keys (session-only, not persisted) |
+| `/api/config` | PATCH | `{session_id, config: {key:value, ...}}` — writable keys: `model`, `permission_mode`, `verbose`, `thinking`, `thinking_budget`, `max_tokens`, `tool_profile` (`full`/`standard`/`research`/`orchestration`; an invalid value returns `400`), plus per-provider API keys (session-only, not persisted) |
 | `/api/models` | GET | `{providers: [{provider, models, context_limit, needs_api_key, has_api_key}, ...]}` |
 
 ### Ops

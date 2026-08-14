@@ -153,6 +153,9 @@ def _run(tmpdir):
     print(SEP)
     from cheetahclaws.context import build_system_prompt
     config["permission_mode"] = "auto"
+    # Plan tools live on the explicit orchestration surface; the compact
+    # default coding surface deliberately does not advertise them.
+    config["tool_profile"] = "orchestration"
     prompt = build_system_prompt(config)
     assert "EnterPlanMode" in prompt
     assert "ExitPlanMode" in prompt

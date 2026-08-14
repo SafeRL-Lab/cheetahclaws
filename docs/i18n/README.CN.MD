@@ -41,6 +41,7 @@ cheetahclaws        # start chatting!
 
 ## 🔥🔥🔥 新闻（太平洋时间）
 
+- 2026 年 7 月 30 日（**v3.5.86**）：**输入框「幽灵提示」—— REPL 预测你下一句要输入的内容。** 每轮回答结束后，由**辅助（便宜/快速）模型**草拟你最可能输入的下一句，以浅灰斜体显示在提示符里：按 **Tab**（或 **→**）完整填入，直接打字即覆盖，只按回车不会提交它。草拟在后台线程进行，不阻塞 REPL；任何失败都静默处理（没有辅助模型 / 没有 API key / 供应商故障 → 只是不显示提示）；每条提示只对当前这一个提示符有效，不会残留成过期建议。关闭方式：`/config input_suggest=false` 或 `CHEETAH_SUGGEST=0`。本版本还修复了 **Remote-SSH / WSL / devcontainer 下终端标签标题无法自动配置**的问题：此前它把设置写进服务器端一个 VS Code 永远不会读的文件并从此不再重试，现在会写入窗口真正读取的远端 Machine 设置。本版本也是首个包含 7 月 11 日（终端标签标题 + Anthropic 提示缓存修复）与 7 月 20 日（`tool_profile` + bounded-I/O 修复）改动的正式版本。[详情](../news.md)
 - 2026 年 7 月 9 日：**官方 Docker 镜像 + 一条命令发布。** Docker Hub 上提供预构建镜像（`docker pull chauncygu/cheetahclaws`），无需克隆即可运行 Web UI；修复了首次运行时的 `PermissionError`，方法是预先创建由非 root 用户所有的 `.cheetahclaws`/`workspace` 目录，使 compose 的 `image` 可通过 `CHEETAH_IMAGE` 覆盖，并新增 `scripts/docker-publish.sh`（自动读取版本，支持多/单架构）。新增文档章节：**从 Docker Hub 拉取** 与 **交互式设置 / CLI 模式**。[详情](../news.md)
 - 2026 年 7 月 8 日：新增 **`/workspace`** 命令，用于管理 `~/.cheetahclaws/workspaces` 下的隔离工作目录（`list`/`switch`/`default`/`create`/`delete`）（PR #162）；启动时自动切换现为通过 `workspace_auto` **可选开启**（默认关闭，因此在项目目录中启动的行为保持不变），且 `default` 现在是一个独立于「最近使用」的固定键。[详情](../news.md)
 - 2026 年 7 月 6 日（**v3.5.84**）：**`/image` 现在会用本地 OCR 文本丰富提示词**，让即使是非视觉模型也能处理剪贴板截图（错误转储、代码、表格）；仅在安装了 `pytesseract`/`tesseract` 时运行，并可通过 `CHEETAHCLAWS_IMAGE_OCR=0` 完全关闭。[详情](../news.md)
@@ -179,6 +180,7 @@ Claude Code 是一款强大的、生产级的 AI 编码助手 —— 但它的�
 | 权限系统 | `auto` / `accept-edits` / `accept-all` / `manual` / `plan` 模式（`accept-edits` = 自动执行编辑，但对其他 Bash 仍会询问；硬性拒绝列表在所有模式下都会阻止会毁坏主机的命令） |
 | 检查点与 plan 模式 | 每一轮自动快照对话 + 文件（`/checkpoint`、`/rewind`）；`/plan` 只读分析模式 |
 | 斜杠命令与主题 | 50+ 个带 Tab 补全的斜杠命令；`/theme` 提供 15 套精选配色 |
+| 下一句输入预测（幽灵文字） | 每轮结束后由辅助（便宜）模型草拟你最可能输入的下一句，浅色显示在提示符里 —— **Tab**（或 **→**）完整填入，直接打字即忽略。后台草拟，不阻塞 REPL，失败静默。可通过 `/config input_suggest=false` 或 `CHEETAH_SUGGEST=0` 关闭。[详情](../guides/reference.md#next-prompt-ghost-text) |
 | Brainstorm → Worker | `/brainstorm` 运行一场 N 角色辩论 → `todo_list.txt`；`/worker` 自动实现待办任务 |
 | SSJ 开发者模式 | `/ssj` —— 持久化的强力菜单，串联 Brainstorm、Worker、Review、Trading、Agent、Video/TTS、Monitor 等 |
 | 交易 agent | `/trading` 多 agent 分析、回测、模拟盘校准、MV 组合。[指南](../guides/trading.md) |

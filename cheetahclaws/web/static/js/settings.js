@@ -100,6 +100,7 @@ Object.assign(ChatApp.prototype, {
   _renderConfig(cfg) {
     document.getElementById('sp-current-model').textContent = cfg.model || '(not set)';
     document.getElementById('sp-permission').value = cfg.permission_mode || 'auto';
+    document.getElementById('sp-tool-profile').value = cfg.tool_profile || 'full';
     document.getElementById('sp-thinking').className =
       'sp-toggle' + (cfg.thinking ? ' on' : '');
     document.getElementById('sp-verbose').className =

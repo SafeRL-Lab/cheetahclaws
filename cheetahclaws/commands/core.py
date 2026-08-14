@@ -144,7 +144,10 @@ def cmd_context(_args: str, state, config) -> bool:
     tool_tokens = 0
     try:
         from cheetahclaws.tool_registry import get_tool_schemas
-        tool_tokens = _est(json.dumps(get_tool_schemas()))
+        tool_tokens = _est(json.dumps(get_tool_schemas(
+            config.get("tool_profile", "standard"),
+            config.get("disabled_tools") or (),
+        )))
     except Exception:
         tool_tokens = 0
 

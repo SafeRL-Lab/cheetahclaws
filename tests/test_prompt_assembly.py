@@ -69,7 +69,9 @@ def test_tmux_fragment_absent_when_tmux_unavailable(monkeypatch):
 
 def test_tmux_fragment_present_when_tmux_available(monkeypatch):
     monkeypatch.setattr(_context, "_tmux_available", lambda: True)
-    prompt = _context.build_system_prompt(_base_config())
+    prompt = _context.build_system_prompt(_base_config(
+        tool_profile="full", _active_tool_names=frozenset({"TmuxNewSession"}),
+    ))
     assert "TmuxNewSession" in prompt
     assert "## Tmux (Terminal Multiplexer)" in prompt
 
@@ -97,7 +99,12 @@ def test_assembly_order_is_base_then_env_then_memory_then_plan(monkeypatch):
     from cheetahclaws import runtime
     runtime.get_session_ctx("test-session").plan_file = "/tmp/plan.md"
     try:
-        prompt = _context.build_system_prompt(_base_config(permission_mode="plan"))
+        prompt = _context.build_system_prompt(
+            _base_config(
+                permission_mode="plan", tool_profile="full",
+                _active_tool_names=frozenset({"TmuxNewSession"}),
+            )
+        )
     finally:
         runtime.get_session_ctx("test-session").plan_file = None
         runtime.release_session_ctx("test-session")
@@ -105,7 +112,9 @@ def test_assembly_order_is_base_then_env_then_memory_then_plan(monkeypatch):
     idx_identity = prompt.index("CheetahClaws")
     idx_env = prompt.index("# Environment")
     idx_memory = prompt.index("Your persistent memories:")
-    idx_tmux = prompt.index("TmuxNewSession")
+    # The active-surface block may name TmuxNewSession earlier; use the
+    # fragment header to assert the assembly position of the actual guidance.
+    idx_tmux = prompt.index("## Tmux (Terminal Multiplexer)")
     idx_plan = prompt.index("# Plan Mode (ACTIVE)")
 
     assert idx_identity < idx_env < idx_memory < idx_tmux < idx_plan
@@ -125,3 +134,44 @@ def test_missing_config_falls_back_to_default():
     # The base portion of the prompt must match default.md verbatim, so
     # we can assert by checking the prompt starts with default's opening line.
     assert prompt.lstrip().startswith(default_body.splitlines()[0])
+
+
+def test_active_tool_surface_matches_the_selected_profile(monkeypatch):
+    monkeypatch.setattr(_context, "_tmux_available", lambda: False)
+
+    standard = _context.build_system_prompt(_base_config(tool_profile="standard"))
+    research = _context.build_system_prompt(_base_config(tool_profile="research"))
+
+    assert "# Active Tool Surface" in standard
+    assert "`WebFetch`" not in standard
+    assert "`WebFetch`" in research
+
+
+def test_planning_hint_is_only_shown_when_plan_tools_are_active(monkeypatch):
+    """The compact default must not rely on slash-command import side effects."""
+    monkeypatch.setattr(_context, "_tmux_available", lambda: False)
+    monkeypatch.setattr(_context, "_render_commands_block", lambda: "")
+
+    standard = _context.build_system_prompt(_base_config(tool_profile="standard"))
+    orchestration = _context.build_system_prompt(
+        _base_config(tool_profile="orchestration")
+    )
+
+    assert "For complex or multi-file work" not in standard
+    assert "For complex or multi-file work" in orchestration
+
+
+def test_standard_surface_omits_tmux_fragment_even_when_available(monkeypatch):
+    monkeypatch.setattr(_context, "_tmux_available", lambda: True)
+
+    prompt = _context.build_system_prompt(_base_config(tool_profile="standard"))
+
+    assert "TmuxNewSession" not in prompt
+
+
+def test_full_surface_omits_tmux_fragment_when_tool_is_not_registered(monkeypatch):
+    monkeypatch.setattr(_context, "_tmux_available", lambda: True)
+
+    prompt = _context.build_system_prompt(_base_config(tool_profile="full"))
+
+    assert "TmuxNewSession" not in prompt

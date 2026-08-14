@@ -215,12 +215,73 @@ def _render_plan_fragment(config: dict) -> str:
     return template.format(plan_file=plan_file)
 
 
+def _render_active_tool_surface(config: dict) -> str:
+    """Describe exactly the profile-filtered tools executable this turn."""
+    from cheetahclaws.tool_registry import (
+        get_profile_tool_names,
+        normalize_tool_profile,
+    )
+
+    try:
+        profile = normalize_tool_profile(config.get("tool_profile"))
+    except ValueError:
+        profile = "full"
+    disabled = config.get("disabled_tools") or ()
+    if not isinstance(disabled, (list, tuple, set, frozenset)):
+        disabled = ()
+    names = config.get("_active_tool_names")
+    if names is None:
+        names = get_profile_tool_names(profile, disabled)
+    visible = ", ".join(f"`{name}`" for name in sorted(names)) or "(none)"
+    planning_hint = ""
+    if {"EnterPlanMode", "ExitPlanMode"} <= set(names):
+        # Keep the planning cue with its optional tools rather than paying for
+        # it on every standard coding turn. This also makes the prompt
+        # deterministic: it must not depend on slash-command imports.
+        planning_hint = (
+            "- For complex or multi-file work, use `EnterPlanMode` before "
+            "making changes, then finish with `ExitPlanMode`.\n"
+        )
+    return (
+        "# Active Tool Surface\n"
+        f"- Profile: `{profile}`\n"
+        f"- Enabled tools: {visible}\n"
+        "- Call only the enabled tools above; a tool mentioned elsewhere is not "
+        "available unless it appears in this list.\n"
+        f"{planning_hint}"
+    )
+
+
 def _tmux_available() -> bool:
     try:
         from cheetahclaws.tmux_tools import tmux_available
         return tmux_available()
-    except ImportError:
+    except Exception:
+        # Optional integrations must not prevent prompt construction when an
+        # older supported Python cannot import their modern type annotations.
         return False
+
+
+def _tmux_fragment_enabled(config: dict) -> bool:
+    """Show tmux instructions only when its executable tool is active."""
+    from cheetahclaws.tool_registry import (
+        get_active_tool_names,
+        normalize_tool_profile,
+    )
+
+    try:
+        profile = normalize_tool_profile(config.get("tool_profile"))
+    except ValueError:
+        profile = "full"
+    if profile != "full" or not _tmux_available():
+        return False
+    disabled = config.get("disabled_tools") or ()
+    if not isinstance(disabled, (list, tuple, set, frozenset)):
+        disabled = ()
+    names = config.get("_active_tool_names")
+    if names is None:
+        names = get_active_tool_names(profile, disabled)
+    return "TmuxNewSession" in names and "TmuxNewSession" not in disabled
 
 
 def _render_commands_block() -> str:
@@ -283,8 +344,13 @@ def build_system_prompt(config: dict | None = None) -> str:
     # picked them up later, which is wrong for non-Claude families.
     provider = detect_provider(model_id) if model_id else ""
 
+    # Optional integration instructions must agree with the exact active tool
+    # set. A detected binary alone does not make a tool callable.
+    tmux_fragment = load_fragment("tmux") if _tmux_fragment_enabled(cfg) else ""
+
     parts: list[str] = [
         pick_base_prompt(provider, model_id),
+        _render_active_tool_surface(cfg),
         _render_env_block(cfg),
     ]
 
@@ -296,8 +362,8 @@ def build_system_prompt(config: dict | None = None) -> str:
     if memory_ctx:
         parts.append(f"# Memory\nYour persistent memories:\n{memory_ctx}")
 
-    if _tmux_available():
-        parts.append(load_fragment("tmux"))
+    if tmux_fragment:
+        parts.append(tmux_fragment)
 
     if cfg.get("permission_mode") == "plan":
         parts.append(_render_plan_fragment(cfg))

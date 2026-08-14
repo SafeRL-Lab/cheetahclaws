@@ -129,11 +129,27 @@ class TestFeatureFlag(_BridgeTestBase):
 # ── 2. Lifecycle ───────────────────────────────────────────────────────────
 
 
-def _quiet_telegram_worker_stub(stop_event):
-    """A pretend Telegram supervisor. Sits there waiting for the
-    stop_event so the daemon's lifecycle exercises real Thread.join().
-    Returns immediately when stop fires."""
-    stop_event.wait()
+def _quiet_telegram_worker_stub(config, inject_timeout_s: float = 5.0):
+    """A pretend Telegram supervisor. Sits there waiting for the stop_event
+    so the daemon's lifecycle exercises real Thread.join(). Returns
+    immediately when stop fires.
+
+    The caller can only inject ``config["_test_stop"]`` *after* bs.start()
+    returns, i.e. after this worker thread is already running — so read the
+    event lazily instead of at call time. Binding it eagerly (with a fresh
+    Event as the fallback) made this a race: on a loaded machine the worker
+    reached here first, waited on an event nobody would ever set, and stop()
+    timed out. Poll until the injection lands, then wait for real.
+    """
+    deadline = time.monotonic() + inject_timeout_s
+    while True:
+        stop_event = config.get("_test_stop") if isinstance(config, dict) else None
+        if stop_event is not None:
+            stop_event.wait()
+            return
+        if time.monotonic() >= deadline:
+            return  # never injected — don't wedge the thread
+        time.sleep(0.005)
 
 
 class TestLifecycle(_BridgeTestBase):
@@ -163,9 +179,7 @@ class TestLifecycle(_BridgeTestBase):
         # Patch the inner supervisor so we don't actually hit Telegram.
         with patch("cheetahclaws.bridges.telegram._tg_supervisor",
                    side_effect=lambda *a, **kw: _quiet_telegram_worker_stub(
-                       a[2].get("_test_stop", threading.Event())
-                       if len(a) > 2 and isinstance(a[2], dict)
-                       else threading.Event())):
+                       a[2] if len(a) > 2 and isinstance(a[2], dict) else {})):
             # The real bridge_worker rebinds _telegram_stop; pass the
             # bridge-supervisor's stop_event through ``config["_test_stop"]``
             # for our stub to consume.

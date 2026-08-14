@@ -448,6 +448,16 @@ def execute_tool(
     """Dispatch tool execution; ask permission for write/destructive ops."""
     cfg = config or {}
 
+    # This check must run *before* the registry's read-only cache lookup.  A
+    # cache key can cover normal config values, but it cannot safely encode
+    # ambient authorization such as the filesystem sandbox environment or the
+    # credential-path denylist.  Keep the wrapper check too as defense in depth
+    # for callers that invoke the registry directly.
+    if name == "Read" and inputs.get("file_path"):
+        denied = _check_path_allowed(inputs["file_path"], cfg)
+        if denied:
+            return denied
+
     def _check(desc: str) -> bool:
         if permission_mode == "accept-all":
             return True
@@ -496,7 +506,12 @@ def _register_builtins() -> None:
         denied = _check_path_allowed(p["file_path"], c)
         if denied:
             return denied
-        result = _read(**p)
+        result = _read(
+            **p,
+            max_bytes=c.get("tool_read_max_bytes", 256 * 1024),
+            scan_max_bytes=c.get("tool_read_scan_max_bytes", 2 * 1024 * 1024),
+            max_output_chars=c.get("tool_read_max_output_chars", 50_000),
+        )
         # Skip redirect for already-small results (errors, empty, etc.)
         if not result or len(result) < 8000:
             return result
@@ -578,7 +593,11 @@ def _register_builtins() -> None:
             name="WebFetch",
             schema=_schemas["WebFetch"],
             func=lambda p, c: (
-                _webfetch(p["url"], p.get("prompt"))
+                _webfetch(
+                    p["url"], p.get("prompt"),
+                    max_bytes=c.get("web_fetch_max_bytes", 512 * 1024),
+                    max_seconds=c.get("web_fetch_max_seconds", 30),
+                )
                 if isinstance(p.get("url"), str) and p["url"].strip()
                 else "Error: WebFetch requires a non-empty 'url' "
                      "argument (the URL to fetch)."
@@ -589,7 +608,11 @@ def _register_builtins() -> None:
             name="WebSearch",
             schema=_schemas["WebSearch"],
             func=lambda p, c: (
-                _websearch(p["query"])
+                _websearch(
+                    p["query"],
+                    max_bytes=c.get("web_search_max_bytes", 512 * 1024),
+                    max_seconds=c.get("web_search_max_seconds", 30),
+                )
                 if isinstance(p.get("query"), str) and p["query"].strip()
                 else "Error: WebSearch requires a non-empty 'query' "
                      "argument (the search string). Pass it like "

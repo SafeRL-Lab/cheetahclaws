@@ -663,6 +663,15 @@ body.resizing { cursor:col-resize; user-select:none; }
       </select>
     </div>
     <div class="sp-row">
+      <label>Tool Surface</label>
+      <select class="sp-select" id="sp-tool-profile" onchange="app.updateConfig('tool_profile', this.value)">
+        <option value="standard">Standard (coding)</option>
+        <option value="research">Research (web + documents)</option>
+        <option value="orchestration">Orchestration (agents + tasks)</option>
+        <option value="full">Full</option>
+      </select>
+    </div>
+    <div class="sp-row">
       <label>Thinking</label>
       <div class="sp-toggle" id="sp-thinking" onclick="app.toggleConfig('thinking')"></div>
     </div>
