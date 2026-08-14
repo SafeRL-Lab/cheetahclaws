@@ -9,6 +9,7 @@ Supported providers:
   qwen       — Alibaba DashScope (qwen-max, qwen-plus, ...)
   zhipu      — Zhipu GLM (glm-4, glm-4-plus, ...)
   deepseek   — DeepSeek (deepseek-v4-flash, deepseek-v4-pro, deepseek-chat, deepseek-reasoner)
+  openrouter — OpenRouter (openrouter/deepseek/deepseek-v4-flash, ...)
   minimax    — MiniMax (MiniMax-Text-01, abab6.5s-chat, ...)
   ollama     — Local Ollama (llama3.3, qwen2.5-coder, ...)
   lmstudio   — Local LM Studio (any loaded model)
@@ -19,6 +20,9 @@ Model string formats:
   "gpt-4o"                   auto-detected → openai
   "ollama/qwen2.5-coder"     explicit provider prefix
   "custom/my-model"          uses CUSTOM_BASE_URL from config
+  "openrouter/<vendor>/<model>"  multi-level path: the first segment is the
+  provider, everything after it is passed through as the upstream model ID
+  (e.g. "openrouter/deepseek/deepseek-v4-flash"). Also used by nim/ and litellm/.
 """
 from __future__ import annotations
 import json
@@ -103,6 +107,29 @@ PROVIDERS: dict[str, dict] = {
         "models": [
             "deepseek-v4-pro", "deepseek-v4-flash",
             "deepseek-chat", "deepseek-coder", "deepseek-reasoner",
+        ],
+    },
+    # OpenRouter — 400+ models from many vendors behind one OpenAI-compatible
+    # endpoint. Get a key at https://openrouter.ai/keys. Model IDs keep the
+    # upstream <vendor>/<model> path, so use the double-prefixed form
+    #   /model openrouter/deepseek/deepseek-v4-flash
+    # The first segment is the provider; the rest is passed through verbatim.
+    "openrouter": {
+        "type":       "openai",
+        "api_key_env": "OPENROUTER_API_KEY",
+        "base_url":   "https://openrouter.ai/api/v1",
+        "context_limit": 128000,
+        "max_completion_tokens": 16384,
+        "models": [
+            "deepseek/deepseek-v4-flash",
+            "deepseek/deepseek-v4-pro",
+            "deepseek/deepseek-chat",
+            "anthropic/claude-sonnet-4-6",
+            "openai/gpt-5",
+            "google/gemini-2.5-pro",
+            "meta-llama/llama-3.3-70b-instruct",
+            "qwen/qwen3-235b-a22b",
+            "mistralai/mistral-large-latest",
         ],
     },
     "minimax": {

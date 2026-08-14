@@ -41,6 +41,7 @@ def cmd_model(args: str, _state, config) -> bool:
         info("  e.g. /model gpt-4o")
         info("  e.g. /model ollama/qwen2.5-coder")
         info("  e.g. /model kimi:moonshot-v1-32k")
+        info("  e.g. /model openrouter/deepseek/deepseek-v4-flash  (multi-level: provider/upstream/model)")
     else:
         m = args.strip()
         # "/model ollama" with no model name → interactive picker
