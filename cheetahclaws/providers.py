@@ -23,6 +23,10 @@ Model string formats:
   "openrouter/<vendor>/<model>"  multi-level path: the first segment is the
   provider, everything after it is passed through as the upstream model ID
   (e.g. "openrouter/deepseek/deepseek-v4-flash"). Also used by nim/ and litellm/.
+  "openrouter/<vendor>/<model>@<provider>[/<quant>]"  optional routing suffix:
+  pins the secondary OpenRouter provider (and quantization level) via the
+  `provider` request body, keeping the model field a real model ID.
+  (e.g. "openrouter/deepseek/deepseek-v4-flash@gmicloud/fp8").
 """
 from __future__ import annotations
 import json
@@ -114,6 +118,9 @@ PROVIDERS: dict[str, dict] = {
     # upstream <vendor>/<model> path, so use the double-prefixed form
     #   /model openrouter/deepseek/deepseek-v4-flash
     # The first segment is the provider; the rest is passed through verbatim.
+    # To force a secondary provider / quantization, append "@<slug>[/<quant>]"
+    # (e.g. openrouter/deepseek/deepseek-v4-flash@gmicloud/fp8) — it is sent as
+    # the `provider` request body, not glued into the model ID.
     "openrouter": {
         "type":       "openai",
         "api_key_env": "OPENROUTER_API_KEY",
@@ -313,6 +320,45 @@ def detect_provider(model: str) -> str:
 def bare_model(model: str) -> str:
     """Strip 'provider/' prefix if present."""
     return model.split("/", 1)[1] if "/" in model else model
+
+
+# Quantization levels OpenRouter accepts in provider.quantizations.
+_OR_QUANTIZATIONS = frozenset({"fp4", "fp8", "int4", "int8"})
+
+
+def parse_openrouter_routing(model_id: str) -> tuple[str, dict | None]:
+    """Split an OpenRouter model string into (model ID, provider-routing body).
+
+    OpenRouter model IDs are always the upstream ``<vendor>/<model>`` path,
+    e.g. ``deepseek/deepseek-v4-flash``. Provider selection and quantization
+    are *request-body* elements (the ``provider`` object), not part of the
+    model ID — gluing them in ("gmicloud/fp8") makes OpenRouter reject the
+    request as an unknown model. To pin the secondary provider (and optionally
+    a quantization level), append ``@<provider-slug>[/<quantization>]`` to the
+    real model ID:
+
+      openrouter/deepseek/deepseek-v4-flash              → model only
+      openrouter/deepseek/deepseek-v4-flash@gmicloud     → provider.order=["gmicloud"]
+      openrouter/deepseek/deepseek-v4-flash@gmicloud/fp8 → + provider.quantizations=["fp8"]
+      openrouter/deepseek/deepseek-v4-flash@fp8          → quantizations only
+
+    Returns (clean model ID, provider body dict or None). ``@`` never appears
+    in OpenRouter catalog IDs, so the suffix is unambiguous with plain
+    passthrough.
+    """
+    model_id, _, routing = model_id.partition("@")
+    if not routing:
+        return model_id, None
+    parts = routing.split("/")
+    body: dict = {}
+    if parts[0] in _OR_QUANTIZATIONS:
+        body["quantizations"] = parts
+    else:
+        body["order"] = [parts[0]]
+        body["allow_fallbacks"] = False
+        if len(parts) > 1:
+            body["quantizations"] = parts[1:]
+    return model_id, body
 
 
 def nim_next_model(current: str) -> str | None:
@@ -1396,6 +1442,11 @@ def stream_openai_compat(
         # "auto" requires vLLM --enable-auto-tool-choice; omit if server doesn't support it
         if not config.get("disable_tool_choice"):
             kwargs["tool_choice"] = "auto"
+    # OpenRouter: forward pinned provider routing (order / quantizations) as a
+    # request-body element so the model field stays a real OpenRouter model ID.
+    _or_prov = config.get("_openrouter_provider")
+    if _or_prov:
+        kwargs.setdefault("extra_body", {})["provider"] = _or_prov
     _prov = detect_provider(model)
 
     # DeepSeek v4: thinking is ON by default and controlled via extra_body.
@@ -1885,6 +1936,14 @@ def stream(
     provider_name = detect_provider(model)
     model_name    = bare_model(model)
     prov          = PROVIDERS.get(provider_name, PROVIDERS["openai"])
+    # OpenRouter: peel the optional "@provider[/quantization]" routing suffix
+    # off the upstream model ID. Provider selection is a request-body element
+    # (the `provider` object), never part of the model ID — see
+    # parse_openrouter_routing.
+    if provider_name == "openrouter":
+        model_name, or_routing = parse_openrouter_routing(model_name)
+        if or_routing:
+            config = {**config, "_openrouter_provider": or_routing}
     api_key       = get_api_key(provider_name, config)
     session_id    = config.get("_session_id", "default")
 
