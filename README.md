@@ -41,6 +41,8 @@ Other install methods: [one-line install script](#alternative-one-line-install-s
 
 ## 🔥🔥🔥 News (Pacific Time)
 
+- August 16, 2026 (**v3.5.87**): **Permission prompts are now reserved for what actually needs a decision.** `auto` mode asks only when an action can change your files, run arbitrary code, or reach outside the session. Auto-approved now: **every** registry-marked read-only tool (18 more than before — diagnostics, task/memory queries, document readers), read-only shell **pipelines** (`git log | head -20`, `ls -la | grep test` — the old check rejected every `|`), session-state tools (tasks/memories/skills), and creating a **new** file inside the workspace. Still asks: overwrites, writes outside the workspace, `.git/hooks` and `.github/workflows` paths, interpreters and test/build runners, anything that deletes or uploads, and sub-agent spawns. The prompt also gained **`s`** — approve and stop asking for *that one command or file* for the session, a scoped alternative to `accept-all` (`/permissions clear` drops grants). The shell check is now a real parser instead of a prefix match, which along the way closed a hole where anything starting with `python `/`node `/`find ` auto-ran. [Details](docs/news.md)
+- August 16, 2026: **OpenRouter is now a first-class provider — one key, 400+ models, with the secondary provider pinnable per call (PR #179).** `/model openrouter/<vendor>/<model>` (e.g. `openrouter/deepseek/deepseek-v4-flash`) routes through [OpenRouter](https://openrouter.ai); the key comes from `OPENROUTER_API_KEY` or `/config openrouter_api_key=sk-or-...`, and the model shows up in the `/model` Tab picker and the Web UI picker automatically. Append `@<provider>[/<quantization>]` — `openrouter/deepseek/deepseek-v4-flash@gmicloud/fp8` — to pin which upstream serves the request; it is sent as OpenRouter's `provider` request-body object, so the model field stays a real catalog ID. Shipped alongside four routing fixes that gateway model IDs exposed: the provider is no longer re-derived from an already-stripped model string (which read `openrouter/deepseek/…` as the *DeepSeek* API and leaked DeepSeek-only request fields), cost estimates and context windows now resolve per model instead of defaulting to $0.00 and a flat 128k, and the `@…` routing suffix no longer strips a model of its prompt-family overlay. [Details](docs/news.md)
 - July 30, 2026 (**v3.5.86**): **Next-prompt ghost text — the REPL predicts the line you'd type next.** After each reply the **auxiliary** (cheap/fast) model drafts your most likely next message and shows it dim at the prompt; **Tab** (or **→**) accepts it in full, typing just types over it, and Enter alone never submits it. Drafting runs on a background thread so the prompt never waits, stays silent on any failure (no key / no model → simply no ghost), and is one-shot per prompt so a stale prediction is never shown. Off with `/config input_suggest=false` or `CHEETAH_SUGGEST=0`. Also in this release: the **terminal tab title now configures itself over Remote-SSH / WSL / devcontainers** — it used to write a settings file on the server that the editor never reads, and never retry; it now targets the remote Machine settings the window actually reads. First tagged release carrying the July 11 tab-title / prompt-cache and July 20 `tool_profile` / bounded-I/O changes. [Details](docs/news.md)
 - July 20, 2026: **Bounded-I/O fixes and a configurable tool surface.** `tool_profile` selects how many tool schemas are sent each turn — `full` (default, nothing hidden) / `standard` (compact coding) / `research` / `orchestration` — to cut prompt tokens on small-context models, switchable with `/config tool_profile=standard`. Also fixes two bounded-I/O regressions: `SummarizeLargeFile` no longer "summarizes" its own chunk-failure markers (clean `Error` when map/reduce fails), and the DuckDuckGo parser no longer crashes on a valueless `class` attribute. [Details](docs/news.md)
 - July 11, 2026: **Terminal tab title tracks the live task, plus a cross-turn fix for the Anthropic prompt cache.** [Details](docs/news.md)
@@ -165,7 +167,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 
 | Feature | Details |
 |---|---|
-| Multi-provider | Anthropic · OpenAI · Gemini · Kimi · Qwen · Zhipu · DeepSeek · MiniMax · Ollama · LM Studio · Custom endpoint |
+| Multi-provider | Anthropic · OpenAI · Gemini · Kimi · Qwen · Zhipu · DeepSeek · MiniMax · OpenRouter · Ollama · LM Studio · Custom endpoint |
 | Agent loop | Streaming API + automatic tool-use loop; the whole loop is in `agent.py` |
 | 28 built-in tools | Read · Write · Edit · Bash · Glob · Grep · WebFetch · WebSearch · NotebookEdit · GetDiagnostics · Memory* · Agent/SendMessage · Skill · AskUserQuestion · Task* · SleepTimer · EnterPlanMode/ExitPlanMode · *(MCP + plugin tools auto-added)* |
 | Tool profiles | `tool_profile` trims the tool surface sent each turn to save prompt tokens: `full` (default, everything) · `standard` (compact coding) · `research` (web + documents) · `orchestration` (agents + tasks). Set with `/config tool_profile=standard`. [Guide](docs/guides/usage.md#tool-profiles-tool_profile) |
@@ -175,7 +177,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Context compression | Four cooperating layers — dynamic `max_tokens` cap, per-model context-window registry, two-layer snip + AI summarize at 70%, and auto-fanout for oversized tool outputs. [Details](docs/guides/reference.md) |
 | Persistent memory | Dual-scope (user + project), 4 types, confidence/source metadata, conflict detection, recency-weighted search, `/memory consolidate`. Verification-anchored staleness — freshness tracks a `last_verified` date (not file mtime), so reading a memory can't fake-refresh it; only `MemoryVerify` resets the clock. [Details](docs/guides/features.md) |
 | Multi-agent | Spawn typed sub-agents (coder/reviewer/researcher/…), git-worktree isolation, background mode |
-| Permission system | `auto` / `accept-edits` / `accept-all` / `manual` / `plan` modes (`accept-edits` = auto-run edits, still ask for other Bash; hard denylist blocks host-destroying commands in every mode) |
+| Permission system | Prompts only for what can change your files, run arbitrary code, or reach outside the session — every read-only tool, read-only shell pipeline (`git log \| head`), and new-file creation in the workspace runs silently. `s` at a prompt grants one command/file for the session (scoped alternative to accept-all). Modes: `auto` / `accept-edits` / `accept-all` / `manual` / `plan`; a hard denylist blocks host-destroying commands in every mode |
 | Checkpoints & plan mode | Auto-snapshot conversation + files each turn (`/checkpoint`, `/rewind`); `/plan` read-only analysis mode |
 | Slash commands & themes | 50+ slash commands with Tab-complete; `/theme` offers 15 curated palettes |
 | Next-prompt ghost text | After each turn the auxiliary (cheap) model drafts the line you'd most likely type next and shows it dim at the prompt — **Tab** (or **→**) accepts it in full, typing ignores it. Background-drafted, never blocks the REPL, silent on failure. Off via `/config input_suggest=false` or `CHEETAH_SUGGEST=0`. [Details](docs/guides/reference.md#next-prompt-ghost-text) |
@@ -208,7 +210,10 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | **Zhipu (GLM)** | `glm-4-plus` · `glm-4` · `glm-4-flash` (free tier) | 128k | `ZHIPU_API_KEY` |
 | **DeepSeek** | `deepseek-chat` · `deepseek-reasoner` | 64k | `DEEPSEEK_API_KEY` |
 | **MiniMax** | `MiniMax-Text-01` · `MiniMax-VL-01` · `abab6.5s-chat` | 256k–1M | `MINIMAX_API_KEY` |
+| **OpenRouter** _(400+ models, one key)_ | `openrouter/deepseek/deepseek-v4-flash` · `openrouter/anthropic/claude-sonnet-4-6` · `openrouter/openai/gpt-5` | varies | `OPENROUTER_API_KEY` |
 | **AWS Bedrock / Azure / Vertex** _(via litellm)_ | `litellm/<provider>/<model>` | varies | provider-specific |
+
+> **`openrouter/` gateway:** one key for 400+ models across vendors. The model ID keeps OpenRouter's upstream `<vendor>/<model>` path, so the call is double-prefixed: `openrouter/deepseek/deepseek-v4-flash`. To pin which upstream provider (and quantization) serves the request, append `@<provider>[/<quantization>]` — `openrouter/deepseek/deepseek-v4-flash@gmicloud/fp8` — which is sent as OpenRouter's `provider` request-body object rather than glued into the model ID. See [usage.md](docs/guides/usage.md#openrouter-400-models-one-key).
 
 > **`litellm/` adapter:** routes to 100+ providers behind one SDK — mainly for upstreams with awkward auth (Bedrock SigV4, Azure deployment routing, Vertex service-account JWTs). For plain OpenAI-shaped endpoints, prefer the zero-dependency `custom/` adapter. Install with `pip install ".[litellm]"`. See [recipes.md](docs/guides/recipes.md#alternative-cloud-providers-with-non-trivial-auth-via-the-litellm-provider).
 
@@ -305,7 +310,16 @@ cheetahclaws --model gpt-4o             # pick any model
 cheetahclaws --model deepseek-chat --thinking --verbose
 ```
 
-Provider get-key pages: [Anthropic](https://console.anthropic.com) · [OpenAI](https://platform.openai.com) · [Gemini](https://aistudio.google.com) · [Kimi](https://platform.moonshot.cn) · [Qwen](https://dashscope.aliyun.com) · [Zhipu](https://open.bigmodel.cn) · [DeepSeek](https://platform.deepseek.com) · [MiniMax](https://platform.minimaxi.chat).
+Provider get-key pages: [Anthropic](https://console.anthropic.com) · [OpenAI](https://platform.openai.com) · [Gemini](https://aistudio.google.com) · [Kimi](https://platform.moonshot.cn) · [Qwen](https://dashscope.aliyun.com) · [Zhipu](https://open.bigmodel.cn) · [DeepSeek](https://platform.deepseek.com) · [MiniMax](https://platform.minimaxi.chat) · [OpenRouter](https://openrouter.ai/keys).
+
+**One key for 400+ models** — [OpenRouter](https://openrouter.ai) fronts every major vendor behind one OpenAI-compatible endpoint, so a single key covers Claude, GPT, Gemini, DeepSeek, Llama, Qwen and the rest:
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...
+cheetahclaws --model openrouter/deepseek/deepseek-v4-flash
+cheetahclaws --model openrouter/anthropic/claude-sonnet-4-6
+cheetahclaws --model openrouter/deepseek/deepseek-v4-flash@gmicloud/fp8   # pin the upstream provider
+```
 
 **AWS Bedrock / Azure / Vertex** use the `litellm/<provider>/<model>` form (`pip install ".[litellm]"`) — full env-var recipes in [recipes.md](docs/guides/recipes.md#alternative-cloud-providers-with-non-trivial-auth-via-the-litellm-provider).
 
@@ -371,6 +385,16 @@ cheetahclaws --model gpt-4o                  # 1. auto-detect by prefix
 cheetahclaws --model ollama/qwen2.5-coder    # 2. provider/model
 cheetahclaws --model kimi:moonshot-v1-32k    # 3. provider:model
 ```
+
+**Gateways keep the upstream path.** OpenRouter, NIM and LiteLLM address models by a `<vendor>/<model>` path of their own, so those calls are double-prefixed — only the **first** segment is the provider, everything after it is passed through verbatim:
+
+```bash
+cheetahclaws --model openrouter/deepseek/deepseek-v4-flash        # → OpenRouter, model "deepseek/deepseek-v4-flash"
+cheetahclaws --model nim/meta/llama-3.3-70b-instruct              # → NVIDIA NIM
+cheetahclaws --model openrouter/deepseek/deepseek-v4-flash@gmicloud/fp8   # + pinned provider / quantization
+```
+
+OpenRouter additionally accepts an `@<provider>[/<quantization>]` suffix (quantizations: `fp4` · `fp8` · `int4` · `int8`). It never reaches the model field — it is split off and sent as OpenRouter's `provider` routing object (`order` + `allow_fallbacks: false`, plus `quantizations` when given), so pinning `@gmicloud` means the request fails rather than silently landing on a different upstream.
 
 **Auto-detection by prefix:** `claude-`→anthropic · `gpt-`/`o1`/`o3`→openai · `gemini-`→gemini · `moonshot-`/`kimi-`→kimi · `qwen`/`qwq-`→qwen · `glm-`→zhipu · `deepseek-`→deepseek · `MiniMax-`/`abab`→minimax · `llama`/`mistral`/`phi`/`gemma`/`mixtral`/`codellama`→ollama.
 

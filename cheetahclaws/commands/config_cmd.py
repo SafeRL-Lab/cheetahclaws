@@ -203,18 +203,38 @@ def cmd_permissions(args: str, _state, config) -> bool:
     from cheetahclaws.tools import ask_input_interactive
     modes = ["auto", "accept-edits", "accept-all", "manual", "plan"]
     mode_desc = {
-        "auto":         "Auto-run reads + allow-listed Bash; ask before edits and other commands (default)",
+        "auto":         "Auto-run every read-only tool + read-only shell commands; ask before edits, arbitrary commands, sub-agents (default)",
         "accept-edits": "Like auto, but also auto-run file edits (Write/Edit); other Bash still asks",
         "accept-all":   "Run everything without asking (host-destroying commands are still hard-blocked)",
         "manual":       "Ask before every tool call, including reads",
         "plan":         "Read-only: reads + safe Bash run, all edits/writes are refused (see /plan for the plan-file workflow)",
     }
+    # "/permissions clear" drops the session-scoped grants made by answering
+    # "s" at a prompt — the escape hatch when one was given too broadly.
+    if args.strip() in ("clear", "reset"):
+        from cheetahclaws import runtime
+        grants = runtime.get_ctx(config).approved_sigs
+        n = len(grants)
+        grants.clear()
+        ok(f"Cleared {n} session permission grant{'s' if n != 1 else ''}.")
+        return True
     if not args.strip():
         current = config.get("permission_mode", "auto")
         menu_buf = clr("\n  ── Permission Mode ──", "dim")
         for i, m in enumerate(modes):
             marker = clr("●", "green") if m == current else clr("○", "dim")
             menu_buf += f"\n  {marker} {clr(f'[{i+1}]', 'yellow')} {clr(m, 'cyan')}  {clr(mode_desc[m], 'dim')}"
+        try:
+            from cheetahclaws import runtime
+            grants = sorted(runtime.get_ctx(config).approved_sigs)
+        except Exception:
+            grants = []
+        if grants:
+            menu_buf += "\n\n  " + clr(f"Session grants ({len(grants)}) — /permissions clear to drop:", "dim")
+            for g in grants[:10]:
+                menu_buf += "\n    " + clr(f"• {g}", "dim")
+            if len(grants) > 10:
+                menu_buf += "\n    " + clr(f"… {len(grants) - 10} more", "dim")
         print(menu_buf)
         print()
         try:

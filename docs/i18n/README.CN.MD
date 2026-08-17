@@ -41,6 +41,7 @@ cheetahclaws        # start chatting!
 
 ## 🔥🔥🔥 新闻（太平洋时间）
 
+- 2026 年 8 月 16 日（**v3.5.87**）：**权限确认只留给真正需要你做决定的操作，外加 OpenRouter 成为一等公民供应商。**`auto` 模式的判定重写为一条规则：只有可能**改动你的文件、执行任意代码、或触及会话之外**的动作才询问。现在静默执行的包括：注册表中标记为只读的**全部**工具（比之前多 18 个——诊断、任务/记忆查询、文档读取等）、只读 shell **管道**（`git log | head -20`、`ls -la | grep test`——旧实现只要含 `|` 就一律询问）、会话状态类工具（任务/记忆/技能），以及在工作区内**新建**文件。仍然询问：覆盖已有文件、写到工作区外、`.git/hooks` 与 `.github/workflows` 等路径、解释器与构建/测试运行器、任何删除或上传动作、以及子 agent 生成。确认框新增 **`s`**：批准并且**这一条命令或这一个文件**本会话不再问——accept-all 的有作用域替代品（`/permissions clear` 可清空）。shell 判定也从前缀匹配换成了真正的解析，顺带堵掉了一个洞：旧词表会把 `python `、`node `、`find ` 开头的命令直接放行，等于自动执行任意代码。**OpenRouter（PR #179）**：`/model openrouter/<vendor>/<model>` 一把 key 直达 400+ 模型，可用 `@<provider>[/<quantization>]` 固定上游提供商；随之修复了网关模型串带来的四个路由问题（provider 误判、成本记 0、上下文窗口一刀切 128k、量化后缀吃掉 prompt overlay）。[详情](../news.md)
 - 2026 年 7 月 30 日（**v3.5.86**）：**输入框「幽灵提示」—— REPL 预测你下一句要输入的内容。** 每轮回答结束后，由**辅助（便宜/快速）模型**草拟你最可能输入的下一句，以浅灰斜体显示在提示符里：按 **Tab**（或 **→**）完整填入，直接打字即覆盖，只按回车不会提交它。草拟在后台线程进行，不阻塞 REPL；任何失败都静默处理（没有辅助模型 / 没有 API key / 供应商故障 → 只是不显示提示）；每条提示只对当前这一个提示符有效，不会残留成过期建议。关闭方式：`/config input_suggest=false` 或 `CHEETAH_SUGGEST=0`。本版本还修复了 **Remote-SSH / WSL / devcontainer 下终端标签标题无法自动配置**的问题：此前它把设置写进服务器端一个 VS Code 永远不会读的文件并从此不再重试，现在会写入窗口真正读取的远端 Machine 设置。本版本也是首个包含 7 月 11 日（终端标签标题 + Anthropic 提示缓存修复）与 7 月 20 日（`tool_profile` + bounded-I/O 修复）改动的正式版本。[详情](../news.md)
 - 2026 年 7 月 9 日：**官方 Docker 镜像 + 一条命令发布。** Docker Hub 上提供预构建镜像（`docker pull chauncygu/cheetahclaws`），无需克隆即可运行 Web UI；修复了首次运行时的 `PermissionError`，方法是预先创建由非 root 用户所有的 `.cheetahclaws`/`workspace` 目录，使 compose 的 `image` 可通过 `CHEETAH_IMAGE` 覆盖，并新增 `scripts/docker-publish.sh`（自动读取版本，支持多/单架构）。新增文档章节：**从 Docker Hub 拉取** 与 **交互式设置 / CLI 模式**。[详情](../news.md)
 - 2026 年 7 月 8 日：新增 **`/workspace`** 命令，用于管理 `~/.cheetahclaws/workspaces` 下的隔离工作目录（`list`/`switch`/`default`/`create`/`delete`）（PR #162）；启动时自动切换现为通过 `workspace_auto` **可选开启**（默认关闭，因此在项目目录中启动的行为保持不变），且 `default` 现在是一个独立于「最近使用」的固定键。[详情](../news.md)
@@ -177,7 +178,7 @@ Claude Code 是一款强大的、生产级的 AI 编码助手 —— 但它的�
 | 上下文压缩 | 四个协同层 —— 动态 `max_tokens` 上限、按模型的上下文窗口注册表、在 70% 时的两层裁剪 + AI 摘要，以及对超大工具输出的自动 fanout。[详情](../guides/reference.md) |
 | 持久记忆 | 双作用域（用户 + 项目）、4 种类型、置信度/来源元数据、冲突检测、按新近度加权的搜索、`/memory consolidate`。基于验证锚定的陈旧度 —— 新鲜度追踪 `last_verified` 日期（而非文件 mtime），因此读取一条记忆无法伪造刷新它；只有 `MemoryVerify` 能重置该计时。[详情](../guides/features.md) |
 | 多 Agent | 派生有类型的子 agent（coder/reviewer/researcher/…）、git-worktree 隔离、后台模式 |
-| 权限系统 | `auto` / `accept-edits` / `accept-all` / `manual` / `plan` 模式（`accept-edits` = 自动执行编辑，但对其他 Bash 仍会询问；硬性拒绝列表在所有模式下都会阻止会毁坏主机的命令） |
+| 权限系统 | 只有可能改动你的文件、执行任意代码、或触及会话之外的动作才会询问 —— 所有只读工具、只读 shell 管道（`git log \| head`）、以及在工作区内新建文件都静默执行。在确认框按 `s` 可将**这一条命令或这一个文件**授权到本会话结束（accept-all 的有作用域替代品，`/permissions clear` 清空）。模式：`auto` / `accept-edits` / `accept-all` / `manual` / `plan`；硬性拒绝列表在所有模式下都会阻止会毁坏主机的命令。[详情](../guides/security.md#what-runs-without-asking-auto-mode) |
 | 检查点与 plan 模式 | 每一轮自动快照对话 + 文件（`/checkpoint`、`/rewind`）；`/plan` 只读分析模式 |
 | 斜杠命令与主题 | 50+ 个带 Tab 补全的斜杠命令；`/theme` 提供 15 套精选配色 |
 | 下一句输入预测（幽灵文字） | 每轮结束后由辅助（便宜）模型草拟你最可能输入的下一句，浅色显示在提示符里 —— **Tab**（或 **→**）完整填入，直接打字即忽略。后台草拟，不阻塞 REPL，失败静默。可通过 `/config input_suggest=false` 或 `CHEETAH_SUGGEST=0` 关闭。[详情](../guides/reference.md#next-prompt-ghost-text) |
@@ -210,7 +211,10 @@ Claude Code 是一款强大的、生产级的 AI 编码助手 —— 但它的�
 | **智谱 (GLM)** | `glm-4-plus` · `glm-4` · `glm-4-flash`（免费层） | 128k | `ZHIPU_API_KEY` |
 | **DeepSeek** | `deepseek-chat` · `deepseek-reasoner` | 64k | `DEEPSEEK_API_KEY` |
 | **MiniMax** | `MiniMax-Text-01` · `MiniMax-VL-01` · `abab6.5s-chat` | 256k–1M | `MINIMAX_API_KEY` |
+| **OpenRouter** _(400+ 模型，一把 key)_ | `openrouter/deepseek/deepseek-v4-flash` · `openrouter/anthropic/claude-sonnet-4-6` · `openrouter/openai/gpt-5` | 视情况而定 | `OPENROUTER_API_KEY` |
 | **AWS Bedrock / Azure / Vertex** _(通过 litellm)_ | `litellm/<provider>/<model>` | 视情况而定 | 特定于提供商 |
+
+> **`openrouter/` 网关：** 一把 key 覆盖跨厂商的 400+ 模型。模型 ID 保留 OpenRouter 上游的 `<vendor>/<model>` 路径，因此调用是双层前缀的：`openrouter/deepseek/deepseek-v4-flash`。若要指定由哪个上游提供商（及量化精度）来服务该请求，在模型后追加 `@<provider>[/<quantization>]` —— `openrouter/deepseek/deepseek-v4-flash@gmicloud/fp8` —— 它会作为 OpenRouter 的 `provider` 请求体对象发送，而不是拼进模型 ID。参见 [usage.md](../guides/usage.md#openrouter-400-models-one-key)。
 
 > **`litellm/` 适配器：** 在单一 SDK 后路由到 100+ 提供商 —— 主要用于认证方式较棘手的上游（Bedrock SigV4、Azure 部署路由、Vertex 服务账号 JWT）。对于普通的 OpenAI 形态端点，优先使用零依赖的 `custom/` 适配器。用 `pip install ".[litellm]"` 安装。参见 [recipes.md](../guides/recipes.md#alternative-cloud-providers-with-non-trivial-auth-via-the-litellm-provider)。
 

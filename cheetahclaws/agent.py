@@ -60,6 +60,10 @@ class TurnDone:
 class PermissionRequest:
     description: str
     granted: bool = False
+    # Coarse key for a session-scoped "don't ask again" grant, e.g.
+    # "Bash:git push" or "Edit:/repo/src/app.py". Empty when the front end
+    # should offer approve/reject only. See agent._permission_signature.
+    signature: str = ""
 
 @dataclass
 class QuotaPause:
@@ -489,7 +493,10 @@ def run(
                 if config.get("permission_mode") == "plan":
                     permitted = False
                 else:
-                    req = PermissionRequest(description=_permission_desc(tc))
+                    req = PermissionRequest(
+                        description=_permission_desc(tc),
+                        signature=_permission_signature(tc),
+                    )
                     yield req
                     permitted = req.granted
             permissions[tc["id"]] = permitted
@@ -682,6 +689,115 @@ def run(
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
+# Tools that mutate only CheetahClaws' own session state — task lists, saved
+# memories, loaded skill text, a sleep timer.  They touch nothing in the
+# user's repo, reach no network, and are undone by editing the same store, so
+# prompting for them is pure friction.  Anything that can reach the user's
+# files, the shell, or the outside world stays off this list — notably Agent
+# (a sub-agent runs its own tool loop) and MemoryDelete (destroys user data).
+_SELF_STATE_TOOLS = frozenset({
+    "TaskCreate", "TaskUpdate", "MemorySave", "Skill", "SleepTimer",
+    "EnterPlanMode", "ExitPlanMode", "AskUserQuestion",
+})
+
+
+def _tool_is_read_only(name: str) -> bool:
+    """True when the registry marks this tool as never mutating state.
+
+    Read from the registry rather than a hardcoded name list so every
+    read-only tool — built-in, plugin, or module (Task/Memory/Skill queries,
+    document readers, browser reads) — is auto-approved on the same rule, and
+    a new one is covered the day it is registered.  Unknown tools (MCP,
+    third-party) default to False and still prompt.
+    """
+    try:
+        from cheetahclaws.tool_registry import get_tool
+        tdef = get_tool(name)
+        return bool(tdef and tdef.read_only)
+    except Exception:
+        return False
+
+
+def _creates_new_workspace_file(tc: dict, config: dict) -> bool:
+    """True for a Write that creates a *new* file inside the workspace.
+
+    Creating a file destroys nothing: there is no prior content to lose and
+    the file is inside the directory the session is already working in, so
+    prompting for it is friction without a decision behind it.  Overwriting
+    an existing file, or writing anywhere outside the workspace, still asks.
+
+    Excluded regardless: any path with a dot-prefixed component
+    (``.git/hooks/pre-commit``, ``.github/workflows/*``, ``.env``) — those are
+    configuration and hook locations that get executed or trusted by other
+    tools, which makes creating one a decision the user should see.
+    Disable the whole rule with ``/config auto_create_files=false``.
+    """
+    if not config.get("auto_create_files", True):
+        return False
+    path = (tc.get("input") or {}).get("file_path") or ""
+    if not path:
+        return False
+    try:
+        from pathlib import Path as _Path
+        target = _Path(path).expanduser()
+        if not target.is_absolute():
+            target = _Path.cwd() / target
+        target = target.resolve()
+        if target.exists():
+            return False   # overwriting real content → ask
+        root = _Path(config.get("allowed_root")
+                     or config.get("_worktree_cwd")
+                     or _Path.cwd()).resolve()
+        rel = target.relative_to(root)   # ValueError → outside the workspace
+    except Exception:
+        return False
+    return not any(part.startswith(".") for part in rel.parts)
+
+
+def _permission_signature(tc: dict) -> str:
+    """Stable key for a 'don't ask again this session' grant.
+
+    Deliberately coarser than the exact call so a grant is actually useful,
+    but never so coarse that it covers a different kind of action:
+
+      Bash  → the program + its subcommand ("git push", "pytest"), so repeat
+              runs of the same command with different arguments are covered
+      Write/Edit/NotebookEdit → the specific file, so approving one file
+              never approves another
+      other → the tool name
+    """
+    name = tc["name"]
+    inp = tc.get("input") or {}
+    if name == "Bash":
+        cmd = (inp.get("command", "") or "").strip()
+        try:
+            import shlex
+            parts = shlex.split(cmd)[:2]
+        except ValueError:
+            parts = cmd.split()[:2]
+        if not parts:
+            return "Bash"
+        prog = os.path.basename(parts[0])
+        _MULTI = {"git", "npm", "pnpm", "yarn", "pip", "pip3", "uv", "cargo",
+                  "go", "docker", "kubectl", "make", "poetry", "conda",
+                  "systemctl", "brew", "gh"}
+        if prog in _MULTI and len(parts) > 1 and not parts[1].startswith("-"):
+            return f"Bash:{prog} {parts[1]}"
+        return f"Bash:{prog}"
+    path = inp.get("file_path") or inp.get("notebook_path")
+    if path:
+        return f"{name}:{os.path.abspath(path)}"
+    return name
+
+
+def _session_approved(tc: dict, config: dict) -> bool:
+    """True if the user already granted this signature for the session."""
+    try:
+        return _permission_signature(tc) in runtime.get_ctx(config).approved_sigs
+    except Exception:
+        return False
+
+
 def _check_permission(tc: dict, config: dict) -> bool:
     """Return True if operation is auto-approved (no need to ask user)."""
     perm_mode = config.get("permission_mode", "auto")
@@ -709,8 +825,12 @@ def _check_permission(tc: dict, config: dict) -> bool:
             return False
         if name == "Bash":
             from cheetahclaws.tools import _is_safe_bash
-            return _is_safe_bash(tc["input"].get("command", ""))
+            return _is_safe_bash(tc["input"].get("command", ""), config)
         return True  # reads are fine
+
+    # Already granted for this session by answering "s" at an earlier prompt.
+    if _session_approved(tc, config):
+        return True
 
     # "accept-edits" mode: same as "auto", but file edits are pre-approved.
     # Bash and everything else still follow the auto rules below, so a
@@ -719,13 +839,17 @@ def _check_permission(tc: dict, config: dict) -> bool:
     if perm_mode == "accept-edits" and name in ("Write", "Edit", "NotebookEdit"):
         return True
 
-    # "auto" mode (and accept-edits fall-through): only ask for writes and non-safe bash
-    if name in ("Read", "Glob", "Grep", "WebFetch", "WebSearch"):
+    # "auto" mode (and accept-edits fall-through): prompt only for actions
+    # that can change the user's files, run arbitrary code, or reach outside
+    # the session — reads and self-state updates run straight through.
+    if _tool_is_read_only(name) or name in _SELF_STATE_TOOLS:
+        return True
+    if name == "Write" and _creates_new_workspace_file(tc, config):
         return True
     if name == "Bash":
         from cheetahclaws.tools import _is_safe_bash
-        return _is_safe_bash(tc["input"].get("command", ""))
-    return False   # Write, Edit → ask
+        return _is_safe_bash(tc["input"].get("command", ""), config)
+    return False   # Write, Edit, and anything unclassified → ask
 
 
 def _permission_desc(tc: dict) -> str:

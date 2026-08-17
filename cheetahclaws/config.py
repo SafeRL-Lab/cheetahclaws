@@ -22,7 +22,18 @@ DEFAULTS = {
     # the session. WARNING: setting it ABOVE the model's real window disables the
     # compaction safety net — the API may then reject oversized prompts.
     "context_window":   0,
-    "permission_mode":  "auto",   # auto | accept-all | manual
+    "permission_mode":  "auto",   # auto | accept-edits | accept-all | manual | plan
+    # Extra program names to treat as read-only in the Bash auto-approval
+    # check (tools/security.py). Use for a project's own reporting/query
+    # commands so routine calls stop prompting:
+    #   /config bash_safe_extra=["bazel-query","./scripts/status"]
+    # Only add programs that cannot write, delete, or execute other programs.
+    "bash_safe_extra":  [],
+    # Auto-approve a Write that CREATES a new file inside the working
+    # directory (nothing to overwrite, nothing outside the workspace).
+    # Overwrites, paths outside the workspace, and any dot-prefixed path
+    # (.git/, .github/, .env) still prompt. Set False to review every write.
+    "auto_create_files": True,
     "verbose":          False,
     # terminal_title: set the terminal window/tab title to the current task —
     #   a pulsing glyph while working, a static badge when idle (Claude-Code
