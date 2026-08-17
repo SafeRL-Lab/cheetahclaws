@@ -176,7 +176,7 @@ Claude Code は強力で本番グレードの AI コーディングアシスタ�
 | コンテキスト圧縮 | 協調する4つのレイヤー — 動的な `max_tokens` の上限、モデルごとのコンテキストウィンドウレジストリ、70% で2層の切り取り + AI 要約、そして肥大化したツール出力の自動ファンアウト。[詳細](../guides/reference.md) |
 | 永続メモリ | デュアルスコープ（ユーザー + プロジェクト）、4種類、信頼度/ソースのメタデータ、競合検出、新しさ重み付け検索、`/memory consolidate`。検証を基準とした陳腐化 — 鮮度は（ファイルの mtime ではなく）`last_verified` の日付を追跡するため、メモリを読むだけでは偽って更新できません。`MemoryVerify` だけがタイマーをリセットします。[詳細](../guides/features.md) |
 | マルチエージェント | 型付きサブエージェント（coder/reviewer/researcher/…）を起動、git-worktree による分離、バックグラウンドモード |
-| 権限システム | `auto` / `accept-edits` / `accept-all` / `manual` / `plan` モード（`accept-edits` = 編集は自動実行、他の Bash は引き続き確認。ハードな拒否リストがあらゆるモードでホスト破壊コマンドをブロック） |
+| 権限システム | 確認を求めるのは、ファイルを変更する・任意のコードを実行する・セッションの外に到達する可能性のある操作だけです。読み取り専用ツール、読み取り専用のシェルパイプライン（`git log \| head`）、ワークスペース内での新規ファイル作成はすべて確認なしで実行されます。プロンプトで `s` を選ぶと、**そのコマンド 1 つ／そのファイル 1 つ**だけをセッション中に限り許可できます（accept-all のスコープ付き代替、`/permissions clear` で解除）。モード: `auto` / `accept-edits` / `accept-all` / `manual` / `plan`。ハードな拒否リストはあらゆるモードでホスト破壊コマンドをブロックします。[詳細](../guides/security.md#what-runs-without-asking-auto-mode) |
 | チェックポイント & プランモード | ターンごとに会話 + ファイルを自動スナップショット（`/checkpoint`、`/rewind`）。`/plan` は読み取り専用の分析モード |
 | スラッシュコマンド & テーマ | Tab 補完付きの50以上のスラッシュコマンド。`/theme` は15の厳選パレットを提供 |
 | Brainstorm → Worker | `/brainstorm` は N ペルソナの討論を実行 → `todo_list.txt`。`/worker` は保留中のタスクを自動実装 |
@@ -208,7 +208,10 @@ Claude Code は強力で本番グレードの AI コーディングアシスタ�
 | **Zhipu (GLM)** | `glm-4-plus` · `glm-4` · `glm-4-flash`（無料枠） | 128k | `ZHIPU_API_KEY` |
 | **DeepSeek** | `deepseek-chat` · `deepseek-reasoner` | 64k | `DEEPSEEK_API_KEY` |
 | **MiniMax** | `MiniMax-Text-01` · `MiniMax-VL-01` · `abab6.5s-chat` | 256k–1M | `MINIMAX_API_KEY` |
+| **OpenRouter** _(400+ モデル、キー1つ)_ | `openrouter/deepseek/deepseek-v4-flash` · `openrouter/anthropic/claude-sonnet-4-6` · `openrouter/openai/gpt-5` | 様々 | `OPENROUTER_API_KEY` |
 | **AWS Bedrock / Azure / Vertex** _(litellm 経由)_ | `litellm/<provider>/<model>` | 様々 | プロバイダー固有 |
+
+> **`openrouter/` ゲートウェイ:** 1つのキーでベンダーをまたぐ400以上のモデルにアクセスできます。モデル ID は OpenRouter のアップストリーム `<vendor>/<model>` パスをそのまま保持するため、呼び出しは二重プレフィックスになります: `openrouter/deepseek/deepseek-v4-flash`。どのアップストリームプロバイダー（および量子化）がリクエストを処理するかを固定するには、`@<provider>[/<quantization>]` を付加します — `openrouter/deepseek/deepseek-v4-flash@gmicloud/fp8` — これはモデル ID に連結されるのではなく、OpenRouter の `provider` リクエストボディオブジェクトとして送信されます。[usage.md](../guides/usage.md#openrouter-400-models-one-key) を参照。
 
 > **`litellm/` アダプター:** 1つの SDK の背後で100以上のプロバイダーにルーティングします — 主に扱いにくい認証を持つアップストリーム（Bedrock SigV4、Azure のデプロイメントルーティング、Vertex のサービスアカウント JWT）向けです。素の OpenAI 形式のエンドポイントには、依存関係ゼロの `custom/` アダプターを推奨します。`pip install ".[litellm]"` でインストールしてください。[recipes.md](../guides/recipes.md#alternative-cloud-providers-with-non-trivial-auth-via-the-litellm-provider) を参照。
 

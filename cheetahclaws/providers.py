@@ -322,6 +322,23 @@ def bare_model(model: str) -> str:
     return model.split("/", 1)[1] if "/" in model else model
 
 
+def lookup_model_key(model: str) -> str:
+    """Return the per-model registry key for any model string.
+
+    Gateway providers (openrouter/, nim/, litellm/, custom/) keep the upstream
+    ``<vendor>/<model>`` path, and OpenRouter adds an optional
+    ``@<provider>[/<quant>]`` routing suffix.  Neither belongs in a *model*
+    lookup, so registries keyed by plain model name (COSTS,
+    _MODEL_CONTEXT_LIMITS) miss and silently fall back to a default — $0.00
+    for a billed gateway, or the wrong context window.
+
+      "openrouter/anthropic/claude-sonnet-4-6"             → "claude-sonnet-4-6"
+      "openrouter/deepseek/deepseek-v4-flash@gmicloud/fp8" → "deepseek-v4-flash"
+      "gpt-4o"                                             → "gpt-4o"
+    """
+    return model.partition("@")[0].rsplit("/", 1)[-1]
+
+
 # Quantization levels OpenRouter accepts in provider.quantizations.
 _OR_QUANTIZATIONS = frozenset({"fp4", "fp8", "int4", "int8"})
 
@@ -523,17 +540,36 @@ def get_model_context_window(provider: str, model: str,
       3. Provider-level PROVIDERS[provider]['context_limit']
       4. Fallback 128000
     """
-    bare = bare_model(model)
-    if bare in _MODEL_CONTEXT_LIMITS:
-        return _MODEL_CONTEXT_LIMITS[bare]
-    bare_lc = bare.lower()
-    for k, v in _MODEL_CONTEXT_LIMITS.items():
-        if bare_lc.startswith(k.lower()):
-            return v
+    # Two candidates: the provider-stripped ID, and — for gateway routes that
+    # keep an upstream <vendor>/<model> path (openrouter/, nim/, custom/) — the
+    # bare model name.  Without the second, every openrouter/* model fell
+    # through to the provider-level 128000 default regardless of its real
+    # window: too-late compaction on a 32k model, too-early on a 1M one.
+    candidates = [bare_model(model)]
+    key = lookup_model_key(model)
+    if key != candidates[0]:
+        candidates.append(key)
+    for cand in candidates:
+        if cand in _MODEL_CONTEXT_LIMITS:
+            return _MODEL_CONTEXT_LIMITS[cand]
+        cand_lc = cand.lower()
+        for k, v in _MODEL_CONTEXT_LIMITS.items():
+            if cand_lc.startswith(k.lower()):
+                return v
     if provider == "custom" and base_url:
         live = _fetch_custom_model_limit(base_url, model, api_key)
         if live:
             return live
+    # Gateway route whose vendor segment names a provider we know natively
+    # ("openrouter/anthropic/claude-…" → anthropic): that vendor's window is a
+    # far better estimate than the gateway's one-size-fits-all default, which
+    # is necessarily generic across a 400-model catalog.
+    upstream = candidates[0]
+    vendor = upstream.split("/", 1)[0] if "/" in upstream else ""
+    if vendor and vendor != provider:
+        vendor_ctx = PROVIDERS.get(vendor, {}).get("context_limit")
+        if vendor_ctx:
+            return vendor_ctx
     prov_ctx = PROVIDERS.get(provider, {}).get("context_limit")
     if prov_ctx:
         return prov_ctx
@@ -667,7 +703,12 @@ def calc_cost(model: str, in_tok: int, out_tok: int,
     input_tokens, priced at 0.1x (read) / 1.25x (write) of the input rate —
     omitting them would silently under-report spend once prompt caching is
     active."""
-    ic, oc = COSTS.get(bare_model(model), (0.0, 0.0))
+    # Try the provider-stripped ID first ("meta/llama-3.3-70b-instruct" for
+    # nim/), then the bare model name — the latter is what prices gateway
+    # routes like openrouter/deepseek/deepseek-v4-flash, which would otherwise
+    # report $0.00 and sail straight past the cost budget in
+    # quota.record_usage.
+    ic, oc = COSTS.get(bare_model(model)) or COSTS.get(lookup_model_key(model), (0.0, 0.0))
     cache = (cache_read_tok * 0.1 + cache_write_tok * 1.25) * ic
     return (in_tok * ic + out_tok * oc + cache) / 1_000_000
 
@@ -1447,7 +1488,14 @@ def stream_openai_compat(
     _or_prov = config.get("_openrouter_provider")
     if _or_prov:
         kwargs.setdefault("extra_body", {})["provider"] = _or_prov
-    _prov = detect_provider(model)
+    # `model` here already has the provider prefix stripped, so re-detecting
+    # from it mis-reads gateway routes: "deepseek/deepseek-v4-flash" is an
+    # *OpenRouter* model ID but resolves to the deepseek provider, which then
+    # injects DeepSeek-only request fields (extra_body.thinking,
+    # reasoning_effort) and applies DeepSeek's caps instead of OpenRouter's.
+    # stream() passes the real provider via _provider_name; detect_provider
+    # stays the fallback for direct callers (tests, embedders).
+    _prov = config.get("_provider_name") or detect_provider(model)
 
     # DeepSeek v4: thinking is ON by default and controlled via extra_body.
     # `thinking` is tri-state in DEFAULTS (config.py): None = unset (let
@@ -1944,6 +1992,10 @@ def stream(
         model_name, or_routing = parse_openrouter_routing(model_name)
         if or_routing:
             config = {**config, "_openrouter_provider": or_routing}
+    # Downstream helpers get `model_name` with the provider prefix already
+    # stripped and cannot re-derive the provider for multi-level IDs
+    # (openrouter/, nim/, custom/), so pass it explicitly.
+    config        = {**config, "_provider_name": provider_name}
     api_key       = get_api_key(provider_name, config)
     session_id    = config.get("_session_id", "default")
 

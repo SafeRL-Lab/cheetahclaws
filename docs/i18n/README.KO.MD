@@ -176,7 +176,7 @@ Claude Code는 강력한 프로덕션 등급 AI 코딩 어시스턴트입니다 
 | 컨텍스트 압축 | 협력하는 네 개의 계층 — 동적 `max_tokens` 상한, 모델별 컨텍스트 윈도우 레지스트리, 70%에서의 2계층 축약 + AI 요약, 과대 도구 출력에 대한 자동 팬아웃. [자세히](../guides/reference.md) |
 | 영속 메모리 | 이중 스코프(사용자 + 프로젝트), 4가지 유형, 신뢰도/출처 메타데이터, 충돌 감지, 최신성 가중 검색, `/memory consolidate`. 검증 기준 노후화 — 최신성은 파일 mtime이 아닌 `last_verified` 날짜를 추적하므로, 메모리를 읽는 것만으로 거짓 갱신할 수 없고 `MemoryVerify`만이 시계를 재설정합니다. [자세히](../guides/features.md) |
 | 멀티 에이전트 | 유형화된 서브 에이전트(coder/reviewer/researcher/…) 생성, git-worktree 격리, 백그라운드 모드 |
-| 권한 시스템 | `auto` / `accept-edits` / `accept-all` / `manual` / `plan` 모드 (`accept-edits` = 편집은 자동 실행하되 다른 Bash는 확인; 하드 거부 목록이 모든 모드에서 호스트 파괴 명령을 차단) |
+| 권한 시스템 | 파일을 변경하거나, 임의의 코드를 실행하거나, 세션 밖에 접근할 수 있는 동작에 대해서만 묻습니다. 읽기 전용 도구, 읽기 전용 셸 파이프라인(`git log \| head`), 작업 공간 안에서의 새 파일 생성은 모두 조용히 실행됩니다. 프롬프트에서 `s`를 선택하면 **그 명령 하나 또는 그 파일 하나**만 세션 동안 허용합니다(accept-all의 범위 제한 대안, `/permissions clear`로 해제). 모드: `auto` / `accept-edits` / `accept-all` / `manual` / `plan`. 하드 거부 목록은 모든 모드에서 호스트 파괴 명령을 차단합니다. [자세히](../guides/security.md#what-runs-without-asking-auto-mode) |
 | 체크포인트 & 플랜 모드 | 매 턴 대화 + 파일 자동 스냅샷(`/checkpoint`, `/rewind`); `/plan` 읽기 전용 분석 모드 |
 | 슬래시 명령 & 테마 | Tab 자동 완성이 되는 50개 이상의 슬래시 명령; `/theme`가 엄선된 15개 팔레트 제공 |
 | Brainstorm → Worker | `/brainstorm`이 N-페르소나 토론을 실행 → `todo_list.txt`; `/worker`가 대기 중인 작업을 자동 구현 |
@@ -208,7 +208,10 @@ Claude Code는 강력한 프로덕션 등급 AI 코딩 어시스턴트입니다 
 | **Zhipu (GLM)** | `glm-4-plus` · `glm-4` · `glm-4-flash` (무료 티어) | 128k | `ZHIPU_API_KEY` |
 | **DeepSeek** | `deepseek-chat` · `deepseek-reasoner` | 64k | `DEEPSEEK_API_KEY` |
 | **MiniMax** | `MiniMax-Text-01` · `MiniMax-VL-01` · `abab6.5s-chat` | 256k–1M | `MINIMAX_API_KEY` |
+| **OpenRouter** _(400+ 모델, 키 하나)_ | `openrouter/deepseek/deepseek-v4-flash` · `openrouter/anthropic/claude-sonnet-4-6` · `openrouter/openai/gpt-5` | 다양 | `OPENROUTER_API_KEY` |
 | **AWS Bedrock / Azure / Vertex** _(litellm 경유)_ | `litellm/<provider>/<model>` | 다양 | 프로바이더별 상이 |
+
+> **`openrouter/` 게이트웨이:** 키 하나로 여러 벤더의 400개 이상 모델을 사용합니다. 모델 ID는 OpenRouter의 업스트림 `<vendor>/<model>` 경로를 그대로 유지하므로 호출은 접두사가 두 겹입니다: `openrouter/deepseek/deepseek-v4-flash`. 어떤 업스트림 프로바이더(및 양자화)가 요청을 처리할지 고정하려면 `@<provider>[/<quantization>]`를 덧붙이세요 — `openrouter/deepseek/deepseek-v4-flash@gmicloud/fp8` — 이는 모델 ID에 붙는 대신 OpenRouter의 `provider` 요청 본문 객체로 전송됩니다. [usage.md](../guides/usage.md#openrouter-400-models-one-key) 참고.
 
 > **`litellm/` 어댑터:** 하나의 SDK 뒤에서 100개 이상의 프로바이더로 라우팅합니다 — 주로 까다로운 인증이 필요한 업스트림(Bedrock SigV4, Azure 배포 라우팅, Vertex 서비스 계정 JWT)을 위한 것입니다. 일반적인 OpenAI 형태의 엔드포인트에는 의존성이 없는 `custom/` 어댑터를 선호하세요. `pip install ".[litellm]"`로 설치합니다. [recipes.md](../guides/recipes.md#alternative-cloud-providers-with-non-trivial-auth-via-the-litellm-provider) 참고.
 

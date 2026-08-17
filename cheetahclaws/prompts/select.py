@@ -90,7 +90,10 @@ def _family_overlay_for_model(model_id: str) -> str | None:
     """Return the overlay filename for a model ID, or None."""
     if not model_id:
         return None
-    tail = model_id.rsplit("/", 1)[-1].lower()
+    # Drop any OpenRouter "@<provider>[/<quant>]" routing suffix first —
+    # without it "…/claude-sonnet-4-6@gmicloud/fp8" tails to "fp8" and the
+    # model silently loses its family overlay.
+    tail = model_id.partition("@")[0].rsplit("/", 1)[-1].lower()
     for keywords, fname in _OVERLAY_RULES:
         if any(k in tail for k in keywords):
             return fname

@@ -150,6 +150,53 @@ A dropped key prints a one-line `[mcp] Dropped potentially-dangerous env
 keys …` notice to stderr. Set `CHEETAHCLAWS_MCP_TRUST_ENV=1` if a
 legitimate MCP server actually needs one of these.
 
+## What runs without asking (`auto` mode)
+
+The permission prompt exists for actions that can **change your files, run
+arbitrary code, or reach outside the session**. Everything else runs silently,
+because a prompt a user always answers "yes" to trains them to stop reading it
+— and a user who reaches for `accept-all` out of prompt fatigue ends up with
+*less* protection than one who is asked only about the things that matter.
+
+Auto-approval is decided by classification, never by string prefix:
+
+- **Tools** — `ToolDef.read_only` in the registry. Reads, searches, document
+  extraction, diagnostics, task/memory queries. Anything unclassified
+  (MCP servers, third-party plugins) defaults to prompting.
+- **Shell** — the command is parsed with `shlex`, split on `|`, `&&`, `||`,
+  `;`, and *every* segment must be a known read-only invocation. Output
+  redirection (`>`), backgrounding (`&`), subshells, and command substitution
+  (`` ` ``, `$(…)`, `<(…)`) are refused outright, since each can act — or hide
+  a second command — after a safe-looking prefix.
+- **Writes** — creating a *new* file inside the workspace destroys nothing and
+  runs; overwriting an existing file, writing outside the workspace, or
+  creating any dot-prefixed path (`.git/hooks/*`, `.github/workflows/*`,
+  `.env` — locations other tools execute or trust) still prompts.
+
+Two things are deliberately **not** auto-approved even though they read as
+routine: interpreters (`python`, `node`, `ruby`, `perl`, `sh`) and anything
+that runs a program it is handed (`xargs`, `env VAR=… cmd`, `timeout`, `make`,
+`npm run`, `pytest`). `python script.py` is indistinguishable from
+`python -c 'os.system("…")'` at the permission layer, so both ask. Their
+`--version`/`--help` forms still run silently — those execute nothing.
+
+> Earlier versions matched a list of *prefixes* and auto-ran anything starting
+> with `python `, `node `, `ruby `, `perl `, or `find ` — which auto-approved
+> arbitrary code execution and `find … -delete`. Those are now classified
+> properly and prompt.
+
+**Session grants.** Answering `s` at a prompt grants one signature
+(`Bash:git commit`, `Edit:/repo/app.py`) for the rest of the session. Grants
+are held on the in-memory `RuntimeContext`, never persisted, dropped when the
+session ends, ignored entirely in `manual` mode, and clearable with
+`/permissions clear`. Prefer it to `accept-all`: it removes the repeat prompt
+without removing the gate on everything else.
+
+**Extending the allowlist.** `/config bash_safe_extra=["your-query-tool"]`
+adds project-specific read-only programs. Only add a program that cannot
+write, delete, or execute another program — the entry bypasses the prompt for
+every invocation of it, whatever its arguments.
+
 ## Permission mode `accept-all`
 
 `/permissions accept-all` (or clicking "Accept all" at the permission

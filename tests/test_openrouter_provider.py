@@ -17,8 +17,8 @@ import pytest
 
 from cheetahclaws.providers import (
     PROVIDERS, AssistantTurn, TextChunk,
-    bare_model, detect_provider, parse_openrouter_routing,
-    stream, stream_openai_compat,
+    bare_model, calc_cost, detect_provider, lookup_model_key,
+    parse_openrouter_routing, stream, stream_openai_compat,
 )
 
 
@@ -163,3 +163,125 @@ def test_openai_compat_sends_provider_as_request_body(monkeypatch):
     assert captured["kwargs"]["model"] == "deepseek/deepseek-v4-flash"
     assert captured["kwargs"]["extra_body"]["provider"] == routing
     assert any(isinstance(ev, AssistantTurn) for ev in events)
+
+
+# ── Provider identity must survive the prefix strip ──────────────────────
+#
+# `stream()` hands `stream_openai_compat` a model string with the provider
+# prefix already removed, so an OpenRouter route arrives as a plain upstream
+# path ("deepseek/deepseek-v4-flash").  Re-deriving the provider from that
+# string reads it as the *DeepSeek* provider — the tests below pin the
+# behaviour that must not regress.
+
+
+def _capture_request(monkeypatch):
+    """Patch openai.OpenAI and return the dict that receives create()'s kwargs."""
+    captured: dict = {}
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            captured["kwargs"] = kwargs
+            return []
+
+    class FakeChat:
+        completions = FakeCompletions()
+
+    class FakeOpenAI:
+        def __init__(self, *args, **kwargs):
+            self.chat = FakeChat
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    return captured
+
+
+def test_openrouter_deepseek_route_omits_deepseek_only_fields(monkeypatch):
+    """`extra_body.thinking` / `reasoning_effort` are DeepSeek-API fields.
+    An openrouter/deepseek/... route must not pick them up just because the
+    upstream vendor segment reads "deepseek"."""
+    captured = _capture_request(monkeypatch)
+
+    list(stream(
+        "openrouter/deepseek/deepseek-v4-flash", "sys", [], [],
+        {"openrouter_api_key": "sk-x", "thinking": False,
+         "reasoning_effort": "high"},
+    ))
+
+    kwargs = captured["kwargs"]
+    assert "thinking" not in (kwargs.get("extra_body") or {})
+    assert "reasoning_effort" not in kwargs
+
+
+def test_deepseek_provider_still_gets_its_thinking_toggle(monkeypatch):
+    """Guard the other direction: the real DeepSeek provider keeps the field."""
+    captured = _capture_request(monkeypatch)
+
+    list(stream("deepseek/deepseek-v4-flash", "sys", [], [],
+                {"deepseek_api_key": "sk-x", "thinking": False}))
+
+    assert captured["kwargs"]["extra_body"]["thinking"] == {"type": "disabled"}
+
+
+def test_openrouter_uses_max_tokens_and_its_own_cap(monkeypatch):
+    """OpenRouter's documented output field is `max_tokens`.  A route whose
+    vendor segment is "openai" must not switch to the OpenAI-only
+    `max_completion_tokens`, and the cap must come from the openrouter entry."""
+    captured = _capture_request(monkeypatch)
+
+    list(stream("openrouter/openai/gpt-5", "sys", [], [],
+                {"openrouter_api_key": "sk-x", "max_tokens": 64000}))
+
+    kwargs = captured["kwargs"]
+    assert "max_completion_tokens" not in kwargs
+    assert kwargs["max_tokens"] <= PROVIDERS["openrouter"]["max_completion_tokens"]
+
+
+# ── Per-model registry lookups (cost, context window) ────────────────────
+
+
+@pytest.mark.parametrize("model_id,expected_key", [
+    ("openrouter/deepseek/deepseek-v4-flash",             "deepseek-v4-flash"),
+    ("openrouter/deepseek/deepseek-v4-flash@gmicloud/fp8", "deepseek-v4-flash"),
+    ("openrouter/anthropic/claude-sonnet-4-6",            "claude-sonnet-4-6"),
+    ("gpt-4o",                                            "gpt-4o"),
+])
+def test_lookup_model_key_strips_prefixes_and_routing(model_id, expected_key):
+    assert lookup_model_key(model_id) == expected_key
+
+
+def test_openrouter_usage_is_priced():
+    """OpenRouter bills real money — a $0.00 estimate would let a session sail
+    past the cost budget in quota.record_usage."""
+    direct  = calc_cost("deepseek-v4-flash", 1_000_000, 1_000_000)
+    gateway = calc_cost("openrouter/deepseek/deepseek-v4-flash", 1_000_000, 1_000_000)
+    assert direct > 0
+    assert gateway == direct
+    # The routing suffix must not knock the lookup out either.
+    assert calc_cost("openrouter/deepseek/deepseek-v4-flash@gmicloud/fp8",
+                     1_000_000, 1_000_000) == direct
+
+
+def test_openrouter_context_window_resolves_per_model():
+    """A gateway route must resolve the real model's window, not the
+    provider-level default."""
+    from cheetahclaws.compaction import get_context_limit
+    model = "openrouter/meta-llama/llama-3.3-70b-instruct"
+    assert (get_context_limit(model, {"model": model})
+            == get_context_limit("llama-3.3-70b-instruct", {}))
+
+
+def test_routing_suffix_keeps_model_family_overlay():
+    """The prompt overlay routes on the model-name tail; the `@provider/quant`
+    suffix must not make "claude-sonnet-4-6@gmicloud/fp8" tail to "fp8"."""
+    from cheetahclaws.prompts.select import _family_overlay_for_model
+    assert (_family_overlay_for_model(
+        "openrouter/anthropic/claude-sonnet-4-6@gmicloud/fp8") == "claude.md")
+
+
+def test_openrouter_context_window_falls_back_to_vendor_provider():
+    """When the per-model registry has no entry, a gateway route should still
+    beat the gateway's generic default by reading the vendor's own window
+    (openrouter/anthropic/… → Anthropic's 200k, not OpenRouter's 128k)."""
+    from cheetahclaws.compaction import get_context_limit
+    model = "openrouter/anthropic/claude-sonnet-4-6"
+    assert (get_context_limit(model, {"model": model})
+            == PROVIDERS["anthropic"]["context_limit"])

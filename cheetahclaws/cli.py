@@ -357,9 +357,9 @@ def _compact_perm_desc(desc: str, max_len: int = 100) -> str:
     return first
 
 
-def ask_permission_interactive(desc: str, config: dict) -> bool:
+def ask_permission_interactive(desc: str, config: dict, signature: str = "") -> bool:
     # Inline-keyboard buttons for bridges that support them (Telegram today).
-    # Terminal / Slack / WeChat ignore `options` and the [y/N/a] hint in the
+    # Terminal / Slack / WeChat ignore `options` and the [y/N/s/a] hint in the
     # prompt text keeps them functional.
     # In quiet mode, collapse multi-line commands so the approval prompt stays
     # a single tidy line instead of dumping the entire script.
@@ -369,13 +369,35 @@ def ask_permission_interactive(desc: str, config: dict) -> bool:
     perm_options = [
         ("✅ Approve",       "y"),
         ("❌ Reject",        "n"),
-        ("✅✅ Accept all",  "a"),
     ]
+    # "s" is the scoped alternative to the blunt accept-all: it grants exactly
+    # this command/file for the rest of the session, so a task that edits one
+    # file forty times asks once instead of forty times — without handing over
+    # the whole tool surface the way accept-all does.
+    hint = "[y/N/a(ccept-all)]"
+    if signature:
+        perm_options.append((f"🔁 Always allow {signature}", "s"))
+        hint = f"[y/N/s(ession: {signature})/a(ccept-all)]"
+    perm_options.append(("✅✅ Accept all", "a"))
     text = ask_input_interactive(
-        f"  Allow: {desc}  [y/N/a(ccept-all)] ",
+        f"  Allow: {desc}  {hint} ",
         config,
         options=perm_options,
     ).strip().lower()
+
+    if signature and text in ("s", "session", "always"):
+        try:
+            from cheetahclaws import runtime as _runtime
+            _runtime.get_ctx(config).approved_sigs.add(signature)
+        except Exception:
+            pass   # a failed grant just means the next call asks again
+        msg = f"Allowing {signature} for the rest of this session."
+        if _is_in_tg_turn(config):
+            _tg_send(config.get("telegram_token"), config.get("telegram_chat_id"),
+                     f"🔁 {msg}")
+        else:
+            ok(f"  {msg}")
+        return True
 
     if text == "a" or text == "accept all" or text == "accept-all":
         config["permission_mode"] = "accept-all"
@@ -388,6 +410,33 @@ def ask_permission_interactive(desc: str, config: dict) -> bool:
         return True
 
     return text in ("y", "yes")
+
+
+def _ask_permission_event(ev, config: dict) -> bool:
+    """Route a PermissionRequest to the prompt, tolerating 2-arg handlers.
+
+    ``ask_permission_interactive`` gained a third ``signature`` argument, but
+    bridges, plugins and tests may hold a two-argument override of it. Calling
+    those with three positionals raises a TypeError that the callers' `except`
+    turns into a silent *denial* — the failure mode is invisible and looks
+    like the model being blocked for no reason. Pass the signature only when
+    the live callable actually accepts it.
+    """
+    sig = getattr(ev, "signature", "")
+    fn = ask_permission_interactive   # resolved at call time: honours monkeypatching
+    if sig:
+        try:
+            import inspect
+            params = inspect.signature(fn).parameters.values()
+            accepts = (len(params) >= 3
+                       or any(p.kind in (inspect.Parameter.VAR_POSITIONAL,
+                                         inspect.Parameter.VAR_KEYWORD)
+                              for p in params))
+        except (TypeError, ValueError):
+            accepts = False
+        if accepts:
+            return fn(ev.description, config, sig)
+    return fn(ev.description, config)
 
 
 # ── Proactive watcher ──────────────────────────────────────────────────────
@@ -954,7 +1003,7 @@ def _start_headless_bridges(config: dict) -> None:
                     # denied on any failure so a broken bridge never auto-runs
                     # a sensitive tool.
                     try:
-                        ev.granted = ask_permission_interactive(ev.description, config)
+                        ev.granted = _ask_permission_event(ev, config)
                     except Exception:
                         ev.granted = False
         except Exception:
@@ -1344,7 +1393,7 @@ def repl(config: dict, initial_prompt: str = None):
                     elif isinstance(event, PermissionRequest):
                         _stop_tool_spinner()
                         flush_response()
-                        event.granted = ask_permission_interactive(event.description, config)
+                        event.granted = _ask_permission_event(event, config)
                         # Live will restart automatically on next TextChunk
 
                     elif isinstance(event, ToolEnd):

@@ -480,7 +480,7 @@ def execute_tool(
             return "Denied: user rejected edit operation"
     elif name == "Bash":
         cmd = inputs.get("command", "") or ""
-        if permission_mode != "accept-all" and not _is_safe_bash(cmd):
+        if permission_mode != "accept-all" and not _is_safe_bash(cmd, cfg):
             if not _check(f"Bash: {cmd or '<missing command>'}"):
                 return "Denied: user rejected bash command"
     elif name == "NotebookEdit":

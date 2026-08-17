@@ -138,9 +138,16 @@ for the full list of 100+ supported providers.
 
 **When to prefer `custom/` over `litellm/`:** if your endpoint speaks
 plain OpenAI Chat Completions and accepts a bearer token (vLLM, LM
-Studio, TGI, Together, Fireworks, Groq, OpenRouter, …), `custom/` is
+Studio, TGI, Together, Fireworks, Groq, …), `custom/` is
 zero-dependency and zero-config beyond `CUSTOM_BASE_URL`. Reach for
 `litellm/` only when the auth gymnastics above are the actual blocker.
+
+**OpenRouter has its own provider now** — prefer `openrouter/<vendor>/<model>`
+over both `custom/` and `litellm/openrouter/…`: the base URL and key env
+(`OPENROUTER_API_KEY`) are built in, the models show up in the `/model` Tab
+picker, and it is the only route that supports pinning the upstream provider
+with the `@<provider>[/<quantization>]` suffix. See
+[usage.md](usage.md#openrouter-400-models-one-key).
 
 ---
 

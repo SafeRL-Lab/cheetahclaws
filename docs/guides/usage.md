@@ -110,6 +110,53 @@ cheetahclaws --model minimax/MiniMax-VL-01
 cheetahclaws --model minimax/abab6.5s-chat
 ```
 
+### OpenRouter (400+ models, one key)
+
+[OpenRouter](https://openrouter.ai) fronts every major vendor behind one
+OpenAI-compatible endpoint, so a single key reaches Claude, GPT, Gemini,
+DeepSeek, Llama, Qwen and ~400 more. Get a key at
+[openrouter.ai/keys](https://openrouter.ai/keys).
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...       # or: /config openrouter_api_key=sk-or-...
+
+cheetahclaws --model openrouter/deepseek/deepseek-v4-flash
+cheetahclaws --model openrouter/anthropic/claude-sonnet-4-6
+cheetahclaws --model openrouter/openai/gpt-5
+```
+
+**The model ID is double-prefixed.** OpenRouter addresses models by an
+upstream `<vendor>/<model>` path, so the first segment (`openrouter`) is the
+provider and *everything after it* is passed through verbatim as the model
+ID. `openrouter/deepseek/deepseek-v4-flash` therefore sends
+`deepseek/deepseek-v4-flash` — which is exactly what OpenRouter's catalog
+lists. (`nim/` works the same way.)
+
+**Pinning the upstream provider / quantization.** OpenRouter picks a
+secondary provider for you by default. To force one, append
+`@<provider-slug>[/<quantization>]` to the model:
+
+```bash
+cheetahclaws --model openrouter/deepseek/deepseek-v4-flash@gmicloud       # this provider only
+cheetahclaws --model openrouter/deepseek/deepseek-v4-flash@gmicloud/fp8   # + quantization
+cheetahclaws --model openrouter/deepseek/deepseek-v4-flash@fp8            # quantization only
+```
+
+The suffix is **split off before the request** and sent as OpenRouter's
+`provider` routing object — the model field always stays a real catalog ID
+(gluing the provider into the model ID makes OpenRouter reject the call as
+an unknown model). Accepted quantizations: `fp4` · `fp8` · `int4` · `int8`.
+Pinning a provider also sets `allow_fallbacks: false`, so a request fails
+loudly instead of silently landing on a different upstream — drop the
+suffix if you would rather have OpenRouter reroute around an outage.
+
+> **Cost tracking:** `/cost` and the `/quota` budget price OpenRouter usage
+> from the same per-model table as direct calls, so a model CheetahClaws
+> already knows (`deepseek-v4-flash`, `claude-sonnet-4-6`, …) is billed the
+> same whichever route it takes. A model with no price entry still records
+> tokens but estimates $0 — set a **token** budget rather than a dollar one
+> if you rely on hard caps for exotic models.
+
 ### LiteLLM (AWS Bedrock / Azure / Vertex AI)
 
 Use the `litellm/` prefix when the upstream needs auth that's painful to

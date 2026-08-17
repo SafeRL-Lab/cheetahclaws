@@ -52,7 +52,7 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/help` | Show all commands |
 | `/clear` | Clear conversation history |
 | `/model` | Show current model + list all available models |
-| `/model <name>` | Switch model (takes effect immediately). Type `/model ` and press **Tab** for a `provider/model` completion picker — one default per provider + a two-level `litellm/<backend>/<model>` tree (PR #166) |
+| `/model <name>` | Switch model (takes effect immediately). Type `/model ` and press **Tab** for a `provider/model` completion picker — one default per provider + a two-level `litellm/<backend>/<model>` tree (PR #166). Gateways keep their upstream path, so only the first segment is the provider: `openrouter/deepseek/deepseek-v4-flash`, optionally `@<provider>[/<quant>]` to pin the upstream (PR #179) |
 | `/config` | Show all current config values |
 | `/config key=value` | Set a config value (persisted to disk). v3.5.78+ parses JSON values: `["a","b"]`, `{"k":"v"}`, signed numbers, quoted strings — list/dict configs no longer get silently saved as literal strings. |
 | `/config context_window=<N>` | Override the context window (tokens) for the session. `0` = use the model's default. Drives the prompt `%` indicator, `/context`, the compaction trigger, **and** the per-call output-token cap — all consistently. Distinct from `max_tokens` (which is the **output** cap, not the window). Bidirectional: a smaller value forces earlier compaction; a larger value corrects a stale default. Read live, so it takes effect on the next prompt (no restart). Warns if set above the model's real window (that would disable compaction and the API may reject oversized prompts). |
@@ -320,6 +320,7 @@ export DASHSCOPE_API_KEY=sk-...      # Qwen
 export ZHIPU_API_KEY=...             # Zhipu GLM
 export DEEPSEEK_API_KEY=sk-...       # DeepSeek
 export MINIMAX_API_KEY=...           # MiniMax
+export OPENROUTER_API_KEY=sk-or-...  # OpenRouter (400+ models, one key)
 ```
 
 #### `.env` file (loaded automatically)
@@ -356,6 +357,7 @@ The env var always wins over any persisted value in `~/.cheetahclaws/config.json
 /config zhipu_api_key=...
 /config deepseek_api_key=sk-...
 /config minimax_api_key=...
+/config openrouter_api_key=sk-or-...
 ```
 
 Keys are saved to `~/.cheetahclaws/config.json` and loaded automatically on next launch.
@@ -382,7 +384,8 @@ Keys are saved to `~/.cheetahclaws/config.json` and loaded automatically on next
   "qwen_api_key": "sk-...",
   "kimi_api_key": "sk-...",
   "deepseek_api_key": "sk-...",
-  "minimax_api_key": "..."
+  "minimax_api_key": "...",
+  "openrouter_api_key": "sk-or-..."
 }
 ```
 
@@ -390,9 +393,11 @@ Keys are saved to `~/.cheetahclaws/config.json` and loaded automatically on next
 
 ## Permission System
 
+The prompt is reserved for actions that can **change your files, run arbitrary code, or reach outside the session**. Everything else runs silently.
+
 | Mode | Behavior |
 |---|---|
-| `auto` (default) | Reads + allow-listed Bash run automatically; prompts before file writes (`Write`/`Edit`) and any other Bash command. |
+| `auto` (default) | Every read-only tool and every read-only shell pipeline runs automatically, as does creating a new file inside the workspace; prompts before overwriting/editing files, running arbitrary commands, and spawning sub-agents. |
 | `accept-edits` | Like `auto`, but also auto-runs file edits (`Write`/`Edit`/`NotebookEdit`); other (non-allow-listed) Bash still prompts. The middle ground between `auto` and `accept-all`. |
 | `accept-all` | Never prompts; all operations proceed automatically. |
 | `manual` | Prompts before every single operation, including reads. |
@@ -403,15 +408,45 @@ A **hard denylist** (`rm -rf /`, `mkfs`, `dd` to a raw disk device, `chmod -R 77
 **When prompted:**
 
 ```
-  Allow: Run: git commit -am "fix bug"  [y/N/a(ccept-all)]
+  Allow: Run: git commit -am "fix bug"  [y/N/s(ession: Bash:git commit)/a(ccept-all)]
 ```
 
 - `y` — approve this one action
 - `n` or Enter — deny
+- `s` — approve **and stop asking for this one thing** for the rest of the session
 - `a` — approve and switch to `accept-all` for the rest of the session
 
-**Commands always auto-approved in `auto` mode:**
-`ls`, `cat`, `head`, `tail`, `wc`, `pwd`, `echo`, `git status`, `git log`, `git diff`, `git show`, `find`, `grep`, `rg`, `python`, `node`, `pip show`, `npm list`, and other read-only shell commands.
+`s` is the scoped alternative to `a`. The grant covers one signature, not the
+whole tool surface: `Bash:git commit` covers any `git commit …` but no other
+`git` subcommand; `Edit:/repo/app.py` covers repeat edits to that one file but
+no other file. Grants live in memory for the session only — never written to
+`config.json` — and `/permissions` lists them, `/permissions clear` drops them.
+
+**Auto-approved in `auto` mode:**
+
+| Category | Examples |
+|---|---|
+| Every tool the registry marks read-only | `Read` · `Glob` · `Grep` · `WebFetch` · `WebSearch` · `GetDiagnostics` · `TaskList` · `MemorySearch` · `SkillList` · `ReadPDF` · `SummarizeLargeFile` … |
+| Session-state tools (no repo file, no shell, no network) | `TaskCreate` · `TaskUpdate` · `MemorySave` · `Skill` · `SleepTimer` |
+| Read-only shell commands **and pipelines of them** | `ls -la \| grep test` · `git log --oneline \| head -20` · `cat` · `wc` · `stat` · `jq` · `rg` · `find` (without `-delete`/`-exec`) · `sed -n` (not `-i`) · `git status/log/diff/show/blame/config --get` · `docker ps` · `kubectl get` · `pip list` · `npm ls` · `curl -I` · any `--version`/`--help` invocation |
+| Creating a **new** file inside the workspace | `Write` to a path that does not exist yet, under the working directory (or `allowed_root`) |
+
+**Still prompts** — overwriting or editing an existing file, writing anywhere
+outside the workspace, any dot-prefixed path (`.git/hooks/*`, `.github/workflows/*`,
+`.env`), interpreters and build/test runners (`python script.py`, `pytest`, `make`,
+`npm run`), anything that writes/deletes/uploads (`rm`, `git push`, `pip install`,
+`curl -o`), shell redirection (`>`), backgrounding (`&`), command substitution
+(`` ` ``, `$(…)`), sub-agent spawns (`Agent`), and any unclassified MCP/plugin tool.
+
+**Tuning it:**
+
+```bash
+/config bash_safe_extra=["bazel-query","./scripts/status"]   # extra read-only programs
+/config auto_create_files=false                              # review new files too
+/permissions accept-edits                                    # stop asking for edits
+/permissions manual                                          # ask for everything
+/permissions clear                                           # drop session grants
+```
 
 ---
 

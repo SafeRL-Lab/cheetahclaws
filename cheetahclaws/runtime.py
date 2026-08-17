@@ -113,6 +113,12 @@ class RuntimeContext:
     plan_file: Optional[str] = None
     prev_permission_mode: Optional[str] = None
 
+    # Scoped permission grants made by answering "s" at a prompt — e.g.
+    # {"Bash:git push", "Edit:/repo/src/app.py"}.  Session-lifetime only:
+    # never persisted, and dropped with the RuntimeContext, so a broad grant
+    # can't outlive the task it was given for.  See agent._check_permission.
+    approved_sigs: set = field(default_factory=set)
+
     # Voice
     voice_device_index: Optional[int] = None
 
