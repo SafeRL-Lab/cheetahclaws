@@ -307,12 +307,36 @@ based on the model string:
 "ollama/qwen2.5-coder"            → ollama  (explicit prefix)
 "custom/my-endpoint"              → custom
 "nim/meta/llama-3.3-70b-instruct" → nim     (build.nvidia.com free tier)
+"openrouter/deepseek/deepseek-v4-flash" → openrouter  (400+ models, one key)
 ```
 
 `stream(model, system, messages, tool_schemas, config) -> Generator`
 is the one entry point agent.py uses.  Internally it dispatches to
 `stream_anthropic()` (native SDK) or `stream_openai_compat()` (used by
 every OpenAI-compatible provider).
+
+**Gateway model IDs are multi-level.** OpenRouter, NIM and LiteLLM
+address models by an upstream `<vendor>/<model>` path, so only the first
+segment is the provider and `bare_model()` deliberately strips just that
+one.  Two consequences the rest of the file relies on:
+
+* The provider name cannot be re-derived downstream — `bare_model()`'s
+  output (`deepseek/deepseek-v4-flash`) reads as a *different* provider.
+  `stream()` therefore passes the resolved name in `config["_provider_name"]`,
+  and `stream_openai_compat()` reads that instead of re-detecting.
+* Per-model registries (`COSTS`, `_MODEL_CONTEXT_LIMITS`) are keyed by
+  plain model name, so lookups fall back to `lookup_model_key()` — which
+  drops both the vendor path and OpenRouter's optional
+  `@<provider>[/<quantization>]` routing suffix.  Without it a gateway
+  route silently prices at $0 and reads the provider-level context
+  default instead of the model's own.
+
+**OpenRouter provider pinning.** `parse_openrouter_routing()` splits the
+`@<provider>[/<quantization>]` suffix off the model ID and stores it in
+`config["_openrouter_provider"]`; `stream_openai_compat()` forwards it as
+the `provider` object in `extra_body`.  Provider selection is a
+request-body element in OpenRouter's API — glued into the model ID it
+would be rejected as an unknown model.
 
 **NIM 429 cascade.** The `nim` provider points at `build.nvidia.com`'s
 free OpenAI-compatible endpoint with a curated 10-model chain
